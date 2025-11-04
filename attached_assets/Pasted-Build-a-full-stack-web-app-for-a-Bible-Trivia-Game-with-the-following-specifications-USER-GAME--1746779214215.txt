@@ -1,0 +1,86 @@
+Build a full-stack web app for a Bible Trivia Game with the following specifications:
+
+🎮 USER GAME FEATURES:
+
+1. MODES:
+   • Single-player and Multiplayer (up to 3 players)
+   • Two gameplay models:
+     - Time-Based: 10–15 minute timer
+     - Question-Based: 10 questions, no timer
+
+2. GAMEPLAY:
+   • Multiple Choice questions (4 options)
+   • Categories:
+     - Old Testament
+     - New Testament
+     - Bible Stories
+     - Famous People
+     - Theme-Based Topics
+   • Difficulty levels: Beginner, Intermediate, Advanced
+   • Question Timer: 20 seconds (only for Time-Based mode)
+   • Points: 1 point per correct, 2 for Bonus round
+   • Tie-breaker logic included
+   • Dynamic Leaderboard (real-time for multiplayer)
+
+3. REWARD SYSTEM:
+   • 3–5 correct → Book
+   • 6–9 correct → Cap
+   • 10–12 correct → T-Shirt
+   • Full completion (Single Player) → Digital Certificate
+
+🧠 AI AVATAR (Holmes):
+   • Use uploaded "HP HOLMES.jpg" as avatar
+   • Position avatar on top-right of game UI
+   • Avatar has animated reactions (text + sound):
+     - Correct: “Splendid! You honor the Word!” (smile + clap + ding)
+     - Wrong: “Wisdom grows.” (nod + chime)
+     - Fast correct: “Swift as David…” (gesture + fast ding)
+     - High score: “You have run a faithful race!” (arms raised + trumpet)
+     - Low score: “Return wiser!” (gentle encouragement + soft music)
+
+🧩 UI/UX:
+   • Match the style, feel, layout, and interaction of the *Family Feud* game
+   • Bold central question, animated answers
+   • Sound effects on interaction
+   • Large clear buttons
+   • Responsive layout for web and mobile
+
+🛠 TECH STACK:
+   • Frontend: React + TypeScript + TailwindCSS
+   • Backend: Node.js + Express
+   • Database: PostgreSQL or MongoDB
+   • Real-Time Sync: WebSockets
+   • AI: OpenAI ChatGPT 4o mini for dynamic question generation
+   • Authentication: Firebase Auth or JWT
+   • Media Storage: Firebase or AWS S3
+
+🧑‍💼 ADMIN PANEL (FULLY FEATURED):
+   • Admin login via Firebase Auth or secure JWT
+   • Dashboard with the following features:
+     - Add/Edit/Delete Questions
+     - Assign categories and difficulty
+     - Manually upload question sets (spreadsheet)
+     - Generate new questions per category using ChatGPT 4o mini API (input: category, difficulty, # of questions)
+     - Add/Edit/Delete Categories
+     - View logs of AI-generated questions
+     - Toggle game mode settings (time-based or question-based)
+     - View player leaderboard
+     - Export user game results
+   • Avatar Content Management:
+     - Set dialogue per answer outcome
+     - Upload animation trigger references
+
+🧪 QUALITY:
+   • Clean Architecture principles
+   • Fully commented code
+   • Input validation + error handling
+   • Responsive + cross-browser compatibility
+   • Testing instructions & test-ready build
+
+📦 OUTPUT:
+   • One full Replit project
+   • Frontend + backend integrated
+   • Admin panel ready to use
+   • Instructions to test locally or deploy
+   • Holmes image in use for avatar
+   • Minimize prompts/check-ins unless clarification is needed

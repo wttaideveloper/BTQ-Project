@@ -1,0 +1,292 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 20 14.3% 4.1%;
+    --muted: 60 4.8% 95.9%;
+    --muted-foreground: 25 5.3% 44.7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 14.3% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 20 14.3% 4.1%;
+    --border: 20 5.9% 90%;
+    --input: 20 5.9% 90%;
+    
+    /* Custom colors based on Family Feud style */
+    --primary: 220 50% 20%; /* Darker blue */
+    --primary-dark: 220 50% 15%; /* Even darker blue */
+    --primary-light: 220 50% 25%; /* Lighter blue */
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 260 40% 30%; /* Purple */
+    --secondary-dark: 260 40% 25%; /* Darker purple */
+    --secondary-light: 260 40% 35%; /* Lighter purple */
+    --secondary-foreground: 0 0% 100%;
+    
+    --accent: 45 90% 55%; /* Bright gold */
+    --accent-dark: 45 90% 45%; /* Darker gold */
+    --accent-foreground: 0 0% 10%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --ring: 20 14.3% 4.1%;
+    --radius: 0.5rem;
+
+    --correct: 122 60% 50%; /* Bright green */
+    --incorrect: 4 90% 58%; /* Bright red */
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --primary: 207 90% 54%;
+    --primary-foreground: 211 100% 99%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --ring: 240 4.9% 83.9%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-black text-foreground;
+  }
+
+  /* Font families */
+  .font-heading {
+    font-family: 'Montserrat', sans-serif;
+  }
+
+  .font-body {
+    font-family: 'Roboto', sans-serif;
+  }
+}
+
+/* Family Feud Game animation effects */
+.game-title {
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.5);
+  animation: titleGlow 2s infinite alternate;
+}
+
+@keyframes titleGlow {
+  0% {
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.5);
+  }
+  100% {
+    text-shadow: 0 0 20px rgba(255, 215, 0, 1), 0 0 30px rgba(255, 215, 0, 0.8), 0 0 40px rgba(255, 215, 0, 0.6);
+  }
+}
+
+/* Game button animations - Family Feud style */
+.game-button {
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.game-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: all 0.6s;
+  z-index: -1;
+}
+
+.game-button:hover::before {
+  left: 100%;
+}
+
+.game-button:active {
+  transform: scale(0.98);
+}
+
+.answer-button {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: relative;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+
+.answer-button::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+.answer-button:hover {
+  transform: scale(1.05) translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+}
+
+.answer-button:hover::after {
+  opacity: 1;
+}
+
+/* Family Feud style animations */
+.correct-answer {
+  animation: correctFlash 0.7s;
+}
+
+.incorrect-answer {
+  animation: incorrectFlash 0.7s;
+}
+
+@keyframes correctFlash {
+  0%, 100% { background-color: hsl(var(--primary)); }
+  20%, 80% { background-color: hsl(var(--correct)); }
+}
+
+@keyframes incorrectFlash {
+  0%, 100% { background-color: hsl(var(--primary)); }
+  20%, 80% { background-color: hsl(var(--incorrect)); }
+}
+
+/* Family Feud style float animation */
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+/* Family Feud style shake animation */
+.animate-shake {
+  animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) infinite;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+@keyframes shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-3px, 0, 0); }
+  40%, 60% { transform: translate3d(3px, 0, 0); }
+}
+
+/* Family Feud style slow pulse animations */
+.animate-pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-pulse-slower {
+  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Slow bounce animation */
+.animate-bounce-slow {
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(-5%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+/* Shadow glow effect */
+.shadow-glow {
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+}
+/* Additional animation for player turn indicators */
+
+/* Family Feud style slow bounce */
+.animate-bounce-slow {
+  animation: bounceSlow 3s infinite;
+}
+
+.animation-delay-200 {
+  animation-delay: 0.2s;
+}
+
+.animation-delay-400 {
+  animation-delay: 0.4s;
+}
+
+@keyframes bounceSlow {
+  0%, 10%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-15px); }
+}
+
+/* Family Feud style reveal */
+.reveal-animation {
+  animation: reveal 0.7s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+@keyframes reveal {
+  0% { opacity: 0; transform: scale(0.8); }
+  70% { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.avatar-container {
+  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.score-indicator {
+  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.timer-bar {
+  transition: width 0.1s linear;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.modal-animation {
+  animation: modalReveal 0.6s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+@keyframes modalReveal {
+  0% { opacity: 0; transform: scale(0.9) translateY(-20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}

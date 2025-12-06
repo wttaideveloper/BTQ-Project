@@ -38,7 +38,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
   const tutorialSteps = [
     {
       title: "🎉 Welcome to FaithIQ Bible Trivia!",
-      subtitle: "Your journey to biblical knowledge starts here",
+      subtitle: "Your journey to biblical knowledge starts here...",
       content: (
         <div className="text-center space-y-4">
           <div className="text-6xl mb-4">📖</div>
@@ -273,31 +273,31 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
       content: (
         <div className="text-center space-y-4 sm:space-y-6">
           <div className="text-4xl sm:text-6xl">🎯</div>
-          <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white p-4 sm:p-6 rounded-xl shadow-lg border border-blue-400/20">
+          <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white text-center p-4 sm:p-6 rounded-xl shadow-lg border border-blue-400/20">
             <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-center">
-              Remember:
+              Remember :
             </h3>
-            <ul className="text-left space-y-2 sm:space-y-3 text-xs sm:text-sm max-w-md mx-auto">
-              <li className="flex items-start gap-3">
-                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 flex-shrink-0 mt-0.5" />
+            <ul className="space-y-2 sm:space-y-3 text-xs sm:text-sm max-w-md mx-auto">
+              <li className="text-center">
+                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
                 <span className="leading-relaxed">
                   You can pause anytime and resume later
                 </span>
               </li>
-              <li className="flex items-start gap-3">
-                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 flex-shrink-0 mt-0.5" />
+              <li className="text-center">
+                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
                 <span className="leading-relaxed">
                   Wrong answers help you learn too!
                 </span>
               </li>
-              <li className="flex items-start gap-3">
-                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 flex-shrink-0 mt-0.5" />
+              <li className="text-center">
+                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
                 <span className="leading-relaxed">
                   Check the leaderboard to see how you rank
                 </span>
               </li>
-              <li className="flex items-start gap-3">
-                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 flex-shrink-0 mt-0.5" />
+              <li className="text-center">
+                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
                 <span className="leading-relaxed">
                   Visit the FAQ anytime for help
                 </span>

@@ -326,12 +326,12 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
   };
 
   const handleClose = () => {
-    // Don't mark as completed since we want to show it every time
+    // Tutorial shown this session - will show again in new session
     onClose();
   };
 
   const handleSkip = () => {
-    // Skip the tutorial without marking as completed
+    // Skip the tutorial - still counts as shown for this session
     onClose();
   };
 

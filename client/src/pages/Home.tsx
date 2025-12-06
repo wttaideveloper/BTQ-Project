@@ -113,15 +113,22 @@ const Home: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Show welcome tutorial for all users on every visit
+  // Show welcome tutorial once per user account
   useEffect(() => {
-    // Small delay to ensure page is fully loaded
-    const timer = setTimeout(() => {
-      setShowWelcomeTutorial(true);
-    }, 1000);
+    const userId = user?.id;
+    const tutorialKey = `welcomeTutorialShown_${userId || "guest"}`;
+    const hasSeenTutorial = localStorage.getItem(tutorialKey);
 
-    return () => clearTimeout(timer);
-  }, []);
+    if (!hasSeenTutorial) {
+      // Small delay to ensure page is fully loaded
+      const timer = setTimeout(() => {
+        setShowWelcomeTutorial(true);
+        localStorage.setItem(tutorialKey, "true");
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [user?.id]);
 
   const handleStartGame = (config: GameConfig) => {
     // Convert config to query params

@@ -56,10 +56,18 @@ const GameBoard: React.FC<GameBoardProps> = ({
   const [selectedAnswer, setSelectedAnswer] = useState<Answer | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [startTime, setStartTime] = useState(Date.now());
+  const [questionSessionId, setQuestionSessionId] = useState<string>('');
   
   // Reset timer when question changes
   useEffect(() => {
     if (!isQuestionAnswered) {
+      // Generate unique session ID for this question
+      const newSessionId = `q${currentQuestion}-${Date.now()}`;
+      setQuestionSessionId(newSessionId);
+      
+      // Start new voice session for this question - this stops any previous audio
+      voiceService.startNewSession(newSessionId);
+      
       setTimeRemaining(timeLimit);
       setSelectedAnswer(null);
       setStartTime(Date.now());
@@ -67,9 +75,6 @@ const GameBoard: React.FC<GameBoardProps> = ({
       
       // Read the question if voice is enabled
       if (isVoiceEnabled()) {
-        // Cancel any ongoing speech first (do not block future narration)
-        voiceService.stopAllAudio(false);
-        
         // Use question index-specific flag to track if question has been read
         // This prevents voice overlap in multiplayer mode
         const questionKey = `questionRead_${currentQuestion}`;
@@ -84,21 +89,15 @@ const GameBoard: React.FC<GameBoardProps> = ({
           try {
             // Make sure voice status is loaded (especially for first question)
             await voiceService.getVoiceStatus();
-            console.log(`🔊 Voice service ready - reading Question ${currentQuestion}`);
+            console.log(`🔊 Voice service ready - reading Question ${currentQuestion} with session ${newSessionId}`);
             
             // Only speak if the document is visible and component is still mounted
             // CRITICAL: Only read if this question hasn't been read yet to prevent overlap
             if (document.visibilityState === 'visible' && isFreshLoad && !isPaused) {
-              // Stop any ongoing speech first to ensure no overlap
-              voiceService.stopAllAudio(false);
-              
-              // Wait a moment to ensure previous speech is fully stopped
-              await new Promise(resolve => setTimeout(resolve, 150));
-              
               // Just read the question number and question text - no player turn announcements
               const textToSpeak = `Question ${currentQuestion}: ${question}`;
               console.log(`📢 Starting narration for Question ${currentQuestion}: "${textToSpeak.substring(0, 50)}..."`);
-              await voiceService.speakWithClonedVoice(textToSpeak);
+              await voiceService.speakWithClonedVoice(textToSpeak, newSessionId);
             } else {
               console.log(`⏭️ Skipping narration for Question ${currentQuestion} - already read or paused`);
             }
@@ -112,15 +111,19 @@ const GameBoard: React.FC<GameBoardProps> = ({
           readQuestion();
         }, 1000); // 1 second delay for question narration
         
-        // Clean up function to cancel speech if component unmounts
+        // Clean up function - always clear session when this effect is cleaned up
         return () => {
           clearTimeout(questionTimer);
-          // Always stop audio when component unmounts (do not block future narration)
-          voiceService.stopAllAudio(false);
+          // Only clear if this is still the active session
+          const currentSession = voiceService.getCurrentSession();
+          if (currentSession === newSessionId) {
+            console.log(`🧹 Cleaning up session ${newSessionId}`);
+            voiceService.clearSession();
+          }
         };
       }
     }
-  }, [question, isQuestionAnswered, timeLimit, currentQuestion, questionContext, isPaused]);
+  }, [question, currentQuestion, isQuestionAnswered, isPaused, timeLimit]);
 
   // Timer effect
   useEffect(() => {
@@ -187,16 +190,18 @@ const GameBoard: React.FC<GameBoardProps> = ({
   // Cleanup effect to stop voice when component unmounts
   useEffect(() => {
     return () => {
-      console.log('🧹 GameBoard unmounting - stopping voice narration');
-      voiceService.stopAllAudio(false);
+      console.log('🧹 GameBoard unmounting - clearing voice session');
+      voiceService.clearSession();
     };
   }, []);
 
   const handleAnswerClick = (answer: Answer) => {
     if (isQuestionAnswered || selectedAnswer || isPaused) return;
     
-    // Stop any ongoing speech first to ensure we don't have overlapping audio (do not block)
-    voiceService.stopAllAudio(false);
+    // Stop any ongoing question narration for this session
+    if (questionSessionId) {
+      voiceService.clearSession();
+    }
     
     const timeSpent = timeLimit - timeRemaining;
     setSelectedAnswer(answer);
@@ -436,6 +441,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
           avatarMessage={avatarMessage}
           onClose={handleFeedbackClose}
           gameMode={gameMode}
+          questionSessionId={questionSessionId}
         />
       )}
     </div>

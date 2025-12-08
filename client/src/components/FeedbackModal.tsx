@@ -12,6 +12,7 @@ interface FeedbackModalProps {
   avatarMessage: string;
   onClose: (wasManualContinue?: boolean) => void;
   gameMode?: string; // Add gameMode to differentiate between Single/Multi player
+  questionSessionId?: string; // Session ID for voice narration
 }
 
 const FeedbackModal: React.FC<FeedbackModalProps> = ({
@@ -20,15 +21,22 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
   correctAnswer,
   avatarMessage,
   onClose,
-  gameMode = 'single' // Default to single player
+  gameMode = 'single', // Default to single player
+  questionSessionId, // Session ID for voice
 }) => {
   const [userClickedContinue, setUserClickedContinue] = useState(false);
+  const [feedbackSessionId] = useState(() => `feedback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  
     // Speak the feedback when the modal appears
   useEffect(() => {
     // If user already clicked continue, don't start any feedback
     if (userClickedContinue) {
       return;
     }
+
+    // Start new feedback session (this will stop question narration)
+    voiceService.startNewSession(feedbackSessionId);
+    console.log(`🎬 Feedback modal opened with session ${feedbackSessionId}`);
 
     // Play sequence of game show sounds based on correctness
     if (isCorrect) {
@@ -74,16 +82,22 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
       const voiceTimeout = setTimeout(() => {
         // Double check user hasn't clicked continue before starting feedback voice
         if (!userClickedContinue) {
-          voiceService.speakWithClonedVoice(feedback);
+          voiceService.speakWithClonedVoice(feedback, feedbackSessionId);
         }
       }, 2000); // Increased delay to 2 seconds to ensure sound effects are done
       
       // Store the timeout ID so we can clear it if user clicks continue
       return () => {
         clearTimeout(voiceTimeout);
+        // Clear this feedback session when modal closes (only if it's still active)
+        const currentSession = voiceService.getCurrentSession();
+        if (currentSession === feedbackSessionId) {
+          console.log(`🧹 Cleaning up feedback session ${feedbackSessionId}`);
+          voiceService.clearSession();
+        }
       };
     }
-  }, [isCorrect, correctAnswer, avatarMessage, onClose, userClickedContinue, gameMode]);
+  }, [isCorrect, correctAnswer, avatarMessage, onClose, userClickedContinue, gameMode, feedbackSessionId]);
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4">
       <div className={`modal-animation w-full max-w-md p-0 rounded-2xl shadow-2xl overflow-hidden ${
@@ -145,7 +159,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
             <Button 
               onClick={() => {
                 setUserClickedContinue(true); // Set flag immediately to prevent feedback voice
-                voiceService.stopAllAudio(); // Stop any ongoing feedback voice
+                voiceService.clearSession(); // Clear feedback session
                 // Clear any pending voice timeouts by triggering useEffect cleanup
                 onClose(true); // Pass true to indicate manual continue
               }}

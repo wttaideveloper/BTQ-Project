@@ -1008,6 +1008,7 @@ export default function TeamBattleGame() {
             setLastRoundCorrect(null);
             setCorrectAnswerId(null);
           }}
+          gameMode="team"
         />
       )}
 

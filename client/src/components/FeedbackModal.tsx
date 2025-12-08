@@ -11,6 +11,7 @@ interface FeedbackModalProps {
   correctAnswer: string;
   avatarMessage: string;
   onClose: (wasManualContinue?: boolean) => void;
+  gameMode?: string; // Add gameMode to differentiate between Single/Multi player
 }
 
 const FeedbackModal: React.FC<FeedbackModalProps> = ({
@@ -18,7 +19,8 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
   question,
   correctAnswer,
   avatarMessage,
-  onClose
+  onClose,
+  gameMode = 'single' // Default to single player
 }) => {
   const [userClickedContinue, setUserClickedContinue] = useState(false);
     // Speak the feedback when the modal appears
@@ -58,9 +60,15 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
     
     // Speak the feedback if voice is enabled and user hasn't clicked continue
     if (isVoiceEnabled() && !userClickedContinue) {
-      const feedback = isCorrect
-        ? `Correct! ${correctAnswer} is the right answer. ${avatarMessage}`
-        : `Incorrect. The correct answer is ${correctAnswer}. ${avatarMessage}`;
+      // For Single Player mode, exclude motivational messages from voice narration
+      // Only speak the answer acknowledgement
+      const feedback = gameMode === 'single'
+        ? (isCorrect 
+            ? `Correct answer. ${correctAnswer} is the right answer.`
+            : `Incorrect answer. The correct answer is ${correctAnswer}.`)
+        : (isCorrect
+            ? `Correct! ${correctAnswer} is the right answer. ${avatarMessage}`
+            : `Incorrect. The correct answer is ${correctAnswer}. ${avatarMessage}`);
       
       // Longer delay to ensure the previous speech is complete and sound effects finish
       const voiceTimeout = setTimeout(() => {
@@ -75,7 +83,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
         clearTimeout(voiceTimeout);
       };
     }
-  }, [isCorrect, correctAnswer, avatarMessage, onClose, userClickedContinue]);
+  }, [isCorrect, correctAnswer, avatarMessage, onClose, userClickedContinue, gameMode]);
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4">
       <div className={`modal-animation w-full max-w-md p-0 rounded-2xl shadow-2xl overflow-hidden ${

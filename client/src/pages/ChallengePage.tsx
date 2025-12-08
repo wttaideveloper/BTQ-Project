@@ -519,6 +519,7 @@ export default function ChallengePage() {
             correctAnswer={questions[currentQuestionIndex].answers.find(a => a.isCorrect)?.text || ''}
             avatarMessage={avatarMessage}
             onClose={handleNextQuestion}
+            gameMode="challenge"
           />
         )}
       </div>

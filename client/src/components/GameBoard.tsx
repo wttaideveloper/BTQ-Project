@@ -29,6 +29,7 @@ interface GameBoardProps {
   isPaused?: boolean; // Pause state
   isMultiplayer?: boolean; // Whether this is a multiplayer game
   currentPlayerName?: string; // Current player's name for multiplayer
+  gameMode?: string; // Game mode: 'single', 'multi', etc.
 }
 
 const GameBoard: React.FC<GameBoardProps> = ({
@@ -49,6 +50,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
   isPaused = false, // Default to false if not provided
   isMultiplayer = false, // Default to false if not provided
   currentPlayerName, // Optional current player name
+  gameMode = 'single', // Default to 'single' if not provided
 }) => {
   const [timeRemaining, setTimeRemaining] = useState(timeLimit);
   const [selectedAnswer, setSelectedAnswer] = useState<Answer | null>(null);
@@ -433,6 +435,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
           correctAnswer={answers.find(a => a.isCorrect)?.text || ''}
           avatarMessage={avatarMessage}
           onClose={handleFeedbackClose}
+          gameMode={gameMode}
         />
       )}
     </div>

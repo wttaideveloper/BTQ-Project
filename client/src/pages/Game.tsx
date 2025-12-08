@@ -1181,6 +1181,7 @@ const Game: React.FC = () => {
                     ? playerNames[currentPlayerIndex]
                     : undefined
                 }
+                gameMode={gameMode}
               />
             </div>
           )}

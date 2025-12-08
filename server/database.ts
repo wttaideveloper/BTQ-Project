@@ -492,18 +492,13 @@ class PostgreSQLDatabase implements IDatabase {
         userSeed: filters.userId || 0,
       });
 
-      // Step 3: Filter out any invalid questions before shuffling
-      const validSelectedQuestions = selectedQuestions.filter(
-        q => q && typeof q.id === 'string' && q.id.length > 0
-      );
-
-      // Step 4: Shuffle questions and answers with user-specific entropy
+      // Step 3: Shuffle questions and answers with user-specific entropy
       const shuffledQuestions = this.shuffleQuestionsAndAnswers(
-        validSelectedQuestions,
+        selectedQuestions,
         filters.userId
       );
 
-      // Step 5: Additional randomization pass to ensure uniqueness
+      // Step 4: Additional randomization pass to ensure uniqueness
       const finalQuestions = this.cryptoSecureShuffle(
         shuffledQuestions,
         this.generateUserSpecificSeed(filters.userId)
@@ -547,10 +542,22 @@ class PostgreSQLDatabase implements IDatabase {
         return [];
       }
 
+      // Filter out invalid questions FIRST, before any selection
+      const validQuestions = allQuestions.filter(
+        q => q && typeof q.id === 'string' && q.id.length > 0 && q.answers && q.answers.length > 0
+      );
+      
+      if (validQuestions.length === 0) {
+        console.log("❌ No valid questions available in database");
+        return [];
+      }
+      
+      console.log(`📊 Total questions: ${allQuestions.length}, Valid questions: ${validQuestions.length}`);
+
       // Filter out excluded questions
-      let availableQuestions = allQuestions;
+      let availableQuestions = validQuestions;
       if (filters.excludeQuestionIds && filters.excludeQuestionIds.length > 0) {
-        availableQuestions = allQuestions.filter(
+        availableQuestions = validQuestions.filter(
           q => !filters.excludeQuestionIds!.includes(q.id)
         );
       }
@@ -609,6 +616,14 @@ class PostgreSQLDatabase implements IDatabase {
       );
       
       console.log(`✅ Selected ${selected.length} out of ${filters.count} requested questions`);
+      
+      // If we still don't have enough questions, log a warning
+      if (selected.length < filters.count) {
+        console.log(`⚠️ WARNING: Could only provide ${selected.length} questions instead of ${filters.count}`);
+        console.log(`📊 Available questions after all filtering: ${filteredQuestions.length}`);
+        console.log(`📊 Total questions in database: ${allQuestions.length}`);
+      }
+      
       return selected;
     } catch (error) {
       console.error("❌ Error in enhanced random selection:", error);

@@ -711,6 +711,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // Save multiplayer score (local multiplayer games)
+  app.post("/api/multiplayer/scores", async (req, res) => {
+    try {
+      console.log("Saving multiplayer score:", req.body);
+
+      const multiplayerScore = {
+        id: uuidv4(),
+        gameSessionId: req.body.gameSessionId,
+        playerName: req.body.playerName,
+        playerIndex: req.body.playerIndex,
+        score: req.body.score,
+        correctAnswers: req.body.correctAnswers,
+        incorrectAnswers: req.body.incorrectAnswers,
+        averageTime: req.body.averageTime,
+        category: req.body.category,
+        difficulty: req.body.difficulty,
+        gameType: req.body.gameType || "local-multi",
+        totalQuestions: req.body.totalQuestions,
+        playerCount: req.body.playerCount,
+        createdAt: new Date(),
+      };
+
+      const savedScore = await database.saveMultiplayerScore(multiplayerScore);
+      console.log("Multiplayer score saved successfully:", savedScore);
+      res.status(201).json(savedScore);
+    } catch (err) {
+      console.error("Failed to save multiplayer score:", err);
+      res.status(500).json({ 
+        message: "Failed to save multiplayer score",
+        error: err instanceof Error ? err.message : "Unknown error"
+      });
+    }
+  });
+
   // Get leaderboard data
   app.get("/api/leaderboard", async (req, res) => {
     try {

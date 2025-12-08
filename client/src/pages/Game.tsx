@@ -361,8 +361,8 @@ const Game: React.FC = () => {
               });
               break;
             case "answer_submitted":
-              // Update leaderboard
-              if (data.leaderboard) {
+              // Update leaderboard (only for online multiplayer, not local)
+              if (data.leaderboard && !gameId.includes("local-multi")) {
                 setLeaderboardData(data.leaderboard);
               }
               break;
@@ -716,6 +716,29 @@ const Game: React.FC = () => {
       }
 
       if (gameMode === "multi") {
+        console.log("🎮 GAME ENDED - About to show leaderboard");
+        console.log("🎮 GameMode:", gameMode);
+        console.log("🎮 GameId:", gameId);
+        console.log(
+          "🎮 GameId includes 'local-multi':",
+          gameId.includes("local-multi")
+        );
+        console.log("🎮 Global Variables:", {
+          correctAnswers,
+          incorrectAnswers,
+          score,
+        });
+        console.log("🎮 PlayerStats Array:", playerStats);
+        console.log(
+          "🎮 PlayerStats Mapped:",
+          playerStats.map((stat: any, idx: number) => ({
+            name: playerNames[idx],
+            score: stat.score,
+            correctAnswers: stat.correctAnswers,
+            incorrectAnswers: stat.incorrectAnswers,
+            avgTime: stat.averageTime,
+          }))
+        );
         setShowLeaderboard(true);
       }
     }
@@ -761,11 +784,19 @@ const Game: React.FC = () => {
       }
     }
 
-    // Update overall game stats for compatibility with existing code
-    if (answer.isCorrect) {
-      setScore((prev: number) => prev + 1);
-      setCorrectAnswers((prev: number) => prev + 1);
+    // Update game stats - for single player use global state, for multiplayer use player-specific stats only
+    if (gameMode !== "multi") {
+      // Single player mode: update global stats
+      if (answer.isCorrect) {
+        setScore((prev: number) => prev + 1);
+        setCorrectAnswers((prev: number) => prev + 1);
+      } else {
+        setIncorrectAnswers((prev: number) => prev + 1);
+      }
+    }
 
+    // Play sounds and update avatar for all game modes
+    if (answer.isCorrect) {
       // Play celebration sound for correct answers
       if (timeSpent < 5) {
         // Fast answer gets an exciting celebration sound
@@ -783,8 +814,6 @@ const Game: React.FC = () => {
         setAvatarAnimation("happy");
       }
     } else {
-      setIncorrectAnswers((prev: number) => prev + 1);
-
       // Play buzzer sound for incorrect answers
       playSound("buzzer");
       playBasicSound("buzzer"); // Use both sound systems
@@ -817,27 +846,43 @@ const Game: React.FC = () => {
             (playerStat.correctAnswers + playerStat.incorrectAnswers + 1),
         };
 
+        console.log(
+          `🎯 Multiplayer Score Update - ${playerNames[currentPlayerIndex]}:`,
+          {
+            correct: updatedStats[currentPlayerIndex].correctAnswers,
+            incorrect: updatedStats[currentPlayerIndex].incorrectAnswers,
+            score: updatedStats[currentPlayerIndex].score,
+            allPlayerStats: updatedStats.map((stat, idx) => ({
+              name: playerNames[idx],
+              correct: stat.correctAnswers,
+              score: stat.score,
+            })),
+          }
+        );
+
         return updatedStats;
       });
 
-      // Send answer to server for multiplayer
-      const socket = setupGameSocket();
+      // Send answer to server for multiplayer (only for online multiplayer, not local)
+      if (!gameId.includes("local-multi")) {
+        const socket = setupGameSocket();
 
-      if (gameId) {
-        socket.send(
-          JSON.stringify({
-            type: "submit_answer",
-            gameId,
-            playerName: playerNames[currentPlayerIndex], // Use the current player's name based on turn
-            playerIndex: currentPlayerIndex,
-            questionId: questions?.[currentQuestionIndex].id,
-            answerId: answer.id,
-            isCorrect: answer.isCorrect,
-            timeSpent,
-          })
-        );
-      } else {
-        console.error("No game ID found for multiplayer mode");
+        if (gameId) {
+          socket.send(
+            JSON.stringify({
+              type: "submit_answer",
+              gameId,
+              playerName: playerNames[currentPlayerIndex], // Use the current player's name based on turn
+              playerIndex: currentPlayerIndex,
+              questionId: questions?.[currentQuestionIndex].id,
+              answerId: answer.id,
+              isCorrect: answer.isCorrect,
+              timeSpent,
+            })
+          );
+        } else {
+          console.error("No game ID found for multiplayer mode");
+        }
       }
     }
   };
@@ -1213,19 +1258,51 @@ const Game: React.FC = () => {
       {showLeaderboard && (
         <LeaderboardModal
           players={
-            // If we have server data, use it
-            leaderboardData.length > 0
+            // For local multiplayer (2+ players on same device), ALWAYS use playerStats
+            // Local multiplayer = gameMode is 'multi' AND gameId starts with 'local-multi' OR playerCount > 1
+            gameMode === "multi" &&
+            (gameId.includes("local-multi") || playerCount > 1)
+              ? (() => {
+                  const playersData = playerNames.map((name, index) => ({
+                    id: String(index + 1),
+                    name: name,
+                    score: playerStats[index]?.score || 0,
+                    correctAnswers: playerStats[index]?.correctAnswers || 0,
+                    avgTime: playerStats[index]?.averageTime || 0,
+                    isCurrentUser: false,
+                  }));
+                  console.log(
+                    "🏆 Leaderboard Data (Local Multiplayer):",
+                    playersData
+                  );
+                  console.log("🏆 Raw PlayerStats:", playerStats);
+                  console.log(
+                    "🏆 LeaderboardData from server:",
+                    leaderboardData
+                  );
+                  return playersData;
+                })()
+              : // If we have server data (online multiplayer), use it
+              leaderboardData.length > 0
               ? leaderboardData
-              : // If multiplayer, use player-specific stats we've tracked
+              : // If multiplayer (online), use player-specific stats we've tracked
               gameMode === "multi"
-              ? playerNames.map((name, index) => ({
-                  id: String(index + 1),
-                  name: name,
-                  score: playerStats[index]?.score || 0,
-                  correctAnswers: playerStats[index]?.correctAnswers || 0,
-                  avgTime: playerStats[index]?.averageTime || 0,
-                  isCurrentUser: false, // For local multiplayer, no "current user" concept
-                }))
+              ? (() => {
+                  const playersData = playerNames.map((name, index) => ({
+                    id: String(index + 1),
+                    name: name,
+                    score: playerStats[index]?.score || 0,
+                    correctAnswers: playerStats[index]?.correctAnswers || 0,
+                    avgTime: playerStats[index]?.averageTime || 0,
+                    isCurrentUser: false, // For local multiplayer, no "current user" concept
+                  }));
+                  console.log(
+                    "🏆 Leaderboard Data (Multiplayer):",
+                    playersData
+                  );
+                  console.log("🏆 Raw PlayerStats:", playerStats);
+                  return playersData;
+                })()
               : // For single player, use the original approach
                 [
                   {

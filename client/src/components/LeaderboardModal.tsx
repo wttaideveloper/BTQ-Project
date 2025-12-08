@@ -25,9 +25,54 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   isGameOver = false,
   onPlayAgain
 }) => {
-  const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+  // Sort players with proper tie-breaking logic
+  const sortedPlayers = [...players].sort((a, b) => {
+    // Primary: Sort by score (highest first)
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    // Tie-breaker 1: Sort by correct answers (highest first)
+    if (b.correctAnswers !== a.correctAnswers) {
+      return b.correctAnswers - a.correctAnswers;
+    }
+    // Tie-breaker 2: Sort by average time (lowest/fastest first)
+    // Handle undefined/NaN values
+    const aTime = a.avgTime || 0;
+    const bTime = b.avgTime || 0;
+    return aTime - bTime;
+  });
   const hasWinner = sortedPlayers.length > 0 && isGameOver;
   const winner = hasWinner ? sortedPlayers[0] : null;
+  
+  // Check if there's a tie (multiple players with same score and correct answers)
+  // If avgTime is undefined or very close, it's a tie
+  const isTie = hasWinner && sortedPlayers.length > 1 && 
+    sortedPlayers[0].score === sortedPlayers[1].score &&
+    sortedPlayers[0].correctAnswers === sortedPlayers[1].correctAnswers &&
+    (
+      // Both have no time data, or times are very close (within 0.5 seconds)
+      (!sortedPlayers[0].avgTime && !sortedPlayers[1].avgTime) ||
+      (sortedPlayers[0].avgTime && sortedPlayers[1].avgTime && 
+       Math.abs(sortedPlayers[0].avgTime - sortedPlayers[1].avgTime) < 0.5)
+    );
+  
+  // Debug logging
+  console.log("🏆 LeaderboardModal Render:", {
+    hasWinner,
+    isTie,
+    winner: winner ? {
+      name: winner.name,
+      score: winner.score,
+      correctAnswers: winner.correctAnswers,
+      avgTime: winner.avgTime
+    } : null,
+    allPlayers: sortedPlayers.map(p => ({
+      name: p.name,
+      score: p.score,
+      correctAnswers: p.correctAnswers,
+      avgTime: p.avgTime
+    }))
+  });
   
   // Play victory sounds for game over - Game Show style!
   useEffect(() => {
@@ -109,10 +154,10 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   <Crown className="h-7 w-7 sm:h-8 sm:w-8 md:h-10 md:w-10 text-accent animate-pulse-slow mr-2 sm:mr-3" />
                   <div>
                     <h4 className="text-lg sm:text-xl md:text-2xl font-bold text-white">
-                      {winner?.isCurrentUser ? 'YOU WIN!' : `${winner?.name || 'Player'} WINS!`}
+                      {isTie ? "IT'S A TIE!" : winner?.isCurrentUser ? 'YOU WIN!' : `${winner?.name || 'Player'} WINS!`}
                     </h4>
                     <p className="text-accent text-xs sm:text-sm">
-                      {winner?.correctAnswers || 0} correct answers in an average of {(winner?.avgTime || 0).toFixed(1)}s
+                      {isTie ? `Both players: ${winner?.correctAnswers || 0} correct answers` : `${winner?.correctAnswers || 0} correct answers in an average of ${(winner?.avgTime || 0).toFixed(1)}s`}
                     </p>
                   </div>
                 </div>

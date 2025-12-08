@@ -556,18 +556,43 @@ class PostgreSQLDatabase implements IDatabase {
       }
 
       // Apply category and difficulty filters
+      let filteredQuestions = availableQuestions;
       if (filters.category && filters.category !== "All Categories") {
-        availableQuestions = availableQuestions.filter(
+        filteredQuestions = filteredQuestions.filter(
           q => q.category === filters.category
         );
       }
-      if (filters.difficulty) {
-        availableQuestions = availableQuestions.filter(
+      if (filters.difficulty && filters.difficulty !== "All") {
+        filteredQuestions = filteredQuestions.filter(
           q => q.difficulty === filters.difficulty
         );
       }
 
-      if (availableQuestions.length === 0) {
+      // If not enough questions, progressively broaden the filters
+      if (filteredQuestions.length < filters.count) {
+        console.log(`⚠️ Only ${filteredQuestions.length} questions match filters, need ${filters.count}. Broadening search...`);
+        
+        // Try removing difficulty filter first
+        if (filters.difficulty && filters.difficulty !== "All") {
+          let broaderQuestions = availableQuestions;
+          if (filters.category && filters.category !== "All Categories") {
+            broaderQuestions = broaderQuestions.filter(
+              q => q.category === filters.category
+            );
+          }
+          
+          if (broaderQuestions.length >= filters.count) {
+            console.log(`✅ Found ${broaderQuestions.length} questions by removing difficulty filter`);
+            filteredQuestions = broaderQuestions;
+          } else {
+            // If still not enough, remove all filters
+            console.log(`⚠️ Still only ${broaderQuestions.length} questions. Using all available questions.`);
+            filteredQuestions = availableQuestions;
+          }
+        }
+      }
+
+      if (filteredQuestions.length === 0) {
         console.log("⚠️ No questions available after filtering, using fallback");
         return this.memoryBasedRandomSelection({
           category: filters.category,
@@ -577,11 +602,14 @@ class PostgreSQLDatabase implements IDatabase {
       }
 
       // Use simple random selection for better variety
-      return this.simpleRandomSelection(
-        availableQuestions,
+      const selected = this.simpleRandomSelection(
+        filteredQuestions,
         filters.count,
         filters.userSeed
       );
+      
+      console.log(`✅ Selected ${selected.length} out of ${filters.count} requested questions`);
+      return selected;
     } catch (error) {
       console.error("❌ Error in enhanced random selection:", error);
       // Fallback to basic selection

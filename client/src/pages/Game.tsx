@@ -196,8 +196,16 @@ const Game: React.FC = () => {
     queryFn: () =>
       getGameQuestions(
         category,
-        difficulty,
-        gameType === "question" ? 10 : 20,
+        // Ensure enough questions for 2-player games by broadening difficulty if needed
+        gameType === "question" && gameMode === "multi" && playerCount === 2
+          ? "All"
+          : difficulty,
+        // Adjust question count for multiplayer fairness (e.g., 3 players → 12 questions)
+        gameType === "question"
+          ? gameMode === "multi" && playerCount === 3
+            ? 12
+            : 10
+          : 20,
         gameId
       ),
     staleTime: Infinity, // Cache questions for the entire game session

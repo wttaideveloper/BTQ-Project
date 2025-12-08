@@ -1067,7 +1067,7 @@ const Game: React.FC = () => {
               <Home className="h-5 w-5" />
               HOME
             </button>
-            {/* <button
+            <button
               onClick={() => {
                 console.log(
                   "🔄 PLAY AGAIN button clicked - resetting game state"
@@ -1087,7 +1087,7 @@ const Game: React.FC = () => {
             >
               <RotateCcw className="h-5 w-5" />
               PLAY AGAIN
-            </button> */}
+            </button>
           </div>
         </div>
       </div>

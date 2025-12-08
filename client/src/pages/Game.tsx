@@ -66,7 +66,7 @@ const Game: React.FC = () => {
   const playerCount = parseInt(params.get("playerCount") || "1");
 
   // Generate a stable game session ID
-  const [gameId] = useState(() => {
+  const [gameId, setGameId] = useState(() => {
     const existingId =
       params.get("gameId") || sessionStorage.getItem("currentGameId");
     if (existingId) return existingId;
@@ -287,12 +287,13 @@ const Game: React.FC = () => {
     setGameTimeRemaining(gameType === "time" ? 15 * 60 : 0);
     setOriginalGameTime(gameType === "time" ? 15 * 60 : 0);
 
-    // Generate new game ID
+    // Generate new game ID and update state
     const newGameId =
       gameMode === "multi"
         ? `local-multi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
         : `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     sessionStorage.setItem("currentGameId", newGameId);
+    setGameId(newGameId); // Update the state to trigger new questions fetch
 
     // Clear question read flags
     sessionStorage.removeItem("questionRead");
@@ -300,13 +301,22 @@ const Game: React.FC = () => {
       sessionStorage.removeItem(`questionRead_${i}`);
     }
 
+    // Clear the game state for the new game
+    sessionStorage.removeItem(`gameState_${gameId}`);
+    sessionStorage.removeItem(`gameState_${newGameId}`);
+
     // Reset voice service
     voiceService.reset();
 
     // Invalidate and refetch questions for the new game
+    queryClient.removeQueries({
+      queryKey: ["/api/game/questions"],
+    });
     queryClient.invalidateQueries({
       queryKey: ["/api/game/questions", category, difficulty, newGameId],
     });
+
+    console.log("🎮 New game session created:", newGameId);
 
     console.log("✅ Game state reset complete, new game ID:", newGameId);
   };
@@ -1318,6 +1328,9 @@ const Game: React.FC = () => {
           isGameOver={gameEnded}
           onPlayAgain={() => {
             console.log("🔄 PLAY AGAIN (Leaderboard) - resetting game state");
+
+            // Reset gameEnded flag FIRST to prevent redirect
+            setGameEnded(false);
 
             // Stop voice narration
             voiceService.stopAllAudio(true);

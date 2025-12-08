@@ -239,10 +239,7 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
           <div className={`flex gap-2 sm:gap-3 ${isGameOver && onPlayAgain ? 'justify-between' : 'justify-center'}`}>
             {isGameOver && onPlayAgain && (
               <Button 
-                onClick={() => {
-                  onPlayAgain();
-                  onClose();
-                }}
+                onClick={onPlayAgain}
                 size="sm"
                 className="flex-1 px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 md:py-3 rounded-xl font-bold text-xs sm:text-sm md:text-lg shadow-glow bg-gradient-to-r from-accent to-accent-dark text-primary hover:from-accent-light hover:to-accent animate-pulse-slow"
               >

@@ -43,6 +43,7 @@ import {
 import GameSetup, { GameConfig } from "@/components/GameSetup";
 import TeamBattleSetup from "@/components/TeamBattleSetup";
 import WelcomeTutorial from "@/components/WelcomeTutorial";
+import FAQSection from "@/components/FAQSection";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -745,69 +746,87 @@ const Home: React.FC = () => {
           </div>
 
           {/* Right Column - Rewards & Stats */}
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             {/* Rewards Section */}
-            <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
-              <h3 className="text-2xl font-bold text-white mb-6 text-center">
+            <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 border border-white/20">
+              <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-4 sm:mb-6 text-center">
                 🏆 Earn Rewards
               </h3>
-              <div className="grid grid-cols-1 gap-4">
-                <div className="bg-gradient-to-r from-accent/20 to-accent/10 rounded-xl p-4 flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center">
-                    <span className="text-primary font-bold text-lg">5</span>
+              <div className="grid grid-cols-1 gap-3 sm:gap-4">
+                <div className="bg-gradient-to-r from-accent/20 to-accent/10 rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center space-x-3 sm:space-x-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-primary font-bold text-base sm:text-lg">
+                      5
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-white font-semibold">Free Book</p>
-                    <p className="text-white/60 text-sm">
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold text-sm sm:text-base">
+                      Free Book
+                    </p>
+                    <p className="text-white/60 text-xs sm:text-sm">
                       Get 5 correct answers
                     </p>
                   </div>
                 </div>
-                <div className="bg-gradient-to-r from-secondary/20 to-secondary/10 rounded-xl p-4 flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">9</span>
+                <div className="bg-gradient-to-r from-secondary/20 to-secondary/10 rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center space-x-3 sm:space-x-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-secondary rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-white font-bold text-base sm:text-lg">
+                      9
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-white font-semibold">FaithIQ Cap</p>
-                    <p className="text-white/60 text-sm">
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold text-sm sm:text-base">
+                      FaithIQ Cap
+                    </p>
+                    <p className="text-white/60 text-xs sm:text-sm">
                       Get 9 correct answers
                     </p>
                   </div>
                 </div>
-                <div className="bg-gradient-to-r from-accent/20 to-accent/10 rounded-xl p-4 flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center">
-                    <span className="text-primary font-bold text-lg">12</span>
+                <div className="bg-gradient-to-r from-accent/20 to-accent/10 rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center space-x-3 sm:space-x-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-primary font-bold text-base sm:text-lg">
+                      12
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-white font-semibold">T-Shirt</p>
-                    <p className="text-white/60 text-sm">Perfect score!</p>
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold text-sm sm:text-base">
+                      T-Shirt
+                    </p>
+                    <p className="text-white/60 text-xs sm:text-sm">
+                      Perfect score!
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Quick Actions */}
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <Button
                 onClick={() => setLocation("/leaderboard")}
-                className="w-full bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-primary font-bold py-4 text-lg"
+                className="w-full bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-primary font-bold py-3 sm:py-4 text-sm sm:text-base md:text-lg transition-all duration-300"
               >
-                <Trophy className="mr-2 h-5 w-5" /> View Leaderboard
+                <Trophy className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" /> View
+                Leaderboard
               </Button>
 
               {user && (
-                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                  <div className="flex items-center justify-between">
-                    <span className="text-white/80">
+                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-lg sm:rounded-xl p-3 sm:p-4 border border-white/20">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-white/80 text-xs sm:text-sm truncate">
                       Welcome back, {user.username}!
                     </span>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
                       {unreadNotifications.length > 0 && (
-                        <Badge variant="destructive" className="px-2">
+                        <Badge
+                          variant="destructive"
+                          className="px-1.5 sm:px-2 text-xs"
+                        >
                           {unreadNotifications.length}
                         </Badge>
                       )}
-                      <Bell className="h-4 w-4 text-white/60" />
+                      <Bell className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white/60" />
                     </div>
                   </div>
                 </div>
@@ -818,68 +837,19 @@ const Home: React.FC = () => {
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="w-full bg-gradient-to-r from-white/5 to-white/10 hover:from-white/10 hover:to-white/15 text-white border border-white/20 py-4 text-lg font-medium"
+                    className="w-full bg-gradient-to-r from-white/5 to-white/10 hover:from-white/10 hover:to-white/15 text-white border border-white/20 py-3 sm:py-4 text-sm sm:text-base md:text-lg font-medium transition-all duration-300"
                   >
-                    <HelpCircle className="mr-2 h-5 w-5" />
-                    Frequently Asked Questions
+                    <HelpCircle className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                    <span className="truncate">Help & FAQ</span>
                     <ChevronDown
-                      className={`ml-auto h-4 w-4 transition-transform ${
+                      className={`ml-auto h-4 w-4 transition-transform duration-300 ${
                         showFAQ ? "rotate-180" : ""
                       }`}
                     />
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-3 mt-3">
-                  <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                    <h4 className="font-semibold text-white mb-2">
-                      How do I invite friends to play?
-                    </h4>
-                    <p className="text-white/70 text-sm">
-                      Choose "Multiplayer" mode and enter a game ID to join, or
-                      create a new game and share the ID with your friends.
-                    </p>
-                  </div>
-
-                  <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                    <h4 className="font-semibold text-white mb-2">
-                      What happens if I run out of time?
-                    </h4>
-                    <p className="text-white/70 text-sm">
-                      Don't worry! You can pause anytime and resume later. Your
-                      progress is automatically saved.
-                    </p>
-                  </div>
-
-                  <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                    <h4 className="font-semibold text-white mb-2">
-                      How do rewards work?
-                    </h4>
-                    <p className="text-white/70 text-sm">
-                      Earn rewards by getting correct answers: 5 for a book, 9
-                      for a cap, and 12 for a t-shirt! Perfect scores get
-                      certificates.
-                    </p>
-                  </div>
-
-                  <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                    <h4 className="font-semibold text-white mb-2">
-                      Can I change settings during a game?
-                    </h4>
-                    <p className="text-white/70 text-sm">
-                      Yes! Use the pause button to access settings, change voice
-                      narration, or take a break anytime.
-                    </p>
-                  </div>
-
-                  <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                    <h4 className="font-semibold text-white mb-2">
-                      What's the difference between game modes?
-                    </h4>
-                    <p className="text-white/70 text-sm">
-                      Question mode gives you 10 questions at your pace. Time
-                      mode lets you answer as many as possible in 15 minutes!
-                    </p>
-                  </div>
+                <CollapsibleContent className="mt-2 sm:mt-3">
+                  <FAQSection />
                 </CollapsibleContent>
               </Collapsible>
             </div>
@@ -888,9 +858,9 @@ const Home: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="w-full py-8 px-6 border-t border-white/10">
+      <footer className="w-full py-4 sm:py-6 md:py-8 px-4 sm:px-6 border-t border-white/10 mt-8">
         <div className="max-w-7xl mx-auto text-center">
-          <p className="text-white/60">
+          <p className="text-white/60 text-xs sm:text-sm">
             © {new Date().getFullYear()} FaithIQ. All rights reserved.
           </p>
         </div>

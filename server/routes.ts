@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { database } from "./database";
-import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, createJoinRequest, listJoinRequestsForUser, listJoinRequestsForTeam, updateJoinRequest } from "./socket";
+import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions } from "./socket";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
@@ -75,36 +75,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupWebSocketServer(httpServer);
 
   // API Routes
-  // Team Join Requests
-  app.get("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
-    try {
-      const user = req.user as any;
-      const outgoing = listJoinRequestsForUser(user.id);
-      // collect teams the user leads
-      const myTeams = await database.getTeamsByCaptain(user.id);
-      const incoming = myTeams.flatMap((t: any) => listJoinRequestsForTeam(t.id));
-      res.json([...incoming, ...outgoing]);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch join requests" });
-    }
-  });
-
-  // REMOVED DUPLICATE - The correct POST endpoint is below around line 225
-
-  app.patch("/api/team-join-requests/:id", ensureAuthenticated, async (req, res) => {
-    try {
-      const user = req.user as any;
-      const id = req.params.id;
-      const { status } = req.body || {};
-      if (!status) return res.status(400).json({ message: "status required" });
-      const jr = await updateJoinRequest(id, status, user.id);
-      if (!jr) return res.status(404).json({ message: "Request not found" });
-      res.json(jr);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update join request" });
-    }
-  });
-
   // Debug endpoint to clear game state - Admin only
   app.post("/api/debug/clear-game-state", ensureAdmin, async (req, res) => {
     try {
@@ -188,7 +158,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Team Join Requests - persisted in DB
+  // Team join request routes
+  console.log("✅ Registering team join request routes...");
+
+  // Helper function to parse team ID and get team from team_battles
+  async function getTeamFromBattle(teamId: string) {
+    try {
+      // Team ID format: "battle-{battleId}-team-{a/b}"
+      const parts = teamId.split('-team-');
+      if (parts.length !== 2) {
+        console.error('Invalid team ID format:', teamId);
+        return null;
+      }
+      
+      const battleId = parts[0]; // e.g., "battle-xxx"
+      const teamSide = parts[1].toUpperCase(); // "A" or "B"
+      
+      console.log(`Parsing team ID: battleId=${battleId}, teamSide=${teamSide}`);
+      
+      const battle = await database.getTeamBattle(battleId);
+      if (!battle) {
+        console.error('Battle not found:', battleId);
+        return null;
+      }
+      
+      // Convert battle to teams format
+      const teams = await convertTeamBattleToTeams(battle);
+      const team = teams.find(t => t.teamSide === teamSide);
+      
+      if (!team) {
+        console.error(`Team ${teamSide} not found in battle ${battleId}`);
+      }
+      
+      return team || null;
+    } catch (error) {
+      console.error('Error in getTeamFromBattle:', error);
+      return null;
+    }
+  }
+
+  // Helper function to add member to team battle
+  async function addMemberToTeamBattle(teamId: string, member: { id: number; username: string }) {
+    try {
+      const parts = teamId.split('-team-');
+      if (parts.length !== 2) {
+        throw new Error('Invalid team ID format');
+      }
+      
+      const battleId = parts[0];
+      const teamSide = parts[1].toLowerCase(); // "a" or "b"
+      
+      const battle = await database.getTeamBattle(battleId);
+      if (!battle) {
+        throw new Error('Battle not found');
+      }
+      
+      // Update the appropriate teammates array
+      const teammatesField = teamSide === 'a' ? 'teamATeammates' : 'teamBTeammates';
+      const currentTeammates = battle[teammatesField] || [];
+      
+      // Check if member already in team
+      if (currentTeammates.some((m: any) => m.id === member.id)) {
+        console.log('Member already in team');
+        return;
+      }
+      
+      // Add new member
+      const updatedTeammates = [...currentTeammates, member];
+      
+      // Update database
+      await database.updateTeamBattle(battleId, {
+        [teammatesField]: updatedTeammates
+      });
+      
+      console.log(`✅ Added member ${member.username} to team ${teamSide.toUpperCase()} in battle ${battleId}`);
+    } catch (error) {
+      console.error('Error in addMemberToTeamBattle:', error);
+      throw error;
+    }
+  }
+
+  // GET - Fetch join requests for current user
   app.get("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
@@ -200,69 +250,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const incoming = incomingArrays.flat();
       res.json([...incoming, ...outgoing]);
     } catch (error) {
-      console.error(error);
+      console.error("Error getJoinRequestsByUser:", error);
       res.status(500).json({ message: "Failed to fetch join requests" });
     }
   });
 
+  // POST - Create a join request
   app.post("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      const { teamId } = req.body || {};
-      if (!teamId) return res.status(400).json({ message: "teamId required" });
-      const team = await database.getTeam(teamId);
-      if (!team) return res.status(404).json({ message: "Team not found" });
-      if ((team.members?.length || 0) >= 3) return res.status(400).json({ message: "Team full" });
+      console.log('[POST /api/team-join-requests] Step 1: Called');
+      const { teamId } = req.body;
+      const user = req.user as Express.User;
+      console.log('[POST /api/team-join-requests] Step 2: User', user.username, 'ID:', user.id, 'requesting team:', teamId);
 
-      const existing = await database.getJoinRequestsByUser(user.id);
-      if (existing.find((r: any) => r.status === "pending")) {
-        return res.status(400).json({ message: "Active request exists" });
+      if (!teamId) {
+        console.error('[POST /api/team-join-requests] Team ID missing');
+        return res.status(400).json({ message: "Team ID is required" });
       }
 
-      const expiresAt = new Date(Date.now() + 60_000);
-      const jr = await database.createJoinRequest(teamId, user.id, user.username, expiresAt);
+      console.log('[POST /api/team-join-requests] Step 3: Fetching team details');
+      // Get team details from team_battles (teams are virtual)
+      const team = await getTeamFromBattle(teamId);
+      if (!team) {
+        console.error('[POST /api/team-join-requests] Team not found:', teamId);
+        return res.status(404).json({ message: "Team not found" });
+      }
+      console.log('[POST /api/team-join-requests] Team found:', team.name);
 
-      // Broadcast created
-      sendToUser(team.captainId, {
-        type: "join_request_created",
+      console.log('[POST /api/team-join-requests] Step 4: Checking capacity');
+      // Check if team is full
+      const currentMembers = 1 + (team.teammates?.length || 0);
+      console.log('[POST /api/team-join-requests] Team has', currentMembers, '/4 members');
+      if (currentMembers >= 4) {
+        console.error('[POST /api/team-join-requests] Team is full');
+        return res.status(400).json({ message: "Team is full" });
+      }
+
+      console.log('[POST /api/team-join-requests] Step 5: Checking existing requests');
+      // Check if user already has a pending request for this team
+      const allUserRequests = await database.getJoinRequestsByUser(user.id);
+      const existingRequest = allUserRequests.find((r: any) => r.teamId === teamId && r.status === "pending");
+      if (existingRequest) {
+        console.error('[POST /api/team-join-requests] User already has pending request');
+        return res.status(400).json({
+          message: "You already have a pending request for this team",
+        });
+      }
+      console.log('[POST /api/team-join-requests] No existing requests');
+
+      console.log('[POST /api/team-join-requests] Step 6: Creating request with 60s expiry');
+      // Create join request with 60 second expiry
+      const expiresAt = new Date(Date.now() + 60000);
+      const joinRequest = await database.createJoinRequest(
         teamId,
-        requesterId: user.id,
-        requesterUsername: user.username,
-        joinRequestId: jr.id,
-        expiresAt,
-      });
+        user.id,
+        user.username,
+        expiresAt
+      );
+      console.log('[POST /api/team-join-requests] Request created:', joinRequest.id);
 
-      // Auto-expire
-      setTimeout(async () => {
-        try {
-          const myReqs = await database.getJoinRequestsByUser(user.id);
-          const current = myReqs.find((r: any) => r.id === jr.id);
-          if (current && current.status === "pending") {
-            await database.updateJoinRequestStatus(jr.id, "expired");
-            sendToUser(team.captainId, {
-              type: "join_request_updated",
-              joinRequestId: jr.id,
-              status: "expired",
-              teamId,
-              requesterId: user.id,
-            });
-          }
-        } catch {}
-      }, 60_000);
+      console.log('[POST /api/team-join-requests] Step 7: Sending websocket to captain');
+      // Notify team captain via websocket
+      try {
+        sendToUser(team.captainId, {
+          type: "join_request_created",
+          teamId,
+          requesterId: user.id,
+          requesterUsername: user.username,
+          joinRequestId: joinRequest.id,
+          expiresAt: joinRequest.expiresAt,
+          status: joinRequest.status,
+        });
+        console.log('[POST /api/team-join-requests] Websocket sent to captain:', team.captainId);
+      } catch (wsError) {
+        console.error('[POST /api/team-join-requests] Websocket failed:', wsError);
+        // Don't fail the request if websocket fails
+      }
 
-      res.json(jr);
+      console.log('[POST /api/team-join-requests] Step 8: Sending response');
+      res.json(joinRequest);
+      console.log('[POST /api/team-join-requests] Completed successfully');
     } catch (error) {
-      console.error(error);
+      console.error("[POST /api/team-join-requests] Error:", error);
+      if (error instanceof Error) {
+        console.error('[POST /api/team-join-requests] Stack:', error.stack);
+      }
       res.status(500).json({ message: "Failed to create join request" });
     }
   });
 
+  // PATCH - Accept/reject a join request
   app.patch("/api/team-join-requests/:id", ensureAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
       const id = req.params.id;
       const { status } = req.body || {};
       if (!status) return res.status(400).json({ message: "status required" });
+      
       const reqsByUser = await database.getJoinRequestsByUser(user.id);
       let jr: any = reqsByUser.find((r: any) => r.id === id);
       if (!jr) {
@@ -273,7 +357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       if (!jr) return res.status(404).json({ message: "Request not found" });
 
-      const team = await database.getTeam(jr.teamId);
+      const team = await getTeamFromBattle(jr.teamId);
       const isLeader = team?.captainId === user.id;
       const isRequester = jr.requesterId === user.id;
       if (status === "cancelled" && !isRequester) return res.status(403).json({ message: "Forbidden" });
@@ -284,19 +368,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await database.updateJoinRequestStatus(id, status);
 
       if (status === "accepted") {
-        // add member
+        // add member to team battle (virtual team)
         if (!team) return res.status(404).json({ message: "Team not found" });
-        const members = Array.isArray(team.members) ? team.members : [];
+        const members = team.teammates || [];
         if (members.length >= 3) return res.status(400).json({ message: "Team full" });
-        await database.addMemberToTeam(jr.teamId, {
-          userId: jr.requesterId,
+        
+        await addMemberToTeamBattle(jr.teamId, {
+          id: jr.requesterId,
           username: jr.requesterUsername,
-          role: "member",
-          joinedAt: new Date(),
         });
+        
         // auto-reject if full now
-        const updatedTeam = await database.getTeam(jr.teamId);
-        if (updatedTeam && (updatedTeam.members?.length || 0) >= 3) {
+        const updatedTeam = await getTeamFromBattle(jr.teamId);
+        if (updatedTeam && (updatedTeam.teammates?.length || 0) >= 3) {
           const pending = await database.getJoinRequestsByTeam(jr.teamId);
           await Promise.all(
             pending
@@ -317,7 +401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ id, status });
     } catch (error) {
-      console.error(error);
+      console.error("Error updating join request:", error);
       res.status(500).json({ message: "Failed to update join request" });
     }
   });
@@ -2586,5 +2670,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  console.log("✅ All routes registered successfully");
   return httpServer;
 }

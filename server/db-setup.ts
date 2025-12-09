@@ -77,6 +77,19 @@ async function setupDatabase() {
       );
     `);
 
+    // Create team_join_request table for join-as-member functionality
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS team_join_request (
+        id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL,
+        requester_id INTEGER NOT NULL,
+        requester_username TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        expires_at TIMESTAMP
+      );
+    `);
+
     // Add inviter_username column to existing tables (migration)
     try {
       await db.execute(`
@@ -322,6 +335,14 @@ async function setupDatabase() {
 
     await db.execute(`
       CREATE INDEX IF NOT EXISTS idx_team_invitations_user_id ON team_invitations(inviter_id, invitee_id);
+    `);
+
+    await db.execute(`
+      CREATE INDEX IF NOT EXISTS idx_team_join_request_requester_id ON team_join_request(requester_id);
+    `);
+
+    await db.execute(`
+      CREATE INDEX IF NOT EXISTS idx_team_join_request_team_id ON team_join_request(team_id);
     `);
 
     await db.execute(`

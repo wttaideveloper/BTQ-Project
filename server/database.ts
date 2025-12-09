@@ -2744,6 +2744,40 @@ class PostgreSQLDatabase implements IDatabase {
         );
       }
 
+      // Create team_join_request table for join-as-member functionality
+      try {
+        console.log("Creating team_join_request table...");
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS team_join_request (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            requester_id INTEGER NOT NULL,
+            requester_username TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+            expires_at TIMESTAMP
+          );
+        `);
+
+        // Create indexes for better query performance
+        await db.execute(`
+          CREATE INDEX IF NOT EXISTS idx_team_join_request_requester_id 
+          ON team_join_request(requester_id);
+        `);
+
+        await db.execute(`
+          CREATE INDEX IF NOT EXISTS idx_team_join_request_team_id 
+          ON team_join_request(team_id);
+        `);
+
+        console.log("✅ team_join_request table created successfully");
+      } catch (tableErr) {
+        console.error(
+          "Error creating team_join_request table:",
+          tableErr instanceof Error ? tableErr.message : "Unknown error"
+        );
+      }
+
       // Create initial admin user if it doesn't exist
       const adminUser = await this.getUserByUsername("admin");
       if (!adminUser) {
@@ -2879,10 +2913,41 @@ class PostgreSQLDatabase implements IDatabase {
   }
 
   // ===== Team helpers for join request feature =====
-  async getTeamsByCaptain(captainId: number): Promise<Team[]> {
+  async getTeamsByCaptain(captainId: number): Promise<any[]> {
     try {
-      const result = await db.select().from(teams).where(eq(teams.captainId, captainId));
-      return result as unknown as Team[];
+      // Get regular teams
+      const regularTeams = await db.select().from(teams).where(eq(teams.captainId, captainId));
+      
+      // Get Team Battle teams where user is captain
+      const sql = postgres(connectionString);
+      const battles = await sql`
+        SELECT * FROM team_battles 
+        WHERE team_a_captain_id = ${captainId} OR team_b_captain_id = ${captainId}
+      `;
+      await sql.end();
+      
+      // Convert battles to virtual team IDs
+      const virtualTeams: any[] = [];
+      for (const battle of battles) {
+        if (battle.team_a_captain_id === captainId) {
+          virtualTeams.push({
+            id: `battle-${battle.id}-team-a`,
+            name: battle.team_a_name || 'Team A',
+            captainId: battle.team_a_captain_id,
+            captainName: battle.team_a_captain_username
+          });
+        }
+        if (battle.team_b_captain_id === captainId) {
+          virtualTeams.push({
+            id: `battle-${battle.id}-team-b`,
+            name: battle.team_b_name || 'Team B',
+            captainId: battle.team_b_captain_id,
+            captainName: battle.team_b_captain_username
+          });
+        }
+      }
+      
+      return [...regularTeams, ...virtualTeams];
     } catch (error) {
       console.error("Error getTeamsByCaptain:", error);
       return [];

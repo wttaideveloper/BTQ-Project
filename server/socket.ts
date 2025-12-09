@@ -135,6 +135,119 @@ const teamBattleReadyState: Map<
   }
 > = new Map();
 
+// In-memory Team Join Requests (id -> request)
+type JoinRequestStatus = "pending" | "accepted" | "rejected" | "expired" | "cancelled";
+interface JoinRequest {
+  id: string;
+  teamId: string;
+  requesterId: number;
+  requesterUsername: string;
+  status: JoinRequestStatus;
+  createdAt: number;
+  expiresAt?: number | null;
+}
+const joinRequests: Map<string, JoinRequest> = new Map();
+
+export function listJoinRequestsForUser(userId: number): JoinRequest[] {
+  const result: JoinRequest[] = [];
+  joinRequests.forEach((jr) => {
+    if (jr.requesterId === userId) result.push(jr);
+  });
+  return result;
+}
+
+export function listJoinRequestsForTeam(teamId: string): JoinRequest[] {
+  const result: JoinRequest[] = [];
+  joinRequests.forEach((jr) => {
+    if (jr.teamId === teamId) result.push(jr);
+  });
+  return result;
+}
+
+export function createJoinRequest(teamId: string, requesterId: number, requesterUsername: string): JoinRequest {
+  const id = `jr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const expiresAt = Date.now() + 60_000;
+  const jr: JoinRequest = {
+    id,
+    teamId,
+    requesterId,
+    requesterUsername,
+    status: "pending",
+    createdAt: Date.now(),
+    expiresAt,
+  };
+  joinRequests.set(id, jr);
+  broadcast({
+    type: "join_request_created",
+    teamId,
+    requesterId,
+    requesterUsername,
+    joinRequestId: id,
+    expiresAt: new Date(expiresAt),
+  });
+  // auto-expire
+  setTimeout(() => {
+    const current = joinRequests.get(id);
+    if (current && current.status === "pending") {
+      current.status = "expired";
+      joinRequests.set(id, current);
+      broadcast({
+        type: "join_request_updated",
+        joinRequestId: id,
+        status: "expired",
+        teamId,
+        requesterId,
+      });
+    }
+  }, 60_000);
+  return jr;
+}
+
+export async function updateJoinRequest(
+  id: string,
+  status: JoinRequestStatus,
+  actorId: number
+): Promise<JoinRequest | null> {
+  const jr = joinRequests.get(id);
+  if (!jr) return null;
+  jr.status = status;
+  joinRequests.set(id, jr);
+
+  // On accept, add member to team
+  if (status === "accepted") {
+    const battleTeams = await database.getTeamsById(jr.teamId);
+    const team = Array.isArray(battleTeams) ? battleTeams[0] : battleTeams;
+    if (team) {
+      const members = Array.isArray(team.members) ? team.members : [];
+      if (members.length < 3) {
+        members.push({ userId: jr.requesterId, username: jr.requesterUsername, role: "member", joinedAt: new Date() });
+        await database.updateTeamMembers(jr.teamId, members);
+      } else {
+        // Team full; mark rejected
+        jr.status = "rejected";
+        joinRequests.set(id, jr);
+      }
+    }
+  }
+
+  broadcast({
+    type: "join_request_updated",
+    joinRequestId: id,
+    status,
+    teamId: jr.teamId,
+    requesterId: jr.requesterId,
+  });
+  return jr;
+}
+
+function broadcast(payload: any) {
+  clients.forEach((client) => {
+    try {
+      client.ws.send(JSON.stringify(payload));
+    } catch {}
+  });
+}
+
 export function getOnlineUserIds(): number[] {
   const onlineUserIds = new Set<number>();
   

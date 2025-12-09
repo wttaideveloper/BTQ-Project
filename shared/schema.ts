@@ -338,6 +338,19 @@ export const teams = pgTable("teams", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Team Join Requests
+export const teamJoinRequest = pgTable("team_join_request", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull(),
+  requesterId: integer("requester_id").notNull(),
+  requesterUsername: text("requester_username").notNull(),
+  status: text("status").$type<"pending" | "accepted" | "rejected" | "expired" | "cancelled">().notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export type TeamJoinRequest = typeof teamJoinRequest.$inferSelect;
+
 // Team invitations table
 export const teamInvitations = pgTable("team_invitations", {
   id: text("id").primaryKey(),

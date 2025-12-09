@@ -34,6 +34,16 @@ type TeamDisplayProps = {
   title?: string;
   isUserTeam?: boolean;
   isReady?: boolean;
+  joinRequests?: Array<{
+    id: string;
+    teamId: string;
+    requesterId: number;
+    requesterUsername: string;
+    status: "pending" | "accepted" | "rejected" | "expired" | "cancelled";
+  }>;
+  onAcceptJoinRequest?: (joinRequestId: string) => void;
+  onRejectJoinRequest?: (joinRequestId: string) => void;
+  onRemoveMember?: (teamId: string, userId: number) => void;
 };
 
 const TeamDisplay = ({
@@ -45,6 +55,10 @@ const TeamDisplay = ({
   title,
   isUserTeam,
   isReady,
+  joinRequests = [],
+  onAcceptJoinRequest,
+  onRejectJoinRequest,
+  onRemoveMember,
 }: TeamDisplayProps) => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
@@ -157,13 +171,58 @@ const TeamDisplay = ({
                   <Crown className="h-4 w-4 text-yellow-500" />
                 )}
               </div>
-              <span className="text-sm text-gray-500">
-                {member.role === "captain" ? "Captain" : "Member"}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">
+                  {member.role === "captain" ? "Captain" : "Member"}
+                </span>
+                {isCaptain && member.role !== "captain" && onRemoveMember && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs border-red-300 text-red-600 hover:bg-red-50"
+                    onClick={() => onRemoveMember(team.id, member.userId)}
+                    title="Remove member"
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
       </div>
+
+      {isCaptain && joinRequests?.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-gray-500 mb-2">Join Requests</h4>
+          <ul className="space-y-2">
+            {joinRequests
+              .filter((jr) => jr.teamId === team.id && jr.status === "pending")
+              .map((jr) => (
+                <li key={jr.id} className="flex items-center justify-between p-2 bg-amber-50 rounded border border-amber-200">
+                  <span className="font-medium text-amber-900">{jr.requesterUsername}</span>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => onAcceptJoinRequest?.(jr.id)}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRejectJoinRequest?.(jr.id)}
+                      className="border-red-300 text-red-600 hover:bg-red-50"
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       {/* Edit Team Name Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>

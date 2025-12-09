@@ -2846,6 +2846,95 @@ class PostgreSQLDatabase implements IDatabase {
       throw error;
     }
   }
+
+  // ===== Team helpers for join request feature =====
+  async getTeamsByCaptain(captainId: number): Promise<Team[]> {
+    try {
+      const result = await db.select().from(teams).where(eq(teams.captainId, captainId));
+      return result as unknown as Team[];
+    } catch (error) {
+      console.error("Error getTeamsByCaptain:", error);
+      return [];
+    }
+  }
+
+  async updateTeamMembers(teamId: string, members: any[]): Promise<void> {
+    try {
+      await db.update(teams).set({ members }).where(eq(teams.id, teamId));
+    } catch (error) {
+      console.error("Error updateTeamMembers:", error);
+      throw error;
+    }
+  }
+
+  async addMemberToTeam(teamId: string, member: { userId: number; username: string; role: "member"; joinedAt: Date }): Promise<any[]> {
+    const team = await this.getTeam(teamId);
+    const members = Array.isArray(team?.members) ? team!.members : [];
+    members.push(member as any);
+    await this.updateTeamMembers(teamId, members);
+    return members;
+  }
+
+  async removeMemberFromTeam(teamId: string, userId: number): Promise<any[]> {
+    const team = await this.getTeam(teamId);
+    const members = (Array.isArray(team?.members) ? team!.members : []).filter((m: any) => m.userId !== userId);
+    await this.updateTeamMembers(teamId, members);
+    return members;
+  }
+
+  async getJoinRequestsByUser(userId: number): Promise<any[]> {
+    try {
+      const rows = await db.execute(
+        `SELECT * FROM team_join_request WHERE requester_id = $1 ORDER BY created_at DESC`,
+        [userId]
+      );
+      // drizzle db.execute returns unknown; fallback to postgres client when needed
+      // Convert rows appropriately if needed
+      // @ts-ignore
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      console.error("Error getJoinRequestsByUser:", error);
+      return [];
+    }
+  }
+
+  async getJoinRequestsByTeam(teamId: string): Promise<any[]> {
+    try {
+      const rows = await db.execute(
+        `SELECT * FROM team_join_request WHERE team_id = $1 ORDER BY created_at DESC`,
+        [teamId]
+      );
+      // @ts-ignore
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      console.error("Error getJoinRequestsByTeam:", error);
+      return [];
+    }
+  }
+
+  async createJoinRequest(teamId: string, requesterId: number, requesterUsername: string, expiresAt: Date): Promise<any> {
+    const id = `jr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await db.execute(
+        `INSERT INTO team_join_request (id, team_id, requester_id, requester_username, status, created_at, expires_at)
+         VALUES ($1, $2, $3, $4, 'pending', NOW(), $5)`,
+        [id, teamId, requesterId, requesterUsername, expiresAt]
+      );
+      return { id, teamId, requesterId, requesterUsername, status: "pending", createdAt: new Date(), expiresAt };
+    } catch (error) {
+      console.error("Error createJoinRequest:", error);
+      throw error;
+    }
+  }
+
+  async updateJoinRequestStatus(id: string, status: "accepted" | "rejected" | "expired" | "cancelled"): Promise<void> {
+    try {
+      await db.execute(`UPDATE team_join_request SET status = $1 WHERE id = $2`, [status, id]);
+    } catch (error) {
+      console.error("Error updateJoinRequestStatus:", error);
+      throw error;
+    }
+  }
 }
 
 // Export the database instance

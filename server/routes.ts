@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { database } from "./database";
-import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions } from "./socket";
+import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, createJoinRequest, listJoinRequestsForUser, listJoinRequestsForTeam, updateJoinRequest } from "./socket";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
@@ -75,6 +75,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupWebSocketServer(httpServer);
 
   // API Routes
+  // Team Join Requests
+  app.get("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const outgoing = listJoinRequestsForUser(user.id);
+      // collect teams the user leads
+      const myTeams = await database.getTeamsByCaptain(user.id);
+      const incoming = myTeams.flatMap((t: any) => listJoinRequestsForTeam(t.id));
+      res.json([...incoming, ...outgoing]);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  app.post("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { teamId } = req.body || {};
+      if (!teamId) return res.status(400).json({ message: "teamId required" });
+      const team = await database.getTeam(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      if ((team.members?.length || 0) >= 3) return res.status(400).json({ message: "Team full" });
+
+      const existing = listJoinRequestsForUser(user.id).find((r) => r.status === "pending");
+      if (existing) return res.status(400).json({ message: "Active request exists" });
+
+      const jr = createJoinRequest(teamId, user.id, user.username);
+      res.json(jr);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create join request" });
+    }
+  });
+
+  app.patch("/api/team-join-requests/:id", ensureAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const id = req.params.id;
+      const { status } = req.body || {};
+      if (!status) return res.status(400).json({ message: "status required" });
+      const jr = await updateJoinRequest(id, status, user.id);
+      if (!jr) return res.status(404).json({ message: "Request not found" });
+      res.json(jr);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update join request" });
+    }
+  });
 
   // Debug endpoint to clear game state - Admin only
   app.post("/api/debug/clear-game-state", ensureAdmin, async (req, res) => {
@@ -159,6 +205,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Team Join Requests - persisted in DB
+  app.get("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const outgoing = await database.getJoinRequestsByUser(user.id);
+      const myTeams = await database.getTeamsByCaptain(user.id);
+      const incomingArrays = await Promise.all(
+        myTeams.map((t: any) => database.getJoinRequestsByTeam(t.id))
+      );
+      const incoming = incomingArrays.flat();
+      res.json([...incoming, ...outgoing]);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  app.post("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { teamId } = req.body || {};
+      if (!teamId) return res.status(400).json({ message: "teamId required" });
+      const team = await database.getTeam(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      if ((team.members?.length || 0) >= 3) return res.status(400).json({ message: "Team full" });
+
+      const existing = await database.getJoinRequestsByUser(user.id);
+      if (existing.find((r: any) => r.status === "pending")) {
+        return res.status(400).json({ message: "Active request exists" });
+      }
+
+      const expiresAt = new Date(Date.now() + 60_000);
+      const jr = await database.createJoinRequest(teamId, user.id, user.username, expiresAt);
+
+      // Broadcast created
+      sendToUser(team.captainId, {
+        type: "join_request_created",
+        teamId,
+        requesterId: user.id,
+        requesterUsername: user.username,
+        joinRequestId: jr.id,
+        expiresAt,
+      });
+
+      // Auto-expire
+      setTimeout(async () => {
+        try {
+          const myReqs = await database.getJoinRequestsByUser(user.id);
+          const current = myReqs.find((r: any) => r.id === jr.id);
+          if (current && current.status === "pending") {
+            await database.updateJoinRequestStatus(jr.id, "expired");
+            sendToUser(team.captainId, {
+              type: "join_request_updated",
+              joinRequestId: jr.id,
+              status: "expired",
+              teamId,
+              requesterId: user.id,
+            });
+          }
+        } catch {}
+      }, 60_000);
+
+      res.json(jr);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Failed to create join request" });
+    }
+  });
+
+  app.patch("/api/team-join-requests/:id", ensureAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const id = req.params.id;
+      const { status } = req.body || {};
+      if (!status) return res.status(400).json({ message: "status required" });
+      const reqsByUser = await database.getJoinRequestsByUser(user.id);
+      let jr: any = reqsByUser.find((r: any) => r.id === id);
+      if (!jr) {
+        // try by team captain
+        const myTeams = await database.getTeamsByCaptain(user.id);
+        const allIncoming = (await Promise.all(myTeams.map((t: any) => database.getJoinRequestsByTeam(t.id)))).flat();
+        jr = allIncoming.find((r: any) => r.id === id);
+      }
+      if (!jr) return res.status(404).json({ message: "Request not found" });
+
+      const team = await database.getTeam(jr.teamId);
+      const isLeader = team?.captainId === user.id;
+      const isRequester = jr.requesterId === user.id;
+      if (status === "cancelled" && !isRequester) return res.status(403).json({ message: "Forbidden" });
+      if ((status === "accepted" || status === "rejected" || status === "expired") && !isLeader) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await database.updateJoinRequestStatus(id, status);
+
+      if (status === "accepted") {
+        // add member
+        const members = Array.isArray(team.members) ? team.members : [];
+        if (members.length >= 3) return res.status(400).json({ message: "Team full" });
+        await database.addMemberToTeam(jr.teamId, {
+          userId: jr.requesterId,
+          username: jr.requesterUsername,
+          role: "member",
+          joinedAt: new Date(),
+        });
+        // auto-reject if full now
+        const updatedTeam = await database.getTeam(jr.teamId);
+        if ((updatedTeam.members?.length || 0) >= 3) {
+          const pending = await database.getJoinRequestsByTeam(jr.teamId);
+          await Promise.all(
+            pending
+              .filter((r: any) => r.status === "pending")
+              .map((r: any) => database.updateJoinRequestStatus(r.id, "rejected"))
+          );
+        }
+      }
+
+      // notify requester
+      sendToUser(jr.requesterId, {
+        type: "join_request_updated",
+        joinRequestId: id,
+        status,
+        teamId: jr.teamId,
+        requesterId: jr.requesterId,
+      });
+
+      res.json({ id, status });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Failed to update join request" });
+    }
+  });
+
 
 
   // Debug endpoint to test question creation - Admin only
@@ -193,6 +372,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Test question creation failed",
         error: error instanceof Error ? error.message : "Unknown error",
       });
+    }
+  });
+
+  // Remove member (captain only, setup phase)
+  app.patch("/api/teams/:id/remove-member", ensureAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const teamId = req.params.id;
+      const { userId } = req.body || {};
+      const team = await database.getTeam(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      if (team.captainId !== user.id) return res.status(403).json({ message: "Forbidden" });
+      if (team.status !== "forming") return res.status(400).json({ message: "Cannot remove after start" });
+      if (userId === team.captainId) return res.status(400).json({ message: "Leader cannot remove self" });
+
+      const updatedMembers = await database.removeMemberFromTeam(teamId, userId);
+      // notify removed user
+      sendToUser(userId, {
+        type: "team_member_removed",
+        teamId,
+      });
+      res.json({ ok: true, members: updatedMembers });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Failed to remove member" });
     }
   });
 

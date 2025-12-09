@@ -73,6 +73,16 @@ interface TeamInvitation {
   expiresAt: Date;
 }
 
+interface TeamJoinRequest {
+  id: string;
+  teamId: string;
+  requesterId: number;
+  requesterUsername: string;
+  status: "pending" | "accepted" | "rejected" | "expired" | "cancelled";
+  createdAt: Date;
+  expiresAt?: Date | null;
+}
+
 const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   open,
   onClose,
@@ -138,6 +148,20 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               title: "Reconnected!",
               description: data.message || "Reconnected to your team!",
             });
+            break;
+          }
+
+          case "join_request_created": {
+            // Reduce polling impact by refreshing requests
+            queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
+            break;
+          }
+
+          case "join_request_updated": {
+            queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
+            if (wsSessionId) {
+              queryClient.invalidateQueries({ queryKey: ["/api/teams", wsSessionId] });
+            }
             break;
           }
 
@@ -459,17 +483,22 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   };
 
   const [currentStage, setCurrentStage] = useState<
-    "create-team" | "invite-opponent" | "invite-teammates"
+    | "enter"
+    | "create-team"
+    | "invite-opponent"
+    | "invite-teammates"
+    | "join-as-member"
   >(
     !userTeam
-      ? "create-team"
+      ? "enter"
       : !opponentAccepted
       ? "invite-opponent"
       : "invite-teammates"
   );
   useEffect(() => {
     if (!userTeam) {
-      setCurrentStage("create-team");
+      // Show landing stage until user chooses
+      setCurrentStage("enter");
     } else if (!opponentAccepted) {
       setCurrentStage("invite-opponent");
     } else {
@@ -795,6 +824,94 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     });
   };
 
+  // Join-as-member: fetch available teams and manage join requests
+  const { data: joinRequests = [] } = useQuery<TeamJoinRequest[]>({
+    queryKey: ["/api/team-join-requests"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/team-join-requests");
+      return await res.json();
+    },
+    enabled: open && !!user,
+    refetchInterval: 2000,
+  });
+
+  const sendJoinRequestMutation = useMutation({
+    mutationFn: async (data: { teamId: string }) => {
+      const res = await apiRequest("POST", "/api/team-join-requests", data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Join Request Sent",
+        description: "Your request was sent to the team leader.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send join request",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelJoinRequestMutation = useMutation({
+    mutationFn: async (joinRequestId: string) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/team-join-requests/${joinRequestId}`,
+        { status: "cancelled" }
+      );
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Cancelled", description: "Join request cancelled." });
+      queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
+    },
+  });
+
+  const respondToJoinRequestMutation = useMutation({
+    mutationFn: async (payload: { joinRequestId: string; status: "accepted" | "rejected" }) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/team-join-requests/${payload.joinRequestId}`,
+        { status: payload.status }
+      );
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Updated", description: "Join request updated." });
+      queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
+      if (gameSessionId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/teams", gameSessionId] });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update request",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const myActiveJoinRequest = useMemo(() => {
+    if (!user) return null;
+    return (
+      (joinRequests || []).find(
+        (r) => r.requesterId === user.id && r.status === "pending"
+      ) || null
+    );
+  }, [joinRequests, user]);
+
+  const availableTeamsForJoin = useMemo(() => {
+    // Teams that are not full (max 3) and not playing/finished
+    return (teams || []).filter(
+      (t) => (t.members?.length || 0) < 3 && t.status === "forming"
+    );
+  }, [teams]);
+
   const handleRespondToInvitation = (
     invitationId: string,
     status: "accepted" | "declined",
@@ -879,6 +996,22 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const handleLeaveTeam = (teamId: string) => {
     leaveTeamMutation.mutate(teamId);
   };
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async ({ teamId, userId }: { teamId: string; userId: number }) => {
+      const res = await apiRequest("PATCH", `/api/teams/${teamId}/remove-member`, { userId });
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Member Removed", description: "Member removed from team." });
+      if (gameSessionId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/teams", gameSessionId] });
+      }
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to remove member", variant: "destructive" });
+    },
+  });
 
   // Enhanced back button handler with confirmation
   const handleBackButton = () => {
@@ -1059,8 +1192,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     isUserInTeam ? handleUpdateTeamName : undefined
                   }
                   onLeaveTeam={isUserInTeam ? handleLeaveTeam : undefined}
+                  onRemoveMember={(teamId, userId) => removeMemberMutation.mutate({ teamId, userId })}
                   isUserTeam={isUserTeam}
                   isReady={isTeamReady}
+                  joinRequests={(joinRequests || []).filter((jr) => jr.teamId === team.id)}
+                  onAcceptJoinRequest={(jrId) =>
+                    respondToJoinRequestMutation.mutate({ joinRequestId: jrId, status: "accepted" })
+                  }
+                  onRejectJoinRequest={(jrId) =>
+                    respondToJoinRequestMutation.mutate({ joinRequestId: jrId, status: "rejected" })
+                  }
                   title={
                     isUserTeam
                       ? "Your Team"
@@ -1071,6 +1212,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 />
               );
             })}
+
+  
 
             {teams.length < 2 && (
               <div className="border border-dashed border-neutral-300 rounded-lg p-4 flex flex-col items-center justify-center text-center text-neutral-500 bg-neutral-50">
@@ -1096,6 +1239,35 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 {countdown}
               </h2>
               <p className="text-neutral-600">Game starting soon...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Landing: Enter Team Battle */}
+        {currentStage === "enter" && (
+          <div className="mt-6 space-y-4">
+            <div className="bg-neutral-50 p-4 rounded-lg border">
+              <h3 className="font-semibold text-lg text-neutral-800 mb-2">
+                Enter Team Battle
+              </h3>
+              <p className="text-sm text-neutral-600">
+                Choose how you'd like to participate.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Button
+                onClick={() => setCurrentStage("create-team")}
+                className="w-full bg-primary hover:bg-primary/90 text-white"
+              >
+                Create a Team
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setCurrentStage("join-as-member")}
+                className="w-full"
+              >
+                Join as Member
+              </Button>
             </div>
           </div>
         )}
@@ -1137,6 +1309,124 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 ? "Creating Team..."
                 : "Create Team"}
             </Button>
+          </div>
+        )}
+
+        {/* Stage: Join as Member */}
+        {currentStage === "join-as-member" && (
+          <div className="mt-6 space-y-4">
+            <div className="bg-amber-50 p-4 rounded-lg border-l-4 border-amber-400">
+              <h3 className="font-semibold text-lg text-amber-800 mb-2 flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Join an Existing Team
+              </h3>
+              <p className="text-sm text-amber-700">
+                Browse available teams and send a join request to the leader.
+              </p>
+            </div>
+
+            {myActiveJoinRequest && (
+              <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                <p className="text-sm text-yellow-800">
+                  You have a pending join request to team ID:{" "}
+                  {myActiveJoinRequest.teamId}
+                </p>
+                <div className="mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      cancelJoinRequestMutation.mutate(myActiveJoinRequest.id)
+                    }
+                    disabled={cancelJoinRequestMutation.isPending}
+                  >
+                    {cancelJoinRequestMutation.isPending
+                      ? "Cancelling..."
+                      : "Cancel Request"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <h4 className="font-medium text-neutral-800 mb-3">
+                Available Teams
+              </h4>
+              <div className="border rounded-lg bg-neutral-50 max-h-64 overflow-y-auto">
+                {availableTeamsForJoin.length === 0 && (
+                  <div className="px-4 py-3 text-sm text-neutral-500">
+                    No available teams right now.
+                  </div>
+                )}
+                {availableTeamsForJoin.length > 0 && (
+                  <>
+                    {availableTeamsForJoin.map((team) => {
+                      const isFull = (team.members?.length || 0) >= 3;
+                      const alreadyMember = team.members.some(
+                        (m) => m.userId === user?.id
+                      );
+                      return (
+                        <div
+                          key={team.id}
+                          className="flex items-center justify-between px-4 py-3 border-b last:border-b-0"
+                        >
+                          <div className="flex flex-col">
+                            <p className="font-medium text-neutral-900">
+                              {team.name}{" "}
+                              {team.teamSide ? `(Team ${team.teamSide})` : ""}
+                            </p>
+                            <span className="text-xs text-neutral-600">
+                              Members: {team.members.length}/3 · Captain ID:{" "}
+                              {team.captainId}
+                            </span>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              sendJoinRequestMutation.mutate({
+                                teamId: team.id,
+                              })
+                            }
+                            disabled={
+                              isFull ||
+                              alreadyMember ||
+                              !!myActiveJoinRequest ||
+                              sendJoinRequestMutation.isPending
+                            }
+                            className="text-xs font-semibold px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white"
+                          >
+                            {isFull
+                              ? "Team Full"
+                              : alreadyMember
+                              ? "Already in Team"
+                              : myActiveJoinRequest
+                              ? "Request Pending"
+                              : sendJoinRequestMutation.isPending
+                              ? "Requesting..."
+                              : "Request to Join"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentStage("enter")}
+              >
+                Back
+              </Button>
+              <Button
+                onClick={() => setCurrentStage("create-team")}
+                className="bg-primary text-white"
+              >
+                Create a Team Instead
+              </Button>
+            </div>
           </div>
         )}
 

@@ -2128,6 +2128,37 @@ class PostgreSQLDatabase implements IDatabase {
     }));
   }
 
+  async getTeamBattlesByStatus(status: string): Promise<TeamBattle[]> {
+    const results = await db
+      .select()
+      .from(teamBattles)
+      .where(eq(teamBattles.status, status));
+
+    return results.map((battle) => ({
+      id: battle.id,
+      gameSessionId: battle.gameSessionId || "",
+      gameType: battle.gameType,
+      category: battle.category,
+      difficulty: battle.difficulty,
+      status: battle.status as TeamBattle["status"],
+      teamACaptainId: battle.teamACaptainId,
+      teamAName: battle.teamAName,
+      teamATeammates: battle.teamATeammates || [],
+      teamBCaptainId: battle.teamBCaptainId,
+      teamBName: battle.teamBName,
+      teamBTeammates: battle.teamBTeammates || [],
+      teamAScore: battle.teamAScore || 0,
+      teamBScore: battle.teamBScore || 0,
+      teamACorrectAnswers: battle.teamACorrectAnswers || 0,
+      teamBCorrectAnswers: battle.teamBCorrectAnswers || 0,
+      teamAIncorrectAnswers: battle.teamAIncorrectAnswers || 0,
+      teamBIncorrectAnswers: battle.teamBIncorrectAnswers || 0,
+      createdAt: battle.createdAt ?? new Date(),
+      startedAt: battle.startedAt,
+      finishedAt: battle.finishedAt,
+    }));
+  }
+
   async createTeamBattle(battle: InsertTeamBattle): Promise<TeamBattle> {
     const insertValues: InsertTeamBattle = {
       id: battle.id,
@@ -2884,14 +2915,10 @@ class PostgreSQLDatabase implements IDatabase {
 
   async getJoinRequestsByUser(userId: number): Promise<any[]> {
     try {
-      const rows = await db.execute(
-        `SELECT * FROM team_join_request WHERE requester_id = $1 ORDER BY created_at DESC`,
-        [userId]
-      );
-      // drizzle db.execute returns unknown; fallback to postgres client when needed
-      // Convert rows appropriately if needed
-      // @ts-ignore
-      return Array.isArray(rows) ? rows : [];
+      const sql = postgres(connectionString);
+      const rows = await sql`SELECT * FROM team_join_request WHERE requester_id = ${userId} ORDER BY created_at DESC`;
+      await sql.end();
+      return rows;
     } catch (error) {
       console.error("Error getJoinRequestsByUser:", error);
       return [];
@@ -2900,12 +2927,10 @@ class PostgreSQLDatabase implements IDatabase {
 
   async getJoinRequestsByTeam(teamId: string): Promise<any[]> {
     try {
-      const rows = await db.execute(
-        `SELECT * FROM team_join_request WHERE team_id = $1 ORDER BY created_at DESC`,
-        [teamId]
-      );
-      // @ts-ignore
-      return Array.isArray(rows) ? rows : [];
+      const sql = postgres(connectionString);
+      const rows = await sql`SELECT * FROM team_join_request WHERE team_id = ${teamId} ORDER BY created_at DESC`;
+      await sql.end();
+      return rows;
     } catch (error) {
       console.error("Error getJoinRequestsByTeam:", error);
       return [];
@@ -2915,11 +2940,12 @@ class PostgreSQLDatabase implements IDatabase {
   async createJoinRequest(teamId: string, requesterId: number, requesterUsername: string, expiresAt: Date): Promise<any> {
     const id = `jr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
-      await db.execute(
-        `INSERT INTO team_join_request (id, team_id, requester_id, requester_username, status, created_at, expires_at)
-         VALUES ($1, $2, $3, $4, 'pending', NOW(), $5)`,
-        [id, teamId, requesterId, requesterUsername, expiresAt]
-      );
+      const sql = postgres(connectionString);
+      await sql`
+        INSERT INTO team_join_request (id, team_id, requester_id, requester_username, status, created_at, expires_at)
+        VALUES (${id}, ${teamId}, ${requesterId}, ${requesterUsername}, 'pending', NOW(), ${expiresAt})
+      `;
+      await sql.end();
       return { id, teamId, requesterId, requesterUsername, status: "pending", createdAt: new Date(), expiresAt };
     } catch (error) {
       console.error("Error createJoinRequest:", error);
@@ -2929,7 +2955,9 @@ class PostgreSQLDatabase implements IDatabase {
 
   async updateJoinRequestStatus(id: string, status: "accepted" | "rejected" | "expired" | "cancelled"): Promise<void> {
     try {
-      await db.execute(`UPDATE team_join_request SET status = $1 WHERE id = $2`, [status, id]);
+      const sql = postgres(connectionString);
+      await sql`UPDATE team_join_request SET status = ${status} WHERE id = ${id}`;
+      await sql.end();
     } catch (error) {
       console.error("Error updateJoinRequestStatus:", error);
       throw error;

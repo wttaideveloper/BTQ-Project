@@ -77,6 +77,12 @@ interface GameEvent {
   reason?: string;
   finalScores?: any[];
   error?: boolean;
+  // Join request fields
+  requesterId?: number;
+  requesterUsername?: string;
+  joinRequestId?: string;
+  expiresAt?: Date;
+  status?: string;
   // Online status fields
   onlineUsers?: Array<{
     id: number;

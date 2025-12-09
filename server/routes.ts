@@ -89,24 +89,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
-    try {
-      const user = req.user as any;
-      const { teamId } = req.body || {};
-      if (!teamId) return res.status(400).json({ message: "teamId required" });
-      const team = await database.getTeam(teamId);
-      if (!team) return res.status(404).json({ message: "Team not found" });
-      if ((team.members?.length || 0) >= 3) return res.status(400).json({ message: "Team full" });
-
-      const existing = listJoinRequestsForUser(user.id).find((r) => r.status === "pending");
-      if (existing) return res.status(400).json({ message: "Active request exists" });
-
-      const jr = createJoinRequest(teamId, user.id, user.username);
-      res.json(jr);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create join request" });
-    }
-  });
+  // REMOVED DUPLICATE - The correct POST endpoint is below around line 225
 
   app.patch("/api/team-join-requests/:id", ensureAuthenticated, async (req, res) => {
     try {
@@ -302,6 +285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (status === "accepted") {
         // add member
+        if (!team) return res.status(404).json({ message: "Team not found" });
         const members = Array.isArray(team.members) ? team.members : [];
         if (members.length >= 3) return res.status(400).json({ message: "Team full" });
         await database.addMemberToTeam(jr.teamId, {
@@ -312,7 +296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         // auto-reject if full now
         const updatedTeam = await database.getTeam(jr.teamId);
-        if ((updatedTeam.members?.length || 0) >= 3) {
+        if (updatedTeam && (updatedTeam.members?.length || 0) >= 3) {
           const pending = await database.getJoinRequestsByTeam(jr.teamId);
           await Promise.all(
             pending
@@ -1302,6 +1286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: battle.teamAName,
         captainId: battle.teamACaptainId,
         gameSessionId: battle.gameSessionId,
+        gameMode: "TEAM_BATTLE",
         members: teamAMembers,
         score: battle.teamAScore || 0,
         correctAnswers: battle.teamACorrectAnswers || 0,
@@ -1347,6 +1332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: battle.teamBName,
         captainId: battle.teamBCaptainId,
         gameSessionId: battle.gameSessionId,
+        gameMode: "TEAM_BATTLE",
         members: teamBMembers,
         score: battle.teamBScore || 0,
         correctAnswers: battle.teamBCorrectAnswers || 0,
@@ -1415,6 +1401,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const battle = await database.createTeamBattle(teamBattleData);
+      
+      // Debug logging to verify team creation
+      console.log('✅ Team Created:', {
+        teamId: `${battle.id}-team-a`,
+        gameSessionId: battle.gameSessionId,
+        status: battle.status,
+        gameMode: 'TEAM_BATTLE',
+        teamName: battle.teamAName
+      });
+      
       const teams = await convertTeamBattleToTeams(battle);
       res.status(201).json(teams[0]); // Return Team A
     } catch (err) {
@@ -1447,6 +1443,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("Failed to fetch teams:", err);
       res.status(500).json({ message: "Failed to fetch teams" });
+    }
+  });
+
+  // Get ALL available teams across all game sessions for join-as-member
+  app.get("/api/teams/available", ensureAuthenticated, async (req, res) => {
+    try {
+      // Set no-cache headers to prevent stale data
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
+      // Get all active game sessions (sessions with forming battles)
+      const activeSessions = listActiveGameSessions();
+      const activeSessionIds = new Set(activeSessions); // activeSessions is string[]
+      
+      console.log(`🔍 Active sessions: ${Array.from(activeSessionIds).join(', ') || 'NONE'}`);
+
+      // Get all team battles that are still forming
+      const allBattles = await database.getTeamBattlesByStatus("forming");
+      console.log(`📋 Found ${allBattles.length} total forming battles`);
+      
+      const allAvailableTeams = [];
+      const now = Date.now();
+      
+      for (const battle of allBattles) {
+        // CRITICAL: Only show teams from ACTIVE sessions
+        // This prevents old/closed session teams from appearing
+        const battleAge = now - new Date(battle.createdAt).getTime();
+        const isStale = battleAge > 30 * 60 * 1000; // 30 minutes
+        
+        if (isStale) {
+          console.log(`  ⏰ Skipping stale battle ${battle.id} (age: ${Math.round(battleAge / 60000)}min)`);
+          continue;
+        }
+        
+        const teams = await convertTeamBattleToTeams(battle);
+        // Filter teams that are:
+        // 1. Explicitly TEAM_BATTLE mode
+        // 2. Status is "forming"
+        // 3. Not full (< 3 members)
+        // 4. From an active session (not closed)
+        const availableTeams = teams.filter(
+          (t: any) => 
+            t.gameMode === "TEAM_BATTLE" &&
+            t.status === "forming" && 
+            (t.members?.length || 0) < 3
+        );
+        
+        if (availableTeams.length > 0) {
+          console.log(`  ✅ Battle ${battle.id} (session: ${battle.gameSessionId}): ${availableTeams.length} available teams, created: ${new Date(battle.createdAt).toISOString()}`);
+        }
+        allAvailableTeams.push(...availableTeams);
+      }
+
+      console.log(`✅ Returning ${allAvailableTeams.length} total available teams`);
+      console.log(`   Team IDs: ${allAvailableTeams.map((t: any) => `${t.name}(${t.gameSessionId})`).join(', ') || 'NONE'}`);
+      res.json(allAvailableTeams);
+    } catch (err) {
+      console.error("Failed to fetch available teams:", err);
+      res.status(500).json({ message: "Failed to fetch available teams" });
     }
   });
 

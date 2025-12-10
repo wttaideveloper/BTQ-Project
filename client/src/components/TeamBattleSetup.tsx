@@ -1033,6 +1033,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         return isNaN(exp) ? true : exp > now;
       });
       console.log(`[TeamBattleSetup] Filtered join requests:`, filtered);
+      console.log(
+        `[TeamBattleSetup] Join request team IDs:`,
+        filtered.map((jr) => jr.teamId)
+      );
       return filtered;
     },
     enabled: open && !!user && !!gameSessionId,
@@ -1443,6 +1447,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   ? readyStatus.teamBReady
                   : false
                 : false;
+              console.log(
+                `[TeamBattleSetup] Rendering team: ${team.name}, teamId: ${team.id}`
+              );
               return (
                 <TeamDisplay
                   key={team.id}
@@ -1458,9 +1465,32 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   }
                   isUserTeam={isUserTeam}
                   isReady={isTeamReady}
-                  joinRequests={(joinRequests || []).filter(
-                    (jr) => jr.teamId === team.id
-                  )}
+                  joinRequests={(joinRequests || []).filter((jr) => {
+                    // Debug logging to understand the team ID mismatch
+                    console.log(
+                      `[TeamBattleSetup] Checking join request ${jr.id}: teamId=${jr.teamId}, currentTeamId=${team.id}`
+                    );
+
+                    // Fix: Match join requests to teams by comparing the base team ID
+                    // Extract the base ID from both formats and compare
+                    const joinRequestBaseId = jr.teamId?.replace(
+                      /-team-[ab]$/i,
+                      ""
+                    );
+                    const teamBaseId = team.id?.replace(/-team-[ab]$/i, "");
+
+                    console.log(
+                      `[TeamBattleSetup] Base IDs: joinRequest=${joinRequestBaseId}, team=${teamBaseId}, match=${
+                        joinRequestBaseId === teamBaseId
+                      }`
+                    );
+
+                    // Also try direct comparison as fallback
+                    const directMatch = jr.teamId === team.id;
+                    const baseMatch = joinRequestBaseId === teamBaseId;
+
+                    return directMatch || baseMatch;
+                  })}
                   onAcceptJoinRequest={(jrId) =>
                     respondToJoinRequestMutation.mutate({
                       joinRequestId: jrId,

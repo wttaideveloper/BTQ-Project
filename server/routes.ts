@@ -164,36 +164,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Helper function to parse team ID and get team from team_battles
   async function getTeamFromBattle(teamId: string) {
     try {
+      console.log(`[getTeamFromBattle] Starting with teamId: ${teamId}`);
+
       // Team ID format supports both "{battleId}-team-{a/b}" and "battle-{battleId}-team-{a/b}"
       const parts = teamId.split('-team-');
       if (parts.length !== 2) {
-        console.error('Invalid team ID format:', teamId);
+        console.error('[getTeamFromBattle] Invalid team ID format:', teamId);
         return null;
       }
+
       // Strip optional "battle-" prefix
       const rawBattleId = parts[0];
       const battleId = rawBattleId.startsWith('battle-') ? rawBattleId.substring('battle-'.length) : rawBattleId;
       const teamSide = parts[1].toUpperCase(); // "A" or "B"
-      
-      console.log(`Parsing team ID: battleId=${battleId}, teamSide=${teamSide}`);
-      
-      const battle = await database.getTeamBattle(battleId);
+
+      console.log(`[getTeamFromBattle] Parsed: battleId=${battleId}, teamSide=${teamSide}`);
+
+      // First try: Get battle by battleId
+      let battle = await database.getTeamBattle(battleId);
       if (!battle) {
-        console.error('Battle not found:', battleId);
-        return null;
+        console.log(`[getTeamFromBattle] Battle not found by ID: ${battleId}, trying alternative lookup...`);
+
+        // Alternative lookup: Find battle by gameSessionId and team captain
+        // This handles cases where teamId might be a different format
+        const allBattles = await database.getTeamBattlesByStatus("forming");
+        console.log(`[getTeamFromBattle] Found ${allBattles.length} forming battles, searching for matching team...`);
+
+        for (const b of allBattles) {
+          console.log(`[getTeamFromBattle] Checking battle ${b.id}: TeamA=${b.teamAName} (captain: ${b.teamACaptainId}), TeamB=${b.teamBName} (captain: ${b.teamBCaptainId})`);
+
+          // Check if this battle has the team we're looking for
+          const teams = await convertTeamBattleToTeams(b);
+          const matchingTeam = teams.find(t => {
+            // Match by teamSide or by checking if teamId matches any team's ID
+            return t.teamSide === teamSide || t.id === teamId || t.teamId === teamId;
+          });
+
+          if (matchingTeam) {
+            console.log(`[getTeamFromBattle] ✅ Found matching team in battle ${b.id}: ${matchingTeam.name}`);
+            battle = b;
+            break;
+          }
+        }
+
+        if (!battle) {
+          console.error(`[getTeamFromBattle] ❌ Battle not found after exhaustive search for teamId: ${teamId}`);
+          return null;
+        }
       }
-      
+
       // Convert battle to teams format
       const teams = await convertTeamBattleToTeams(battle);
-      const team = teams.find(t => t.teamSide === teamSide);
-      
+      const team = teams.find(t => t.teamSide === teamSide || t.id === teamId || t.teamId === teamId);
+
       if (!team) {
-        console.error(`Team ${teamSide} not found in battle ${battleId}`);
+        console.error(`[getTeamFromBattle] ❌ Team ${teamSide} not found in battle ${battle.id}`);
+        console.log(`[getTeamFromBattle] Available teams in battle:`, teams.map(t => `${t.name} (${t.id})`));
+        return null;
       }
-      
-      return team || null;
+
+      console.log(`[getTeamFromBattle] ✅ Found team: ${team.name} (${team.id})`);
+      return team;
     } catch (error) {
-      console.error('Error in getTeamFromBattle:', error);
+      console.error('[getTeamFromBattle] Error:', error);
       return null;
     }
   }
@@ -245,17 +278,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       console.log('[GET /api/team-join-requests] user:', user?.id, user?.username);
-      const outgoing = await database.getJoinRequestsByUser(user.id);
+
+      // Get all teams where current user is captain
       const myTeams = await database.getTeamsByCaptain(user.id);
       console.log('[GET /api/team-join-requests] myTeams:', myTeams.map((t:any)=>t.id));
+
+      // Get join requests for each team
       const incomingArrays = await Promise.all(
         myTeams.map((t: any) => database.getJoinRequestsByTeam(t.id))
       );
       const incoming = incomingArrays.flat();
-      console.log('[GET /api/team-join-requests] incoming count:', incoming.length, 'outgoing count:', outgoing.length);
-      // brief sample of ids
+
+      console.log('[GET /api/team-join-requests] incoming count:', incoming.length);
       console.log('[GET /api/team-join-requests] incoming team_ids:', incoming.map((r:any)=>r.team_id||r.teamId));
-      res.json([...incoming, ...outgoing]);
+
+      // CRITICAL FIX: Filter join requests to ensure they match actual team IDs
+      // This prevents the mismatch issue where join requests have wrong team IDs
+      const validJoinRequests = incoming.filter((request: any) => {
+        // Check if this join request's teamId matches any of the captain's actual team IDs
+        const matchesTeam = myTeams.some((team: any) => {
+          const requestTeamId = request.teamId || request.team_id;
+          const teamId = team.id;
+          return requestTeamId === teamId;
+        });
+
+        console.log(`[GET /api/team-join-requests] Join request ${request.id}: teamId=${request.teamId}, matches=${matchesTeam}`);
+        return matchesTeam;
+      });
+
+      console.log('[GET /api/team-join-requests] valid join requests after filtering:', validJoinRequests.length);
+      console.log('[GET /api/team-join-requests] valid team_ids:', validJoinRequests.map((r:any)=>r.team_id||r.teamId));
+
+      // FIX: Only return incoming requests that match actual team IDs
+      // This ensures captains only see join requests for their actual teams
+      res.json(validJoinRequests);
     } catch (error) {
       console.error("Error getJoinRequestsByUser:", error);
       res.status(500).json({ message: "Failed to fetch join requests" });
@@ -282,7 +338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('[POST /api/team-join-requests] Team not found:', teamId);
         return res.status(404).json({ message: "Team not found" });
       }
-      console.log('[POST /api/team-join-requests] Team found:', team.name);
+      console.log('[POST /api/team-join-requests] Team found:', team.name, 'teamId:', team.id);
 
       console.log('[POST /api/team-join-requests] Step 4: Checking capacity');
       // Check if team is full
@@ -296,7 +352,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[POST /api/team-join-requests] Step 5: Checking existing requests');
       // Check if user already has a pending request for this team
       const allUserRequests = await database.getJoinRequestsByUser(user.id);
-      const existingRequest = allUserRequests.find((r: any) => r.teamId === teamId && r.status === "pending");
+      const existingRequest = allUserRequests.find((r: any) => r.teamId === team.id && r.status === "pending");
       if (existingRequest) {
         console.error('[POST /api/team-join-requests] User already has pending request');
         return res.status(400).json({
@@ -306,22 +362,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[POST /api/team-join-requests] No existing requests');
 
       console.log('[POST /api/team-join-requests] Step 6: Creating request with 60s expiry');
+      // CRITICAL FIX: Use the actual team.id (from database) instead of the input teamId
+      // This ensures the join request is created with the correct team ID that matches the database
+      const actualTeamId = team.id;
+      console.log('[POST /api/team-join-requests] Using actual team ID:', actualTeamId);
+
       // Create join request with 60 second expiry
       const expiresAt = new Date(Date.now() + 60000);
       const joinRequest = await database.createJoinRequest(
-        teamId,
+        actualTeamId,  // ✅ FIX: Use the correct team ID
         user.id,
         user.username,
         expiresAt
       );
-      console.log('[POST /api/team-join-requests] Request created:', joinRequest.id);
+      console.log('[POST /api/team-join-requests] Request created:', joinRequest.id, 'for team:', actualTeamId);
 
       console.log('[POST /api/team-join-requests] Step 7: Sending websocket to captain');
       // Notify team captain via websocket
       try {
         sendToUser(team.captainId, {
           type: "join_request_created",
-          teamId,
+          teamId: actualTeamId,  // ✅ FIX: Use the correct team ID
           requesterId: user.id,
           requesterUsername: user.username,
           joinRequestId: joinRequest.id,

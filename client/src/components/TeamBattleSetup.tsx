@@ -23,7 +23,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Crown, Users, UserPlus, Check, X } from "lucide-react";
 import TeamDisplay from "./TeamDisplay";
-import { setupGameSocket, sendGameEvent } from "@/lib/socket";
+import { setupGameSocket, sendGameEvent, onEvent } from "@/lib/socket";
 
 export interface TeamBattleSetupProps {
   open: boolean;
@@ -337,14 +337,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     return () => clearInterval(timer);
   }, [countdown]);
 
-  const [currentStage, setCurrentStage] = useState<
-    | "enter"
-    | "create-team"
-    | "invite-opponent"
-    | "invite-teammates"
-    | "join-as-member"
-  >("enter");
-
   // Get teams for this game session with refetch capability
   const { data: teams = [], refetch: refetchTeams } = useQuery<Team[]>({
     queryKey: ["/api/teams", gameSessionId],
@@ -359,6 +351,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     enabled: open && !!user && !!gameSessionId,
     refetchInterval: 2000,
   });
+
+  const [currentStage, setCurrentStage] = useState<
+    | "enter"
+    | "create-team"
+    | "invite-opponent"
+    | "invite-teammates"
+    | "join-as-member"
+  >("enter");
 
   // Get ALL available teams (across all sessions) for join-as-member
   const { data: allAvailableTeams = [] } = useQuery<Team[]>({
@@ -390,6 +390,110 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       ) || null
     );
   }, [teams, user]);
+
+  // Show toast to captains when a new join request arrives
+  useEffect(() => {
+    if (!user?.id || !open) return;
+
+    console.log(
+      "[Component Join Request Toast] Setting up listener for user:",
+      user.id
+    );
+
+    const offJoinRequestCreatedToast = onEvent(
+      "join_request_created",
+      async (data: any) => {
+        console.log("[Component Join Request Toast] Event received:", data);
+        console.log(
+          "[Component Join Request Toast] Current user ID:",
+          user?.id
+        );
+        console.log(
+          "[Component Join Request Toast] Teams at event time:",
+          teams.length
+        );
+
+        try {
+          // First check: do we have the team in our current teams array?
+          let team = teams.find((t: any) => t.id === data.teamId);
+          console.log(
+            "[Component Join Request Toast] Found team in local array:",
+            !!team
+          );
+
+          // If not found, fetch fresh team data
+          if (!team && data.teamId && gameSessionId) {
+            console.log(
+              "[Component Join Request Toast] Fetching fresh team data for:",
+              data.teamId
+            );
+            try {
+              const res = await apiRequest(
+                "GET",
+                `/api/teams?gameSessionId=${gameSessionId}`
+              );
+              const freshTeams = await res.json();
+              team = freshTeams.find((t: any) => t.id === data.teamId);
+              console.log(
+                "[Component Join Request Toast] Fresh team found:",
+                !!team
+              );
+            } catch (err) {
+              console.error(
+                "[Component Join Request Toast] Failed to fetch fresh teams:",
+                err
+              );
+            }
+          }
+
+          const isCaptain = team && team.captainId === user?.id;
+          console.log(
+            "[Component Join Request Toast] Is user captain?",
+            isCaptain,
+            "(captainId:",
+            team?.captainId,
+            "userId:",
+            user?.id,
+            ")"
+          );
+
+          if (isCaptain && team) {
+            console.log(
+              "[Component Join Request Toast] ✅ Showing toast for captain"
+            );
+            toast({
+              title: "New Join Request",
+              description: `${data.requesterUsername} requested to join ${team.name}`,
+            });
+            queryClient.invalidateQueries({
+              queryKey: ["/api/team-join-requests"],
+            });
+          } else if (data.teamId) {
+            // Show generic toast even if team not found yet
+            console.log(
+              "[Component Join Request Toast] ⚠️ Showing generic toast (team might not be loaded yet)"
+            );
+            toast({
+              title: "New Join Request",
+              description: `${data.requesterUsername} wants to join your team`,
+            });
+            queryClient.invalidateQueries({
+              queryKey: ["/api/team-join-requests"],
+            });
+          }
+        } catch (err) {
+          console.error(
+            "[Component Join Request Toast] Error in handler:",
+            err
+          );
+        }
+      }
+    );
+    return () => {
+      console.log("[Component Join Request Toast] Cleaning up listener");
+      offJoinRequestCreatedToast();
+    };
+  }, [user?.id, teams, toast, gameSessionId, queryClient, open]);
 
   // Check if opponent has accepted (2 teams exist)
   const opponentAccepted = teams.length >= 2;
@@ -883,10 +987,26 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     queryKey: ["/api/team-join-requests"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/team-join-requests");
-      return await res.json();
+      const raw = await res.json();
+      const now = Date.now();
+      const normalized = (Array.isArray(raw) ? raw : []).map((jr: any) => ({
+        id: jr.id,
+        teamId: jr.teamId ?? jr.team_id,
+        requesterId: jr.requesterId ?? jr.requester_id,
+        requesterUsername: jr.requesterUsername ?? jr.requester_username,
+        status: jr.status,
+        createdAt: jr.createdAt ?? jr.created_at,
+        expiresAt: jr.expiresAt ?? jr.expires_at ?? null,
+      }));
+      return normalized.filter((jr: any) => {
+        if (jr.status !== "pending") return true;
+        if (!jr.expiresAt) return true;
+        const exp = new Date(jr.expiresAt).getTime();
+        return isNaN(exp) ? true : exp > now;
+      });
     },
     enabled: open && !!user,
-    refetchInterval: 2000,
+    refetchInterval: 3000,
   });
 
   const sendJoinRequestMutation = useMutation({

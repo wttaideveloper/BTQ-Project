@@ -2931,7 +2931,7 @@ class PostgreSQLDatabase implements IDatabase {
       for (const battle of battles) {
         if (battle.team_a_captain_id === captainId) {
           virtualTeams.push({
-            id: `battle-${battle.id}-team-a`,
+            id: `${battle.id}-team-a`,
             name: battle.team_a_name || 'Team A',
             captainId: battle.team_a_captain_id,
             captainName: battle.team_a_captain_username
@@ -2939,7 +2939,7 @@ class PostgreSQLDatabase implements IDatabase {
         }
         if (battle.team_b_captain_id === captainId) {
           virtualTeams.push({
-            id: `battle-${battle.id}-team-b`,
+            id: `${battle.id}-team-b`,
             name: battle.team_b_name || 'Team B',
             captainId: battle.team_b_captain_id,
             captainName: battle.team_b_captain_username

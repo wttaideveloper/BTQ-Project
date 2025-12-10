@@ -164,14 +164,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Helper function to parse team ID and get team from team_battles
   async function getTeamFromBattle(teamId: string) {
     try {
-      // Team ID format: "battle-{battleId}-team-{a/b}"
+      // Team ID format supports both "{battleId}-team-{a/b}" and "battle-{battleId}-team-{a/b}"
       const parts = teamId.split('-team-');
       if (parts.length !== 2) {
         console.error('Invalid team ID format:', teamId);
         return null;
       }
-      
-      const battleId = parts[0]; // e.g., "battle-xxx"
+      // Strip optional "battle-" prefix
+      const rawBattleId = parts[0];
+      const battleId = rawBattleId.startsWith('battle-') ? rawBattleId.substring('battle-'.length) : rawBattleId;
       const teamSide = parts[1].toUpperCase(); // "A" or "B"
       
       console.log(`Parsing team ID: battleId=${battleId}, teamSide=${teamSide}`);
@@ -204,8 +205,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (parts.length !== 2) {
         throw new Error('Invalid team ID format');
       }
-      
-      const battleId = parts[0];
+      // Strip optional "battle-" prefix
+      const rawBattleId = parts[0];
+      const battleId = rawBattleId.startsWith('battle-') ? rawBattleId.substring('battle-'.length) : rawBattleId;
       const teamSide = parts[1].toLowerCase(); // "a" or "b"
       
       const battle = await database.getTeamBattle(battleId);
@@ -242,12 +244,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
+      console.log('[GET /api/team-join-requests] user:', user?.id, user?.username);
       const outgoing = await database.getJoinRequestsByUser(user.id);
       const myTeams = await database.getTeamsByCaptain(user.id);
+      console.log('[GET /api/team-join-requests] myTeams:', myTeams.map((t:any)=>t.id));
       const incomingArrays = await Promise.all(
         myTeams.map((t: any) => database.getJoinRequestsByTeam(t.id))
       );
       const incoming = incomingArrays.flat();
+      console.log('[GET /api/team-join-requests] incoming count:', incoming.length, 'outgoing count:', outgoing.length);
+      // brief sample of ids
+      console.log('[GET /api/team-join-requests] incoming team_ids:', incoming.map((r:any)=>r.team_id||r.teamId));
       res.json([...incoming, ...outgoing]);
     } catch (error) {
       console.error("Error getJoinRequestsByUser:", error);

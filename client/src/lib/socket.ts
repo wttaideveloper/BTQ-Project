@@ -152,14 +152,19 @@ export function setupGameSocket(userId?: number): WebSocket {
     try {
       const data = JSON.parse(event.data);
       
-      // WebSocket message received
+      // Log all messages for debugging
+      console.log('[WS Client] Message received:', data.type, data);
       
       // Notify listeners for this event type
       const listeners = eventListeners[data.type] || [];
-      listeners.forEach(callback => callback(data));
+      console.log(`[WS Client] Found ${listeners.length} listener(s) for ${data.type}`);
+      listeners.forEach(callback => {
+        console.log(`[WS Client] Calling listener for ${data.type}`);
+        callback(data);
+      });
       
     } catch (error) {
-      // Silent error handling
+      console.error('[WS Client] Error parsing message:', error);
     }
   });
   
@@ -309,6 +314,27 @@ export function onAuthenticated(callback: (data: any) => void) {
 export function onError(callback: (error: any) => void) {
   eventListeners['error'].push(callback);
   return () => removeListener('error', callback);
+}
+
+// Team & Battle events: register common types used by server
+// Pre-register keys to enable subscriptions before first message
+['team_updated', 'team_created', 'teams_updated', 'team_invitation_received', 'invitation_sent',
+ 'opponent_accepted_invitation', 'join_request_created', 'join_request_updated',
+ 'team_battle_ready', 'team_battle_cancelled'].forEach((key) => {
+  if (!eventListeners[key]) eventListeners[key] = [];
+});
+
+// Generic event subscription for any server-sent event type
+export function onEvent(eventType: string, callback: (data: any) => void) {
+  if (!eventListeners[eventType]) {
+    eventListeners[eventType] = [];
+  }
+  eventListeners[eventType].push(callback);
+  console.log(`[WS Client] Registered listener for '${eventType}'. Total listeners: ${eventListeners[eventType].length}`);
+  return () => {
+    console.log(`[WS Client] Removing listener for '${eventType}'`);
+    removeListener(eventType, callback);
+  };
 }
 
 // Helper function to remove a listener

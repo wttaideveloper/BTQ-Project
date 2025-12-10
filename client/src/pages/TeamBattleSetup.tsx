@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,11 +33,12 @@ import {
   Target,
   LogOut,
 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { setupGameSocket } from "@/lib/socket";
+import { setupGameSocket, onEvent } from "@/lib/socket";
+import { useTeamBattleSetup } from "@/hooks/useTeamBattleSetup";
 
 interface User {
   id: number;
@@ -81,11 +88,22 @@ interface TeamInvitation {
   expiresAt: Date;
 }
 
+interface TeamJoinRequest {
+  id: string;
+  teamId: string;
+  requesterId: number;
+  requesterUsername: string;
+  status: "pending" | "accepted" | "rejected" | "expired" | "cancelled";
+  createdAt?: string | Date;
+  expiresAt?: string | Date | null;
+}
+
 const TeamBattleSetup: React.FC = () => {
   const { user } = useAuth();
   const [_, setLocation] = useLocation();
   const { toast } = useToast();
   const [gameSessionId, setGameSessionId] = useState<string>("");
+  const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const updateGameSessionId = useCallback((sessionId: string) => {
     if (!sessionId) return;
@@ -102,73 +120,22 @@ const TeamBattleSetup: React.FC = () => {
     updateGameSessionId(newSessionId);
     return newSessionId;
   }, [updateGameSessionId]);
-  
+
   const [teamName, setTeamName] = useState("");
   const [showTeamNameDialog, setShowTeamNameDialog] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [pendingInvitationId, setPendingInvitationId] = useState<string | null>(
     null
   );
-  
-  // Get teams for this game session - declare first
-  const {
-    data: teams = [],
-    refetch: refetchTeams,
-    error: teamsError,
-  } = useQuery({
-    queryKey: ["/api/teams", gameSessionId],
-    queryFn: async () => {
-      const res = await apiRequest(
-        "GET",
-        `/api/teams?gameSessionId=${gameSessionId}`
-      );
-      const data = await res.json();
-      return data;
-    },
-    enabled: !!gameSessionId && !!user,
-    refetchInterval: 10000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-    staleTime: 5000,
-  });
 
-  // Get user's team invitations - declare second
+  // Shared setup data & mutations
   const {
-    data: invitations = [],
-    refetch: refetchInvitations,
-    error: invitationsError,
-  } = useQuery({
-    queryKey: ["/api/team-invitations"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/team-invitations");
-      const data = await res.json();
-      return data;
-    },
-    enabled: !!user,
-    refetchInterval: 15000,
-    staleTime: 10000,
-  });
-  
-  // Debounced refetch to prevent excessive API calls - declare after refetch functions
-  const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const debouncedRefetch = useCallback(() => {
-    if (refetchTimeoutRef.current) {
-      clearTimeout(refetchTimeoutRef.current);
-    }
-    refetchTimeoutRef.current = setTimeout(() => {
-      refetchTeams();
-      refetchInvitations();
-    }, 1000);
-  }, [refetchTeams, refetchInvitations]);
-  
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (refetchTimeoutRef.current) {
-        clearTimeout(refetchTimeoutRef.current);
-      }
-    };
-  }, []);
+    teams = [],
+    invitations = [],
+    onlineUsers = [],
+    joinRequests = [],
+    debouncedRefetch,
+  } = useTeamBattleSetup(gameSessionId);
 
   // Generate or restore a game session ID - force new ID only when none exists
   useEffect(() => {
@@ -228,11 +195,9 @@ const TeamBattleSetup: React.FC = () => {
     if (user?.id) {
       const setUserOnline = async () => {
         try {
-          await apiRequest(
-            "PATCH",
-            `/api/users/${user.id}/online`,
-            { isOnline: true }
-          );
+          await apiRequest("PATCH", `/api/users/${user.id}/online`, {
+            isOnline: true,
+          });
         } catch (error) {
           // Ignore online status errors
         }
@@ -248,7 +213,7 @@ const TeamBattleSetup: React.FC = () => {
         } catch (error) {
           // Ignore cleanup errors
         }
-        
+
         if (refetchTimeoutRef.current) {
           clearTimeout(refetchTimeoutRef.current);
         }
@@ -256,69 +221,193 @@ const TeamBattleSetup: React.FC = () => {
     }
   }, [user?.id]);
 
-  // Get online users for invitations
-  const { data: onlineUsers = [], error: onlineUsersError } = useQuery({
-    queryKey: ["/api/users/online"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/users/online");
-      return await res.json();
-    },
-    enabled: !!user,
-    refetchInterval: 30000, // Poll every 30 seconds - much more reasonable
-    staleTime: 15000, // Consider data fresh for 15 seconds
-  });
+  // onlineUsers provided by hook
 
-
-
-
-
-
-
-
-
-
-
-  // WebSocket connection for real-time updates
+  // WebSocket connection - ensure socket is initialized
   useEffect(() => {
     if (user?.id) {
-      const socket = setupGameSocket(user.id);
-
-      const handleMessage = (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          switch (data.type) {
-            case "opponent_accepted_invitation":
-              toast({
-                title: "Opponent Accepted!",
-                description:
-                  data.message || "Your opponent has accepted the invitation!",
-              });
-              debouncedRefetch();
-              break;
-
-            case "teams_updated":
-              if (data.message) {
-                toast({
-                  title: "Teams Updated",
-                  description: data.message,
-                });
-              }
-              debouncedRefetch();
-              break;
-          }
-        } catch (error) {
-          // Ignore WebSocket parsing errors
-        }
-      };
-
-      socket.addEventListener("message", handleMessage);
-
-      return () => {
-        socket.removeEventListener("message", handleMessage);
-      };
+      setupGameSocket(user.id);
     }
-  }, [user?.id, debouncedRefetch, toast]);
+  }, [user?.id]);
+
+  // Show toast to captains when a new join request arrives
+  useEffect(() => {
+    if (!user?.id) return;
+
+    console.log("[Join Request Toast] Setting up listener for user:", user.id);
+    console.log(
+      "[Join Request Toast] Current teams:",
+      teams.map((t: any) => ({
+        id: t.id,
+        captainId: t.captainId,
+        name: t.name,
+      }))
+    );
+
+    const offJoinRequestCreatedToast = onEvent(
+      "join_request_created",
+      async (data: any) => {
+        console.log("[Join Request Toast] Event received:", data);
+        console.log("[Join Request Toast] Current user ID:", user?.id);
+        console.log("[Join Request Toast] Teams at event time:", teams.length);
+
+        try {
+          // First check: do we have the team in our current teams array?
+          let team = teams.find((t: any) => t.id === data.teamId);
+          console.log(
+            "[Join Request Toast] Found team in local array:",
+            !!team
+          );
+
+          // If not found, fetch fresh team data
+          if (!team && data.teamId) {
+            console.log(
+              "[Join Request Toast] Fetching fresh team data for:",
+              data.teamId
+            );
+            try {
+              const res = await apiRequest(
+                "GET",
+                `/api/teams?gameSessionId=${gameSessionId}`
+              );
+              const freshTeams = await res.json();
+              team = freshTeams.find((t: any) => t.id === data.teamId);
+              console.log("[Join Request Toast] Fresh team found:", !!team);
+            } catch (err) {
+              console.error(
+                "[Join Request Toast] Failed to fetch fresh teams:",
+                err
+              );
+            }
+          }
+
+          const isCaptain = team && team.captainId === user?.id;
+          console.log(
+            "[Join Request Toast] Is user captain?",
+            isCaptain,
+            "(captainId:",
+            team?.captainId,
+            "userId:",
+            user?.id,
+            ")"
+          );
+
+          if (isCaptain) {
+            console.log("[Join Request Toast] ✅ Showing toast for captain");
+            toast({
+              title: "New Join Request",
+              description: `${data.requesterUsername} requested to join ${team.name}`,
+            });
+            debouncedRefetch();
+          } else if (data.teamId) {
+            // Show generic toast even if team not found yet
+            console.log(
+              "[Join Request Toast] ⚠️ Showing generic toast (team might not be loaded yet)"
+            );
+            toast({
+              title: "New Join Request",
+              description: `${data.requesterUsername} wants to join your team`,
+            });
+            debouncedRefetch();
+          }
+        } catch (err) {
+          console.error("[Join Request Toast] Error in handler:", err);
+        }
+      }
+    );
+    return () => {
+      console.log("[Join Request Toast] Cleaning up listener");
+      offJoinRequestCreatedToast();
+    };
+  }, [user?.id, teams, toast, debouncedRefetch, gameSessionId]);
+
+  // Subscribe to specific team/invitation/join-request events
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // Ensure socket is initialized for this user
+    setupGameSocket(user.id);
+
+    const offTeamUpdated = onEvent("team_updated", () => {
+      debouncedRefetch();
+    });
+    const offTeamCreated = onEvent("team_created", () => {
+      debouncedRefetch();
+    });
+    const offTeamsUpdated = onEvent("teams_updated", () => {
+      debouncedRefetch();
+    });
+    const offInvitationReceived = onEvent("team_invitation_received", () => {
+      debouncedRefetch();
+    });
+    const offInvitationSent = onEvent("invitation_sent", () => {
+      debouncedRefetch();
+    });
+    const offJoinRequestCreated = onEvent(
+      "join_request_created",
+      (data: any) => {
+        const targetTeam = teams.find((t: Team) => t.id === data.teamId);
+        const isCaptain = !!targetTeam && targetTeam.captainId === user?.id;
+        if (isCaptain) {
+          toast({
+            title: "New Join Request",
+            description: `${data.requesterUsername} requested to join ${targetTeam.name}`,
+          });
+          debouncedRefetch();
+        }
+      }
+    );
+    const offJoinRequestUpdated = onEvent("join_request_updated", () => {
+      debouncedRefetch();
+    });
+
+    return () => {
+      offTeamUpdated();
+      offTeamCreated();
+      offTeamsUpdated();
+      offInvitationReceived();
+      offInvitationSent();
+      offJoinRequestCreated();
+      offJoinRequestUpdated();
+    };
+  }, [user?.id, teams, debouncedRefetch, toast]);
+
+  // joinRequests provided by hook
+
+  // Join requests refresh handled by hook subscriptions
+
+  // updateJoinRequestMutation provided by hook
+
+  const handleApproveJoinRequest = (id: string) => {
+    // Use API directly if hook mutation not available here
+    apiRequest("PATCH", `/api/team-join-requests/${id}`, { status: "accepted" })
+      .then(() => {
+        toast({ title: "Join Request Updated" });
+        debouncedRefetch();
+      })
+      .catch((error: any) => {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to update join request",
+          variant: "destructive",
+        });
+      });
+  };
+
+  const handleRejectJoinRequest = (id: string) => {
+    apiRequest("PATCH", `/api/team-join-requests/${id}`, { status: "rejected" })
+      .then(() => {
+        toast({ title: "Join Request Updated" });
+        debouncedRefetch();
+      })
+      .catch((error: any) => {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to update join request",
+          variant: "destructive",
+        });
+      });
+  };
 
   // Create team mutation
   const createTeamMutation = useMutation({
@@ -406,7 +495,7 @@ const TeamBattleSetup: React.FC = () => {
             description:
               "You are now the captain of Team B! Both teams can now invite teammates.",
           });
-          
+
           setTimeout(() => {
             toast({
               title: "Battle Lobby Ready!",
@@ -655,6 +744,33 @@ const TeamBattleSetup: React.FC = () => {
     }
   };
 
+  // ===== Debug UI state =====
+  const [showDebug, setShowDebug] = useState<boolean>(false);
+  const debugMyCaptainTeams = useMemo(() => {
+    return teams
+      .filter((t: Team) => t.captainId === user?.id)
+      .map((t: Team) => t.id);
+  }, [teams, user?.id]);
+  const debugPendingForMyTeams = useMemo(() => {
+    const ids = new Set(debugMyCaptainTeams);
+    return (joinRequests || []).filter(
+      (jr: any) => jr.status === "pending" && ids.has(jr.teamId)
+    );
+  }, [joinRequests, debugMyCaptainTeams]);
+
+  // Floating debug toggle for easy access
+  const DebugToggle = () => (
+    <div className="fixed bottom-4 right-4 z-50">
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => setShowDebug((v) => !v)}
+      >
+        {showDebug ? "Hide Debug" : "Show Debug"}
+      </Button>
+    </div>
+  );
+
   const battleStatus = getBattleStatus() || {
     status: "no-teams",
     message: "No teams formed yet",
@@ -665,6 +781,7 @@ const TeamBattleSetup: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
+        <DebugToggle />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -703,14 +820,11 @@ const TeamBattleSetup: React.FC = () => {
             <br />• Online Users: {onlineUsers.length}
             <br />• Teams: {teams.length}
             <br />• Invitations: {invitations.length}
+            <br />• Join Requests: {joinRequests.length}
             <br />• User ID: {user?.id}
             <br />• Session ID: {gameSessionId}
             <br />
-            <Button
-              onClick={debouncedRefetch}
-              size="sm"
-              className="mt-2"
-            >
+            <Button onClick={debouncedRefetch} size="sm" className="mt-2">
               Force Refresh Data
             </Button>
           </AlertDescription>
@@ -755,6 +869,86 @@ const TeamBattleSetup: React.FC = () => {
             <span className="text-sm">{battleStatus.description}</span>
           </AlertDescription>
         </Alert>
+
+        {/* Captain: Pending Join Requests */}
+        {isTeamCaptain && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-green-500" /> Pending Join
+                Requests
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {debugPendingForMyTeams.length > 0 && (
+                <Alert className="mb-3 border-yellow-400 bg-yellow-50">
+                  <AlertDescription className="text-yellow-800">
+                    You have {debugPendingForMyTeams.length} pending member
+                    request(s) awaiting action.
+                  </AlertDescription>
+                </Alert>
+              )}
+              {joinRequests.filter(
+                (jr: TeamJoinRequest) => jr.status === "pending"
+              ).length === 0 ? (
+                <p className="text-sm text-gray-600">No pending requests.</p>
+              ) : (
+                <div className="space-y-3">
+                  {joinRequests
+                    .filter((jr: TeamJoinRequest) => jr.status === "pending")
+                    .map((jr: TeamJoinRequest) => {
+                      const team = teams.find((t: Team) => t.id === jr.teamId);
+                      const isMyTeam = team && team.captainId === user?.id;
+                      if (!isMyTeam) return null;
+                      const expiresLabel = jr.expiresAt
+                        ? `Expires in ${Math.max(
+                            0,
+                            Math.floor(
+                              (new Date(jr.expiresAt as any).getTime() -
+                                Date.now()) /
+                                1000
+                            )
+                          )}s`
+                        : "";
+                      return (
+                        <div
+                          key={jr.id}
+                          className="flex items-center justify-between rounded border p-3"
+                        >
+                          <div>
+                            <div className="font-medium">
+                              {jr.requesterUsername}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              Requested to join "{team?.name}"{" "}
+                              {expiresLabel && `• ${expiresLabel}`}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleApproveJoinRequest(jr.id)}
+                              className="flex items-center gap-1"
+                            >
+                              <Check className="h-3 w-3" /> Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleRejectJoinRequest(jr.id)}
+                              className="flex items-center gap-1"
+                            >
+                              <X className="h-3 w-3" /> Reject
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* 3v3 Battle Format Display */}
         {teams.length > 0 && (
@@ -837,6 +1031,72 @@ const TeamBattleSetup: React.FC = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Debug Panel */}
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Debug: Join Requests Visibility</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowDebug(!showDebug)}
+              >
+                {showDebug ? "Hide" : "Show"}
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          {showDebug && (
+            <CardContent>
+              <div className="grid md:grid-cols-2 gap-4 text-sm">
+                <div className="space-y-2">
+                  <div className="font-semibold">User</div>
+                  <pre className="bg-gray-100 p-2 rounded overflow-auto">
+                    {JSON.stringify(
+                      { id: user?.id, username: user?.username, isTeamCaptain },
+                      null,
+                      2
+                    )}
+                  </pre>
+                  <div className="font-semibold">Teams (IDs)</div>
+                  <pre className="bg-gray-100 p-2 rounded overflow-auto">
+                    {JSON.stringify(
+                      teams.map((t: any) => ({
+                        id: t.id,
+                        name: t.name,
+                        captainId: t.captainId,
+                      })),
+                      null,
+                      2
+                    )}
+                  </pre>
+                </div>
+                <div className="space-y-2">
+                  <div className="font-semibold">Join Requests (raw)</div>
+                  <pre className="bg-gray-100 p-2 rounded overflow-auto">
+                    {JSON.stringify(joinRequests, null, 2)}
+                  </pre>
+                  <div className="font-semibold">Pending For My Teams</div>
+                  <pre className="bg-gray-100 p-2 rounded overflow-auto">
+                    {JSON.stringify(debugPendingForMyTeams, null, 2)}
+                  </pre>
+                </div>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <Button size="sm" onClick={() => debouncedRefetch()}>
+                  Refetch Join Requests
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => debouncedRefetch()}
+                >
+                  Refetch Teams
+                </Button>
+              </div>
+            </CardContent>
+          )}
+        </Card>
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Left Column - Team Management */}

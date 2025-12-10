@@ -221,8 +221,7 @@ export async function updateJoinRequest(
 
   // On accept, add member to team
   if (status === "accepted") {
-    const battleTeams = await database.getTeamsById(jr.teamId);
-    const team = Array.isArray(battleTeams) ? battleTeams[0] : battleTeams;
+    const team = await database.getTeam(jr.teamId);
     if (team) {
       const members = Array.isArray(team.members) ? team.members : [];
       if (members.length < 3) {
@@ -624,6 +623,8 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
 
     // Replace connections list with current connection
     userConnections.set(userId, [clientId]);
+    console.log(`[Socket Auth] User ${userId} authenticated with clientId ${clientId}`);
+    console.log(`[Socket Auth] userConnections.get(${userId}):`, userConnections.get(userId));
 
     // Check if user is in any active team and restore their game state
     // Get all teams from all game sessions
@@ -1935,8 +1936,12 @@ async function handleMarkNotificationRead(clientId: string, event: GameEvent) {
 // Helper function to send message to all connections of a user
 export function sendToUser(userId: number, message: GameEvent) {
   const connections = userConnections.get(userId) || [];
+  console.log(`[sendToUser] Sending to userId ${userId}, type: ${message.type}`);
+  console.log(`[sendToUser] Found ${connections.length} connection(s) for user ${userId}`);
+  console.log(`[sendToUser] Message:`, message);
 
   for (const clientId of connections) {
+    console.log(`[sendToUser] Sending to clientId: ${clientId}`);
     sendToClient(clientId, message);
   }
 }
@@ -1954,10 +1959,12 @@ function sendToGame(gameId: string, message: GameEvent) {
 function sendToClient(clientId: string, message: GameEvent) {
   const client = clients.get(clientId);
   if (!client) {
+    console.log(`[sendToClient] Client ${clientId} not found`);
     return;
   }
 
   if (!client.ws) {
+    console.log(`[sendToClient] Client ${clientId} has no websocket`);
     return;
   }
 
@@ -1967,7 +1974,9 @@ function sendToClient(clientId: string, message: GameEvent) {
 
   try {
     client.ws.send(JSON.stringify(message));
+    console.log(`[sendToClient] ✅ Successfully sent ${message.type} to client ${clientId}`);
   } catch (error) {
+    console.error(`[sendToClient] ❌ Failed to send to client ${clientId}:`, error);
     // Silent error handling
   }
 }

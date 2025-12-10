@@ -737,7 +737,7 @@ const Home: React.FC = () => {
                       onClick={() => setShowTeamBattleSetup(true)}
                       className="bg-secondary hover:bg-secondary/90 text-white font-bold px-6 py-3"
                     >
-                      <Sword className="mr-2 h-4 w-4" /> Setup
+                      <Sword className="mr-2 h-4 w-4" /> Enter Team Battle
                     </Button>
                   </div>
                 </div>

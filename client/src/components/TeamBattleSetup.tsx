@@ -1067,8 +1067,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     gcTime: 0,
   });
 
+  // Track which team is being requested for join
+  const [joinRequestingTeamId, setJoinRequestingTeamId] = useState<string | null>(null);
   const sendJoinRequestMutation = useMutation({
     mutationFn: async (data: { teamId: string }) => {
+      setJoinRequestingTeamId(data.teamId);
       const res = await apiRequest("POST", "/api/team-join-requests", data);
       return await res.json();
     },
@@ -1077,6 +1080,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         title: "Join Request Sent",
         description: "Your request was sent to the team leader.",
       });
+      setJoinRequestingTeamId(null);
       queryClient.invalidateQueries({
         queryKey: ["/api/team-join-requests"],
       });
@@ -1087,6 +1091,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         description: error.message || "Failed to send join request",
         variant: "destructive",
       });
+      setJoinRequestingTeamId(null);
     },
   });
 
@@ -1789,7 +1794,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               isFull ||
                               alreadyMember ||
                               !!myActiveJoinRequest ||
-                              sendJoinRequestMutation.isPending
+                              joinRequestingTeamId === team.id
                             }
                             className="text-xs font-bold px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                           >
@@ -1799,7 +1804,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               ? "Already in Team"
                               : myActiveJoinRequest
                               ? "Request Pending"
-                              : sendJoinRequestMutation.isPending
+                              : joinRequestingTeamId === team.id
                               ? "Requesting..."
                               : "Request to Join"}
                           </Button>

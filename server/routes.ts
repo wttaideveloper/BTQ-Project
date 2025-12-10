@@ -1661,6 +1661,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("Could not fetch game session, using defaults:", err);
       }
 
+      // Clean up any old "forming" teams created by this captain
+      // This prevents ghost teams from appearing in available teams list
+      try {
+        const existingBattles = await database.getTeamBattlesByUser(req.user.id, 'forming');
+        
+        for (const battle of existingBattles) {
+          console.log(`🧹 Cleaning up old forming team for captain ${req.user.id}: battle ${battle.id}`);
+          await database.deleteTeamBattle(battle.id);
+        }
+        
+        if (existingBattles.length > 0) {
+          console.log(`✅ Removed ${existingBattles.length} old forming team(s) for captain ${req.user.id}`);
+        }
+      } catch (cleanupErr) {
+        console.error("Failed to cleanup old teams:", cleanupErr);
+        // Continue with team creation even if cleanup fails
+      }
+
       const battleId = uuidv4();
       const teamBattleData = {
         id: battleId,

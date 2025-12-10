@@ -474,24 +474,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.user as any;
       const id = req.params.id;
       const { status } = req.body || {};
+      
+      console.log(`[PATCH /api/team-join-requests/${id}] User ${user.id} (${user.username}) attempting to ${status}`);
+      
       if (!status) return res.status(400).json({ message: "status required" });
       
-      const reqsByUser = await database.getJoinRequestsByUser(user.id);
-      let jr: any = reqsByUser.find((r: any) => r.id === id);
+      // Use the simplified method to get ALL join requests for this captain
+      const captainRequests = await database.getJoinRequestsForCaptain(user.id);
+      console.log(`[PATCH] Found ${captainRequests.length} join requests for captain ${user.id}`);
+      
+      let jr: any = captainRequests.find((r: any) => r.id === id);
+      
+      // If not found as captain, check if user is the requester
       if (!jr) {
-        // try by team captain
-        const myTeams = await database.getTeamsByCaptain(user.id);
-        const allIncoming = (await Promise.all(myTeams.map((t: any) => database.getJoinRequestsByTeam(t.id)))).flat();
-        jr = allIncoming.find((r: any) => r.id === id);
+        const reqsByUser = await database.getJoinRequestsByUser(user.id);
+        jr = reqsByUser.find((r: any) => r.id === id);
+        console.log(`[PATCH] Found as requester? ${!!jr}`);
       }
-      if (!jr) return res.status(404).json({ message: "Request not found" });
+      
+      if (!jr) {
+        console.error(`[PATCH] Join request ${id} not found`);
+        return res.status(404).json({ message: "Request not found" });
+      }
 
-      const team = await getTeamFromBattle(jr.teamId);
+      console.log(`[PATCH] Join request found:`, { id: jr.id, teamId: jr.team_id || jr.teamId, requesterId: jr.requester_id || jr.requesterId });
+
+      const teamId = jr.team_id || jr.teamId;
+      const team = await getTeamFromBattle(teamId);
+      console.log(`[PATCH] Team found:`, team ? { id: team.id, name: team.name, captainId: team.captainId } : 'NULL');
+      
       const isLeader = team?.captainId === user.id;
-      const isRequester = jr.requesterId === user.id;
-      if (status === "cancelled" && !isRequester) return res.status(403).json({ message: "Forbidden" });
+      const isRequester = (jr.requester_id || jr.requesterId) === user.id;
+      
+      console.log(`[PATCH] Authorization check: isLeader=${isLeader}, isRequester=${isRequester}, status=${status}`);
+      
+      if (status === "cancelled" && !isRequester) {
+        console.error(`[PATCH] Forbidden: Only requester can cancel`);
+        return res.status(403).json({ message: "Forbidden: Only requester can cancel" });
+      }
       if ((status === "accepted" || status === "rejected" || status === "expired") && !isLeader) {
-        return res.status(403).json({ message: "Forbidden" });
+        console.error(`[PATCH] Forbidden: Only team captain can accept/reject/expire. Captain ID: ${team?.captainId}, User ID: ${user.id}`);
+        return res.status(403).json({ message: "Forbidden: Only team captain can accept/reject" });
       }
 
       await database.updateJoinRequestStatus(id, status);
@@ -502,15 +525,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const members = team.teammates || [];
         if (members.length >= 3) return res.status(400).json({ message: "Team full" });
         
-        await addMemberToTeamBattle(jr.teamId, {
-          id: jr.requesterId,
-          username: jr.requesterUsername,
+        const requesterId = jr.requester_id || jr.requesterId;
+        const requesterUsername = jr.requester_username || jr.requesterUsername;
+        
+        await addMemberToTeamBattle(teamId, {
+          id: requesterId,
+          username: requesterUsername,
         });
         
         // auto-reject if full now
-        const updatedTeam = await getTeamFromBattle(jr.teamId);
+        const updatedTeam = await getTeamFromBattle(teamId);
         if (updatedTeam && (updatedTeam.teammates?.length || 0) >= 3) {
-          const pending = await database.getJoinRequestsByTeam(jr.teamId);
+          const pending = await database.getJoinRequestsByTeam(teamId);
           await Promise.all(
             pending
               .filter((r: any) => r.status === "pending")
@@ -520,12 +546,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // notify requester
-      sendToUser(jr.requesterId, {
+      const requesterId = jr.requester_id || jr.requesterId;
+      sendToUser(requesterId, {
         type: "join_request_updated",
         joinRequestId: id,
         status,
-        teamId: jr.teamId,
-        requesterId: jr.requesterId,
+        teamId: teamId,
+        requesterId: requesterId,
       });
 
       res.json({ id, status });

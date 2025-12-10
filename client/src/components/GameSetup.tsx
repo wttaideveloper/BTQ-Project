@@ -436,24 +436,37 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
   };
 
   return (
-    <div className="modal-animation fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto py-10">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6 mx-4 my-auto max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <Button 
-            variant="outline" 
-            className="flex items-center gap-2"
-            onClick={() => window.location.href = '/'}
-          >
-            <span>← Home</span>
-          </Button>
-          <div></div>
+    <div className="modal-animation fixed inset-0 bg-gradient-to-br from-black/80 via-primary-dark/80 to-secondary-dark/80 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto py-6">
+      <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-2xl shadow-2xl w-full max-w-4xl mx-4 my-auto max-h-[95vh] overflow-hidden border border-white/20">
+        {/* Header Section */}
+        <div className="bg-gradient-to-r from-primary via-primary-dark to-secondary p-6 relative overflow-hidden">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
+          <div className="relative z-10 flex justify-between items-center">
+            <Button
+              variant="ghost"
+              className="flex items-center gap-2 text-white hover:bg-white/20 transition-all duration-200"
+              onClick={() => window.location.href = '/'}
+            >
+              <span className="text-lg">←</span>
+              <span className="font-medium">Home</span>
+            </Button>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-white/80 text-sm font-medium">Live</span>
+            </div>
+          </div>
+          <div className="relative z-10 text-center mt-4">
+            <h1 className="text-4xl font-heading font-extrabold text-white mb-2 tracking-tight">
+              Faith<span className="text-accent">IQ</span>
+            </h1>
+            <p className="text-white/90 text-base font-medium">
+              Test your Bible knowledge with our interactive trivia game!
+            </p>
+          </div>
         </div>
-        <div className="text-center mb-6">
-          <h1 className="game-title text-3xl font-heading font-bold text-primary mb-2">
-            Faith<span className="text-accent">IQ</span>
-          </h1>
-          <p className="text-neutral-600">Test your Bible knowledge with our interactive trivia game!</p>
-        </div>
+
+        {/* Scrollable Content */}
+        <div className="overflow-y-auto max-h-[calc(95vh-180px)] p-6 bg-white/95">
         
         {/* Game Setup Options */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -665,15 +678,29 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
             </div>
           </div>
         ) : (
-          <div className="flex justify-center mt-6 mb-16">
-            <Button 
+          <div className="flex justify-center mt-8 mb-6">
+            <Button
               onClick={handleStartGame}
-              className="bg-accent text-primary px-8 py-4 rounded-lg hover:bg-accent/90 font-heading font-bold text-lg shadow-xl border-2 border-accent/70 animate-pulse-slow fixed bottom-10 left-1/2 transform -translate-x-1/2 z-10"
+              className="bg-gradient-to-r from-accent via-accent to-accent/90 hover:from-accent/90 hover:via-accent/80 hover:to-accent/70 text-primary px-8 py-4 rounded-xl font-heading font-bold text-lg shadow-xl hover:shadow-2xl border-2 border-accent/30 transition-all duration-300 transform hover:scale-105 flex items-center gap-3"
             >
-              {config.gameMode === 'single' ? 'Start Game' : 'Continue to Multiplayer →'}
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1a4 4 0 014 4v1a2 2 0 002 2h2a2 2 0 002-2v-1a4 4 0 00-4-4h-1m-1-4a4 4 0 00-4 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2v-1a4 4 0 014-4h1m7-4v2a4 4 0 004 4h1" />
+              </svg>
+              <span>
+                {config.gameMode === 'single'
+                  ? 'Start Game'
+                  : 'Continue to Multiplayer'}
+              </span>
+              {config.gameMode === 'multi' && (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              )}
             </Button>
           </div>
         )}
+        </div>
+        {/* End of scrollable content */}
       </div>
     </div>
   );

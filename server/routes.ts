@@ -553,7 +553,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status,
         teamId: teamId,
         requesterId: requesterId,
+        teamName: team?.name,
+        gameSessionId: team?.gameSessionId,
+        message: status === "accepted" ? `You've been accepted to ${team?.name}!` : "Your join request was ${status}"
       });
+      
+      // Also send teams_updated event to refresh the member's team list
+      if (status === "accepted" && team?.gameSessionId) {
+        sendToUser(requesterId, {
+          type: "teams_updated",
+          gameSessionId: team.gameSessionId
+        });
+      }
 
       res.json({ id, status });
     } catch (error) {
@@ -1487,9 +1498,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const hasOpponent = Boolean(battle.teamBCaptainId && battle.teamBName);
 
     // Get usernames for all team members
-    const getUserInfo = async (userId: number) => {
-      const user = await database.getUser(userId);
-      return user ? { userId, username: user.username } : null;
+    const getUserInfo = async (userId: number | any) => {
+      // Handle case where userId might be an object with an id property
+      const actualUserId = typeof userId === 'object' && userId !== null ? userId.id : userId;
+      
+      if (typeof actualUserId !== 'number') {
+        console.error(`[convertTeamBattleToTeams] Invalid userId:`, userId);
+        return null;
+      }
+      
+      const user = await database.getUser(actualUserId);
+      return user ? { userId: actualUserId, username: user.username } : null;
     };
 
     // Team A (only if captain exists)
@@ -1502,7 +1521,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "captain" as const,
         joinedAt: battle.createdAt,
       });
-      for (const teammateId of battle.teamATeammates || []) {
+      
+      // Handle teammates - they might be objects or numbers
+      const teammates = battle.teamATeammates || [];
+      console.log(`[convertTeamBattleToTeams] Battle ${battle.id} Team A teammates:`, teammates);
+      
+      for (const teammateId of teammates) {
         const userInfo = await getUserInfo(teammateId);
         if (userInfo) {
           teamAMembers.push({
@@ -1548,7 +1572,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "captain" as const,
         joinedAt: battle.createdAt,
       });
-      for (const teammateId of battle.teamBTeammates || []) {
+      
+      // Handle teammates - they might be objects or numbers
+      const teammates = battle.teamBTeammates || [];
+      console.log(`[convertTeamBattleToTeams] Battle ${battle.id} Team B teammates:`, teammates);
+      
+      for (const teammateId of teammates) {
         const userInfo = await getUserInfo(teammateId);
         if (userInfo) {
           teamBMembers.push({
@@ -1742,7 +1771,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(allAvailableTeams);
     } catch (err) {
       console.error("Failed to fetch available teams:", err);
-      res.status(500).json({ message: "Failed to fetch available teams" });
+      if (err instanceof Error) {
+        console.error("Error stack:", err.stack);
+      }
+      res.status(500).json({ message: "Failed to fetch available teams", error: err instanceof Error ? err.message : String(err) });
     }
   });
 

@@ -205,14 +205,50 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           }
 
           case "join_request_updated": {
+            console.log("[Socket] join_request_updated:", data);
+
+            // Invalidate join requests
             queryClient.invalidateQueries({
               queryKey: ["/api/team-join-requests"],
             });
+
+            // Invalidate teams for the session
             if (wsSessionId) {
               queryClient.invalidateQueries({
                 queryKey: ["/api/teams", wsSessionId],
               });
             }
+
+            // Invalidate available teams (removes from Join as Member list)
+            queryClient.invalidateQueries({
+              queryKey: ["/api/teams/available"],
+            });
+
+            // If accepted, show success message and update session
+            if (data.status === "accepted" && data.gameSessionId) {
+              toast({
+                title: "Join Request Accepted!",
+                description:
+                  data.message || `You've been accepted to the team!`,
+              });
+
+              // Update game session to the team's session
+              if (data.gameSessionId !== gameSessionId) {
+                setGameSessionId(data.gameSessionId);
+              }
+
+              // Invalidate teams for the new session
+              queryClient.invalidateQueries({
+                queryKey: ["/api/teams", data.gameSessionId],
+              });
+            } else if (data.status === "rejected") {
+              toast({
+                title: "Join Request Rejected",
+                description: "Your request to join the team was rejected.",
+                variant: "destructive",
+              });
+            }
+
             break;
           }
 
@@ -513,6 +549,58 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       offJoinRequestCreatedToast();
     };
   }, [user?.id, teams, toast, gameSessionId, queryClient, open]);
+
+  // Listen for when member's join request is accepted
+  useEffect(() => {
+    if (!open || !user) return;
+
+    const offJoinRequestAccepted = onEvent(
+      "join_request_updated",
+      (data: any) => {
+        console.log("[Member Join Accepted] Event received:", data);
+
+        // Only handle if this is for the current user and request was accepted
+        if (data.requesterId === user.id && data.status === "accepted") {
+          console.log("[Member Join Accepted] User's request was accepted!");
+
+          // Show success toast
+          toast({
+            title: "✅ Joined Team!",
+            description:
+              data.message ||
+              `You've been accepted to ${data.teamName || "the team"}!`,
+          });
+
+          // Update to the team's game session
+          if (data.gameSessionId && data.gameSessionId !== gameSessionId) {
+            console.log(
+              "[Member Join Accepted] Switching to game session:",
+              data.gameSessionId
+            );
+            setGameSessionId(data.gameSessionId);
+          }
+
+          // Invalidate all team-related queries
+          queryClient.invalidateQueries({ queryKey: ["/api/teams/available"] });
+          queryClient.invalidateQueries({
+            queryKey: ["/api/team-join-requests"],
+          });
+          if (data.gameSessionId) {
+            queryClient.invalidateQueries({
+              queryKey: ["/api/teams", data.gameSessionId],
+            });
+          }
+
+          // Switch to the main team view (not join-as-member)
+          setCurrentStage("invite-teammates");
+        }
+      }
+    );
+
+    return () => {
+      offJoinRequestAccepted();
+    };
+  }, [open, user, gameSessionId, toast, queryClient, setGameSessionId]);
 
   // Check if opponent has accepted (2 teams exist)
   const opponentAccepted = teams.length >= 2;

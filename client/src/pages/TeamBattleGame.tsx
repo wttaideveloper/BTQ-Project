@@ -131,34 +131,16 @@ export default function TeamBattleGame() {
     params.get("gameSessionId") ??
     params.get("gameSession");
 
-  // Log for debugging
-  console.log("TeamBattleGame - URL params:", {
-    search,
-    session: params.get("session"),
-    gameSessionId: params.get("gameSessionId"),
-    gameSession: params.get("gameSession"),
-    finalGameSessionId: gameSessionId,
-  });
-
   useEffect(() => {
     if (!user) {
-      console.log("TeamBattleGame - No user, redirecting to home");
       setLocation("/");
       return;
     }
 
     if (!gameSessionId) {
-      console.log("TeamBattleGame - No gameSessionId, redirecting to home");
       setLocation("/");
       return;
     }
-
-    console.log(
-      "TeamBattleGame - Setting up WebSocket for user:",
-      user.id,
-      "session:",
-      gameSessionId
-    );
 
     // Setup WebSocket connection
     const socket = setupGameSocket(user.id);
@@ -451,7 +433,6 @@ export default function TeamBattleGame() {
   useEffect(() => {
     if (gameState.phase === "waiting") {
       const timeout = setTimeout(() => {
-        console.error("Game stuck in waiting phase for too long");
         toast({
           title: "Connection Issue",
           description: "Unable to connect to game. Please try again.",
@@ -580,11 +561,10 @@ export default function TeamBattleGame() {
         <div className="flex justify-center">
           <Button
             onClick={() => {
-              console.log("User clicked exit from waiting phase");
               try {
                 closeGameSocket();
               } catch (e) {
-                console.error("Error closing socket:", e);
+                // Silent error handling
               }
               setLocation("/");
             }}

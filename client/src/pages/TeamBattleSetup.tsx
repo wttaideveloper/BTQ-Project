@@ -234,37 +234,15 @@ const TeamBattleSetup: React.FC = () => {
   useEffect(() => {
     if (!user?.id) return;
 
-    console.log("[Join Request Toast] Setting up listener for user:", user.id);
-    console.log(
-      "[Join Request Toast] Current teams:",
-      teams.map((t: any) => ({
-        id: t.id,
-        captainId: t.captainId,
-        name: t.name,
-      }))
-    );
-
     const offJoinRequestCreatedToast = onEvent(
       "join_request_created",
       async (data: any) => {
-        console.log("[Join Request Toast] Event received:", data);
-        console.log("[Join Request Toast] Current user ID:", user?.id);
-        console.log("[Join Request Toast] Teams at event time:", teams.length);
-
         try {
           // First check: do we have the team in our current teams array?
           let team = teams.find((t: any) => t.id === data.teamId);
-          console.log(
-            "[Join Request Toast] Found team in local array:",
-            !!team
-          );
 
           // If not found, fetch fresh team data
           if (!team && data.teamId) {
-            console.log(
-              "[Join Request Toast] Fetching fresh team data for:",
-              data.teamId
-            );
             try {
               const res = await apiRequest(
                 "GET",
@@ -272,28 +250,14 @@ const TeamBattleSetup: React.FC = () => {
               );
               const freshTeams = await res.json();
               team = freshTeams.find((t: any) => t.id === data.teamId);
-              console.log("[Join Request Toast] Fresh team found:", !!team);
             } catch (err) {
-              console.error(
-                "[Join Request Toast] Failed to fetch fresh teams:",
-                err
-              );
+              // Silent error handling
             }
           }
 
           const isCaptain = team && team.captainId === user?.id;
-          console.log(
-            "[Join Request Toast] Is user captain?",
-            isCaptain,
-            "(captainId:",
-            team?.captainId,
-            "userId:",
-            user?.id,
-            ")"
-          );
 
           if (isCaptain) {
-            console.log("[Join Request Toast] ✅ Showing toast for captain");
             toast({
               title: "New Join Request",
               description: `${data.requesterUsername} requested to join ${team.name}`,
@@ -301,9 +265,6 @@ const TeamBattleSetup: React.FC = () => {
             debouncedRefetch();
           } else if (data.teamId) {
             // Show generic toast even if team not found yet
-            console.log(
-              "[Join Request Toast] ⚠️ Showing generic toast (team might not be loaded yet)"
-            );
             toast({
               title: "New Join Request",
               description: `${data.requesterUsername} wants to join your team`,
@@ -311,12 +272,11 @@ const TeamBattleSetup: React.FC = () => {
             debouncedRefetch();
           }
         } catch (err) {
-          console.error("[Join Request Toast] Error in handler:", err);
+          // Silent error handling
         }
       }
     );
     return () => {
-      console.log("[Join Request Toast] Cleaning up listener");
       offJoinRequestCreatedToast();
     };
   }, [user?.id, teams, toast, debouncedRefetch, gameSessionId]);

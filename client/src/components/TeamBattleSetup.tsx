@@ -115,7 +115,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // CRITICAL: Reset all state when modal closes to prevent stale data
   useEffect(() => {
     if (!open) {
-      console.log("🧹 Modal closed - resetting all team battle state");
       // Clear gameSessionId
       setGameSessionId(null);
       // Clear ready status
@@ -178,35 +177,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           }
 
           case "join_request_created": {
-            // Enhanced debug logging for join request created event
-            console.log("[Socket] join_request_created event received:", data);
-            console.log(
-              "[Socket] Current gameSessionId:",
-              gameSessionId,
-              "Event gameSessionId:",
-              data.gameSessionId
-            );
-
             // Only invalidate if the event belongs to current game session
             // or if no gameSessionId is provided (backward compatibility)
             if (!data.gameSessionId || data.gameSessionId === gameSessionId) {
-              console.log(
-                "[Socket] Invalidating join requests for current session"
-              );
               queryClient.invalidateQueries({
                 queryKey: ["/api/team-join-requests"],
               });
-            } else {
-              console.log(
-                `[Socket] Ignoring join request from different session ${data.gameSessionId}`
-              );
             }
             break;
           }
 
           case "join_request_updated": {
-            console.log("[Socket] join_request_updated:", data);
-
             // Invalidate join requests
             queryClient.invalidateQueries({
               queryKey: ["/api/team-join-requests"],
@@ -396,16 +377,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const { data: teams = [], refetch: refetchTeams } = useQuery<Team[]>({
     queryKey: ["/api/teams", gameSessionId],
     queryFn: async () => {
-      console.log(
-        `[Teams Query] Fetching teams for gameSessionId=${gameSessionId}`
-      );
       if (!gameSessionId) return [];
       const res = await apiRequest(
         "GET",
         `/api/teams?gameSessionId=${gameSessionId}`
       );
       const data = await res.json();
-      console.log(`[Teams Query] Received ${data.length} teams:`, data);
       return data;
     },
     enabled: open && !!user && !!gameSessionId,
@@ -424,13 +401,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const { data: allAvailableTeams = [] } = useQuery<Team[]>({
     queryKey: ["/api/teams/available"],
     queryFn: async () => {
-      console.log("🔄 Fetching available teams...");
       const res = await apiRequest("GET", "/api/teams/available");
       const data = await res.json();
-      console.log(
-        `📥 Received ${data.length} available teams:`,
-        data.map((t: any) => `${t.name} (session: ${t.gameSessionId})`)
-      );
       return data;
     },
     enabled: open && !!user,
@@ -455,38 +427,15 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   useEffect(() => {
     if (!user?.id || !open) return;
 
-    console.log(
-      "[Component Join Request Toast] Setting up listener for user:",
-      user.id
-    );
-
     const offJoinRequestCreatedToast = onEvent(
       "join_request_created",
       async (data: any) => {
-        console.log("[Component Join Request Toast] Event received:", data);
-        console.log(
-          "[Component Join Request Toast] Current user ID:",
-          user?.id
-        );
-        console.log(
-          "[Component Join Request Toast] Teams at event time:",
-          teams.length
-        );
-
         try {
           // First check: do we have the team in our current teams array?
           let team = teams.find((t: any) => t.id === data.teamId);
-          console.log(
-            "[Component Join Request Toast] Found team in local array:",
-            !!team
-          );
 
           // If not found, fetch fresh team data
           if (!team && data.teamId && gameSessionId) {
-            console.log(
-              "[Component Join Request Toast] Fetching fresh team data for:",
-              data.teamId
-            );
             try {
               const res = await apiRequest(
                 "GET",
@@ -494,33 +443,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               );
               const freshTeams = await res.json();
               team = freshTeams.find((t: any) => t.id === data.teamId);
-              console.log(
-                "[Component Join Request Toast] Fresh team found:",
-                !!team
-              );
             } catch (err) {
-              console.error(
-                "[Component Join Request Toast] Failed to fetch fresh teams:",
-                err
-              );
+              // Silent error handling
             }
           }
 
           const isCaptain = team && team.captainId === user?.id;
-          console.log(
-            "[Component Join Request Toast] Is user captain?",
-            isCaptain,
-            "(captainId:",
-            team?.captainId,
-            "userId:",
-            user?.id,
-            ")"
-          );
 
           if (isCaptain && team) {
-            console.log(
-              "[Component Join Request Toast] ✅ Showing toast for captain"
-            );
             toast({
               title: "New Join Request",
               description: `${data.requesterUsername} requested to join ${team.name}`,
@@ -530,9 +460,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             });
           } else if (data.teamId) {
             // Show generic toast even if team not found yet
-            console.log(
-              "[Component Join Request Toast] ⚠️ Showing generic toast (team might not be loaded yet)"
-            );
             toast({
               title: "New Join Request",
               description: `${data.requesterUsername} wants to join your team`,
@@ -542,15 +469,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             });
           }
         } catch (err) {
-          console.error(
-            "[Component Join Request Toast] Error in handler:",
-            err
-          );
+          // Silent error handling
         }
       }
     );
     return () => {
-      console.log("[Component Join Request Toast] Cleaning up listener");
       offJoinRequestCreatedToast();
     };
   }, [user?.id, teams, toast, gameSessionId, queryClient, open]);
@@ -562,12 +485,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     const offJoinRequestAccepted = onEvent(
       "join_request_updated",
       (data: any) => {
-        console.log("[Member Join Accepted] Event received:", data);
-
         // Only handle if this is for the current user and request was accepted
         if (data.requesterId === user.id && data.status === "accepted") {
-          console.log("[Member Join Accepted] User's request was accepted!");
-
           // Show success toast
           toast({
             title: "✅ Joined Team!",
@@ -578,10 +497,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           // Update to the team's game session
           if (data.gameSessionId && data.gameSessionId !== gameSessionId) {
-            console.log(
-              "[Member Join Accepted] Switching to game session:",
-              data.gameSessionId
-            );
             setGameSessionId(data.gameSessionId);
           }
 
@@ -591,10 +506,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             queryKey: ["/api/team-join-requests"],
           });
           if (data.gameSessionId) {
-            console.log(
-              "[Member Join Accepted] Invalidating teams query for gameSessionId:",
-              data.gameSessionId
-            );
             queryClient.invalidateQueries({
               queryKey: ["/api/teams", data.gameSessionId],
             });
@@ -621,20 +532,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   // When countdown finishes, move everyone into the team battle game screen
   useEffect(() => {
-    console.log(
-      `[Navigation Check] countdown=${countdown}, hasNavigatedToGame=${hasNavigatedToGame}, gameSessionId=${gameSessionId}, userTeam=`,
-      userTeam
-    );
-    console.log(`[Navigation Check] teams=`, teams);
-    console.log(`[Navigation Check] user.id=`, user?.id);
-
     // Navigate when countdown reaches 0
     // Check if user is in ANY team (captain or member)
     const isInAnyTeam = teams?.some((team: Team) =>
       team.members.some((member: TeamMember) => member.userId === user?.id)
     );
-
-    console.log(`[Navigation Check] isInAnyTeam=${isInAnyTeam}`);
 
     if (
       countdown === 0 &&
@@ -642,19 +544,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       gameSessionId &&
       isInAnyTeam
     ) {
-      console.log(
-        `[Navigation] ✅ Navigating to game! gameSessionId=${gameSessionId}`
-      );
       setHasNavigatedToGame(true);
       onClose();
       setLocation(`/team-battle-game?gameSessionId=${gameSessionId}`);
-    } else if (countdown === 0 && !hasNavigatedToGame) {
-      console.warn(`[Navigation] ❌ Navigation blocked:`, {
-        gameSessionId: !!gameSessionId,
-        isInAnyTeam,
-        teamsCount: teams?.length,
-        userId: user?.id,
-      });
     }
   }, [
     countdown,
@@ -1138,15 +1030,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const { data: joinRequests = [] } = useQuery<TeamJoinRequest[]>({
     queryKey: ["/api/team-join-requests"],
     queryFn: async () => {
-      console.log(
-        `[TeamBattleSetup] Fetching ALL join requests for current user`
-      );
       const res = await apiRequest("GET", "/api/team-join-requests");
       const raw = await res.json();
-      console.log(
-        `[TeamBattleSetup] Received ${raw.length} join requests:`,
-        raw
-      );
 
       // Normalize from snake_case to camelCase
       const normalized = (Array.isArray(raw) ? raw : []).map((jr: any) => {
@@ -1158,10 +1043,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         const createdAt = jr.createdAt ?? jr.created_at;
         const expiresAt =
           jr.expiresAt ?? jr.expires_at ?? jr.expires_at_ms ?? null;
-
-        console.log(
-          `  [JR ${jr.id}] ${requesterUsername} -> ${teamId} (status: ${status})`
-        );
 
         return {
           id: jr.id,
@@ -1176,9 +1057,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
       // Only return pending requests (backend should already filter, but double-check)
       const pending = normalized.filter((jr: any) => jr.status === "pending");
-      console.log(
-        `[TeamBattleSetup] Showing ${pending.length} pending join requests`
-      );
       return pending;
     },
     enabled: open && !!user,
@@ -1282,18 +1160,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         t.status === "forming" &&
         !t.members?.some((m: TeamMember) => m.userId === user?.id)
     );
-
-    if (currentStage === "join-as-member" && filtered.length > 0) {
-      console.log(
-        "👥 Available teams for join:",
-        filtered.map(
-          (t: Team) =>
-            `${t.name} (${t.members?.length || 0}/3 members, session: ${
-              t.gameSessionId
-            })`
-        )
-      );
-    }
 
     return filtered;
   }, [teams, allAvailableTeams, currentStage, user]);
@@ -1589,20 +1455,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   ? readyStatus.teamBReady
                   : false
                 : false;
-              console.log(
-                `[TeamBattleSetup] Rendering team: ${team.name}, teamId: ${team.id}`
-              );
-              console.log(
-                `[TeamBattleSetup] All join requests for this session (${
-                  joinRequests?.length || 0
-                }):`,
-                joinRequests?.map((jr) => ({
-                  id: jr.id,
-                  requester: jr.requesterUsername,
-                  teamId: jr.teamId,
-                  status: jr.status,
-                }))
-              );
               return (
                 <TeamDisplay
                   key={team.id}

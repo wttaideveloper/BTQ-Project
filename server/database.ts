@@ -3002,6 +3002,84 @@ class PostgreSQLDatabase implements IDatabase {
     }
   }
 
+  async getAllJoinRequests(): Promise<any[]> {
+    try {
+      const sql = postgres(connectionString);
+      const rows = await sql`SELECT * FROM team_join_request ORDER BY created_at DESC`;
+      await sql.end();
+      return rows;
+    } catch (error) {
+      console.error("Error getAllJoinRequests:", error);
+      return [];
+    }
+  }
+
+  async getJoinRequestsForCaptain(captainId: number): Promise<any[]> {
+    try {
+      console.log(`[DB] getJoinRequestsForCaptain: Getting ALL join requests for captain ${captainId}`);
+      
+      const sql = postgres(connectionString);
+      
+      // Get ALL forming battles where user is captain (no session filter)
+      const battles = await sql`
+        SELECT * FROM team_battles 
+        WHERE (team_a_captain_id = ${captainId} OR team_b_captain_id = ${captainId})
+        AND status = 'forming'
+      `;
+      
+      console.log(`[DB] Found ${battles.length} forming battles for captain ${captainId}`);
+      
+      // Build team IDs for teams where user is captain
+      const teamIds: string[] = [];
+      for (const battle of battles) {
+        if (battle.team_a_captain_id === captainId) {
+          teamIds.push(`${battle.id}-team-a`);
+        }
+        if (battle.team_b_captain_id === captainId) {
+          teamIds.push(`${battle.id}-team-b`);
+        }
+      }
+      
+      console.log(`[DB] Team IDs for captain:`, teamIds);
+      
+      if (teamIds.length === 0) {
+        console.log(`[DB] No teams found, returning empty`);
+        await sql.end();
+        return [];
+      }
+      
+      // Get PENDING join requests that haven't expired
+      // Use server time for expiry check to avoid timezone issues
+      const joinRequests = await sql`
+        SELECT 
+          id,
+          team_id,
+          requester_id,
+          requester_username,
+          status,
+          created_at,
+          expires_at,
+          EXTRACT(EPOCH FROM expires_at) * 1000 as expires_at_ms
+        FROM team_join_request 
+        WHERE team_id = ANY(${teamIds})
+        AND status = 'pending'
+        AND expires_at > NOW()
+        ORDER BY created_at DESC
+      `;
+      
+      console.log(`[DB] Found ${joinRequests.length} valid join requests`);
+      joinRequests.forEach(jr => {
+        console.log(`  - ${jr.id}: ${jr.requester_username} -> ${jr.team_id} (expires: ${jr.expires_at})`);
+      });
+      
+      await sql.end();
+      return joinRequests;
+    } catch (error) {
+      console.error("[DB] Error getJoinRequestsForCaptain:", error);
+      return [];
+    }
+  }
+
   async createJoinRequest(teamId: string, requesterId: number, requesterUsername: string, expiresAt: Date): Promise<any> {
     const id = `jr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {

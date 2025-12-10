@@ -751,14 +751,17 @@ const TeamBattleSetup: React.FC = () => {
       .filter((t: Team) => t.captainId === user?.id)
       .map((t: Team) => t.id);
   }, [teams, user?.id]);
+
+  // Note: Backend already filters join requests for active teams where user is captain
+  // Frontend just uses the data directly without additional filtering
+  const validJoinRequests = joinRequests;
+
   const debugPendingForMyTeams = useMemo(() => {
     const ids = new Set(debugMyCaptainTeams);
-    return (joinRequests || []).filter(
+    return (validJoinRequests || []).filter(
       (jr: any) => jr.status === "pending" && ids.has(jr.teamId)
     );
-  }, [joinRequests, debugMyCaptainTeams]);
-
-  // Floating debug toggle for easy access
+  }, [validJoinRequests, debugMyCaptainTeams]); // Floating debug toggle for easy access
   const DebugToggle = () => (
     <div className="fixed bottom-4 right-4 z-50">
       <Button
@@ -820,7 +823,9 @@ const TeamBattleSetup: React.FC = () => {
             <br />• Online Users: {onlineUsers.length}
             <br />• Teams: {teams.length}
             <br />• Invitations: {invitations.length}
-            <br />• Join Requests: {joinRequests.length}
+            <br />• Join Requests: {validJoinRequests.length} (total:{" "}
+            {joinRequests.length}, filtered:{" "}
+            {joinRequests.length - validJoinRequests.length})
             <br />• User ID: {user?.id}
             <br />• Session ID: {gameSessionId}
             <br />
@@ -888,18 +893,20 @@ const TeamBattleSetup: React.FC = () => {
                   </AlertDescription>
                 </Alert>
               )}
-              {joinRequests.filter(
+              {validJoinRequests.filter(
                 (jr: TeamJoinRequest) => jr.status === "pending"
               ).length === 0 ? (
                 <p className="text-sm text-gray-600">No pending requests.</p>
               ) : (
                 <div className="space-y-3">
-                  {joinRequests
+                  {validJoinRequests
                     .filter((jr: TeamJoinRequest) => jr.status === "pending")
                     .map((jr: TeamJoinRequest) => {
+                      // Backend already filters to only return join requests for teams where user is captain
+                      // So we can directly display all returned join requests
                       const team = teams.find((t: Team) => t.id === jr.teamId);
-                      const isMyTeam = team && team.captainId === user?.id;
-                      if (!isMyTeam) return null;
+                      const teamName = team?.name || "Unknown Team";
+
                       const expiresLabel = jr.expiresAt
                         ? `Expires in ${Math.max(
                             0,
@@ -920,7 +927,7 @@ const TeamBattleSetup: React.FC = () => {
                               {jr.requesterUsername}
                             </div>
                             <div className="text-sm text-gray-600">
-                              Requested to join "{team?.name}"{" "}
+                              Requested to join "{teamName}"{" "}
                               {expiresLabel && `• ${expiresLabel}`}
                             </div>
                           </div>
@@ -1072,12 +1079,22 @@ const TeamBattleSetup: React.FC = () => {
                   </pre>
                 </div>
                 <div className="space-y-2">
-                  <div className="font-semibold">Join Requests (raw)</div>
-                  <pre className="bg-gray-100 p-2 rounded overflow-auto">
+                  <div className="font-semibold">
+                    Join Requests (raw - {joinRequests.length})
+                  </div>
+                  <pre className="bg-gray-100 p-2 rounded overflow-auto max-h-40">
                     {JSON.stringify(joinRequests, null, 2)}
                   </pre>
-                  <div className="font-semibold">Pending For My Teams</div>
-                  <pre className="bg-gray-100 p-2 rounded overflow-auto">
+                  <div className="font-semibold">
+                    Join Requests (filtered - {validJoinRequests.length})
+                  </div>
+                  <pre className="bg-green-100 p-2 rounded overflow-auto max-h-40">
+                    {JSON.stringify(validJoinRequests, null, 2)}
+                  </pre>
+                  <div className="font-semibold">
+                    Pending For My Teams ({debugPendingForMyTeams.length})
+                  </div>
+                  <pre className="bg-yellow-100 p-2 rounded overflow-auto max-h-40">
                     {JSON.stringify(debugPendingForMyTeams, null, 2)}
                   </pre>
                 </div>

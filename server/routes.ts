@@ -107,6 +107,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint to cleanup old battles and join requests - Any authenticated user can clean their own battles
+  app.post("/api/debug/cleanup-battles", ensureAuthenticated, async (req, res) => {
+    try {
+      const connectionString = process.env.DATABASE_URL!;
+      const sql = postgres(connectionString);
+      
+      const deleteAll = req.body?.deleteAll === true; // Optional: delete ALL forming battles
+      
+      let staleBattles;
+      if (deleteAll) {
+        // Delete ALL forming battles (for testing)
+        staleBattles = await sql`
+          DELETE FROM team_battles 
+          WHERE status = 'forming'
+          RETURNING id, team_a_name, team_b_name, created_at
+        `;
+        console.log(`🗑️  Deleted ALL ${staleBattles.length} forming battles`);
+      } else {
+        // Delete only stale battles (forming >30 minutes)
+        staleBattles = await sql`
+          DELETE FROM team_battles 
+          WHERE status = 'forming' 
+          AND created_at < NOW() - INTERVAL '30 minutes'
+          RETURNING id, team_a_name, team_b_name, created_at
+        `;
+        console.log(`🗑️  Deleted ${staleBattles.length} stale battles (>30 min)`);
+      }
+      
+      // Delete expired join requests
+      const expiredRequests = await sql`
+        DELETE FROM team_join_request 
+        WHERE expires_at < NOW()
+        RETURNING id
+      `;
+      
+      // Delete old join requests (>1 hour) OR orphaned requests (team doesn't exist)
+      const allRequests = await sql`SELECT * FROM team_join_request`;
+      const allBattles = await sql`SELECT id FROM team_battles WHERE status = 'forming'`;
+      const validTeamIds = new Set();
+      allBattles.forEach((b: any) => {
+        validTeamIds.add(`${b.id}-team-a`);
+        validTeamIds.add(`${b.id}-team-b`);
+      });
+      
+      const orphanedIds = allRequests
+        .filter((r: any) => !validTeamIds.has(r.team_id))
+        .map((r: any) => r.id);
+      
+      let orphanedRequests = [];
+      if (orphanedIds.length > 0) {
+        orphanedRequests = await sql`
+          DELETE FROM team_join_request 
+          WHERE id = ANY(${orphanedIds})
+          RETURNING id
+        `;
+      }
+      
+      await sql.end();
+      
+      res.json({
+        message: deleteAll ? "Deleted ALL forming battles" : "Cleanup completed successfully",
+        deleted: {
+          expiredRequests: expiredRequests.length,
+          orphanedRequests: orphanedRequests.length,
+          staleBattles: staleBattles.length,
+          battles: staleBattles.map(b => `${b.team_a_name} vs ${b.team_b_name || 'NO OPPONENT'} (created ${new Date(b.created_at).toLocaleString()})`)
+        }
+      });
+    } catch (error) {
+      console.error("Cleanup failed:", error);
+      res.status(500).json({
+        message: "Cleanup failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Debug endpoint to cleanup invalid questions - Admin only
   app.post("/api/debug/cleanup-questions", ensureAdmin, async (req, res) => {
     try {
@@ -274,47 +351,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // GET - Fetch join requests for current user
+  // Get join requests for teams where user is captain (similar to team invitations)
   app.get("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      console.log('[GET /api/team-join-requests] user:', user?.id, user?.username);
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
 
-      // Get all teams where current user is captain
-      const myTeams = await database.getTeamsByCaptain(user.id);
-      console.log('[GET /api/team-join-requests] myTeams:', myTeams.map((t:any)=>t.id));
-
-      // Get join requests for each team
-      const incomingArrays = await Promise.all(
-        myTeams.map((t: any) => database.getJoinRequestsByTeam(t.id))
-      );
-      const incoming = incomingArrays.flat();
-
-      console.log('[GET /api/team-join-requests] incoming count:', incoming.length);
-      console.log('[GET /api/team-join-requests] incoming team_ids:', incoming.map((r:any)=>r.team_id||r.teamId));
-
-      // CRITICAL FIX: Filter join requests to ensure they match actual team IDs
-      // This prevents the mismatch issue where join requests have wrong team IDs
-      const validJoinRequests = incoming.filter((request: any) => {
-        // Check if this join request's teamId matches any of the captain's actual team IDs
-        const matchesTeam = myTeams.some((team: any) => {
-          const requestTeamId = request.teamId || request.team_id;
-          const teamId = team.id;
-          return requestTeamId === teamId;
-        });
-
-        console.log(`[GET /api/team-join-requests] Join request ${request.id}: teamId=${request.teamId}, matches=${matchesTeam}`);
-        return matchesTeam;
-      });
-
-      console.log('[GET /api/team-join-requests] valid join requests after filtering:', validJoinRequests.length);
-      console.log('[GET /api/team-join-requests] valid team_ids:', validJoinRequests.map((r:any)=>r.team_id||r.teamId));
-
-      // FIX: Only return incoming requests that match actual team IDs
-      // This ensures captains only see join requests for their actual teams
-      res.json(validJoinRequests);
-    } catch (error) {
-      console.error("Error getJoinRequestsByUser:", error);
-      res.status(500).json({ message: "Failed to fetch join requests" });
+      const userId = req.user.id;
+      
+      console.log(`[GET /api/team-join-requests] Fetching ALL join requests for captain ${userId}`);
+      
+      const joinRequests = await database.getJoinRequestsForCaptain(userId);
+      
+      console.log(`[GET /api/team-join-requests] Returning ${joinRequests.length} join requests`);
+      console.log(`[GET /api/team-join-requests] Response:`, JSON.stringify(joinRequests.map(jr => ({
+        id: jr.id,
+        team_id: jr.team_id,
+        requester: jr.requester_username || jr.requesterUsername,
+        status: jr.status
+      })), null, 2));
+      
+      res.json(joinRequests);
+    } catch (err) {
+      console.error("Failed to fetch team join requests:", err);
+      res.status(500).json({ message: "Failed to fetch team join requests" });
     }
   });
 
@@ -361,14 +422,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.log('[POST /api/team-join-requests] No existing requests');
 
-      console.log('[POST /api/team-join-requests] Step 6: Creating request with 60s expiry');
+      console.log('[POST /api/team-join-requests] Step 6: Creating request with 5min expiry');
       // CRITICAL FIX: Use the actual team.id (from database) instead of the input teamId
       // This ensures the join request is created with the correct team ID that matches the database
       const actualTeamId = team.id;
       console.log('[POST /api/team-join-requests] Using actual team ID:', actualTeamId);
 
-      // Create join request with 60 second expiry
-      const expiresAt = new Date(Date.now() + 60000);
+      // Create join request with 5 minute expiry (increased from 60s to handle timezone issues)
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
       const joinRequest = await database.createJoinRequest(
         actualTeamId,  // ✅ FIX: Use the correct team ID
         user.id,

@@ -194,7 +194,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 "[Socket] Invalidating join requests for current session"
               );
               queryClient.invalidateQueries({
-                queryKey: ["/api/team-join-requests", gameSessionId],
+                queryKey: ["/api/team-join-requests"],
               });
             } else {
               console.log(
@@ -206,7 +206,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "join_request_updated": {
             queryClient.invalidateQueries({
-              queryKey: ["/api/team-join-requests", gameSessionId],
+              queryKey: ["/api/team-join-requests"],
             });
             if (wsSessionId) {
               queryClient.invalidateQueries({
@@ -485,7 +485,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               description: `${data.requesterUsername} requested to join ${team.name}`,
             });
             queryClient.invalidateQueries({
-              queryKey: ["/api/team-join-requests", gameSessionId],
+              queryKey: ["/api/team-join-requests"],
             });
           } else if (data.teamId) {
             // Show generic toast even if team not found yet
@@ -497,7 +497,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               description: `${data.requesterUsername} wants to join your team`,
             });
             queryClient.invalidateQueries({
-              queryKey: ["/api/team-join-requests", gameSessionId],
+              queryKey: ["/api/team-join-requests"],
             });
           }
         } catch (err) {
@@ -1001,45 +1001,54 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     });
   };
 
-  // Join-as-member: fetch available teams and manage join requests
+  // Join-as-member: fetch ALL join requests for current user's teams
   const { data: joinRequests = [] } = useQuery<TeamJoinRequest[]>({
-    queryKey: ["/api/team-join-requests", gameSessionId],
+    queryKey: ["/api/team-join-requests"],
     queryFn: async () => {
-      if (!gameSessionId) return [];
       console.log(
-        `[TeamBattleSetup] Fetching join requests for session: ${gameSessionId}`
+        `[TeamBattleSetup] Fetching ALL join requests for current user`
       );
-      const res = await apiRequest(
-        "GET",
-        `/api/team-join-requests?gameSessionId=${gameSessionId}`
-      );
+      const res = await apiRequest("GET", "/api/team-join-requests");
       const raw = await res.json();
-      console.log(`[TeamBattleSetup] Raw join requests response:`, raw);
-      const now = Date.now();
-      const normalized = (Array.isArray(raw) ? raw : []).map((jr: any) => ({
-        id: jr.id,
-        teamId: jr.teamId ?? jr.team_id,
-        requesterId: jr.requesterId ?? jr.requester_id,
-        requesterUsername:
-          jr.requesterUsername ?? jr.requester_username ?? "Unknown",
-        status: jr.status,
-        createdAt: jr.createdAt ?? jr.created_at,
-        expiresAt: jr.expiresAt ?? jr.expires_at ?? null,
-      }));
-      const filtered = normalized.filter((jr: any) => {
-        if (jr.status !== "pending") return true;
-        if (!jr.expiresAt) return true;
-        const exp = new Date(jr.expiresAt).getTime();
-        return isNaN(exp) ? true : exp > now;
-      });
-      console.log(`[TeamBattleSetup] Filtered join requests:`, filtered);
       console.log(
-        `[TeamBattleSetup] Join request team IDs:`,
-        filtered.map((jr) => jr.teamId)
+        `[TeamBattleSetup] Received ${raw.length} join requests:`,
+        raw
       );
-      return filtered;
+
+      // Normalize from snake_case to camelCase
+      const normalized = (Array.isArray(raw) ? raw : []).map((jr: any) => {
+        const teamId = jr.teamId ?? jr.team_id;
+        const requesterId = jr.requesterId ?? jr.requester_id;
+        const requesterUsername =
+          jr.requesterUsername ?? jr.requester_username ?? "Unknown";
+        const status = jr.status;
+        const createdAt = jr.createdAt ?? jr.created_at;
+        const expiresAt =
+          jr.expiresAt ?? jr.expires_at ?? jr.expires_at_ms ?? null;
+
+        console.log(
+          `  [JR ${jr.id}] ${requesterUsername} -> ${teamId} (status: ${status})`
+        );
+
+        return {
+          id: jr.id,
+          teamId,
+          requesterId,
+          requesterUsername,
+          status,
+          createdAt,
+          expiresAt,
+        };
+      });
+
+      // Only return pending requests (backend should already filter, but double-check)
+      const pending = normalized.filter((jr: any) => jr.status === "pending");
+      console.log(
+        `[TeamBattleSetup] Showing ${pending.length} pending join requests`
+      );
+      return pending;
     },
-    enabled: open && !!user && !!gameSessionId,
+    enabled: open && !!user,
     refetchInterval: 3000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
@@ -1058,7 +1067,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         description: "Your request was sent to the team leader.",
       });
       queryClient.invalidateQueries({
-        queryKey: ["/api/team-join-requests", gameSessionId],
+        queryKey: ["/api/team-join-requests"],
       });
     },
     onError: (error: any) => {
@@ -1082,7 +1091,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     onSuccess: () => {
       toast({ title: "Cancelled", description: "Join request cancelled." });
       queryClient.invalidateQueries({
-        queryKey: ["/api/team-join-requests", gameSessionId],
+        queryKey: ["/api/team-join-requests"],
       });
     },
   });
@@ -1102,7 +1111,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     onSuccess: () => {
       toast({ title: "Updated", description: "Join request updated." });
       queryClient.invalidateQueries({
-        queryKey: ["/api/team-join-requests", gameSessionId],
+        queryKey: ["/api/team-join-requests"],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/teams/available"] });
       if (gameSessionId) {
@@ -1450,6 +1459,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               console.log(
                 `[TeamBattleSetup] Rendering team: ${team.name}, teamId: ${team.id}`
               );
+              console.log(
+                `[TeamBattleSetup] All join requests for this session (${
+                  joinRequests?.length || 0
+                }):`,
+                joinRequests?.map((jr) => ({
+                  id: jr.id,
+                  requester: jr.requesterUsername,
+                  teamId: jr.teamId,
+                  status: jr.status,
+                }))
+              );
               return (
                 <TeamDisplay
                   key={team.id}
@@ -1466,30 +1486,19 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   isUserTeam={isUserTeam}
                   isReady={isTeamReady}
                   joinRequests={(joinRequests || []).filter((jr) => {
-                    // Debug logging to understand the team ID mismatch
-                    console.log(
-                      `[TeamBattleSetup] Checking join request ${jr.id}: teamId=${jr.teamId}, currentTeamId=${team.id}`
-                    );
-
-                    // Fix: Match join requests to teams by comparing the base team ID
-                    // Extract the base ID from both formats and compare
-                    const joinRequestBaseId = jr.teamId?.replace(
-                      /-team-[ab]$/i,
-                      ""
-                    );
-                    const teamBaseId = team.id?.replace(/-team-[ab]$/i, "");
+                    // Backend already filters to only return join requests for teams
+                    // where the current user is captain, so we just need to match exact teamId
+                    const matches = jr.teamId === team.id;
 
                     console.log(
-                      `[TeamBattleSetup] Base IDs: joinRequest=${joinRequestBaseId}, team=${teamBaseId}, match=${
-                        joinRequestBaseId === teamBaseId
-                      }`
+                      `[TeamBattleSetup] Join request ${jr.id}:`,
+                      `\n  jr.teamId="${jr.teamId}"`,
+                      `\n  team.id="${team.id}"`,
+                      `\n  matches=${matches}`,
+                      `\n  jr.requesterUsername="${jr.requesterUsername}"`,
+                      `\n  team.name="${team.name}"`
                     );
-
-                    // Also try direct comparison as fallback
-                    const directMatch = jr.teamId === team.id;
-                    const baseMatch = joinRequestBaseId === teamBaseId;
-
-                    return directMatch || baseMatch;
+                    return matches;
                   })}
                   onAcceptJoinRequest={(jrId) =>
                     respondToJoinRequestMutation.mutate({

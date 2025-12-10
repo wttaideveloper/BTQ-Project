@@ -396,12 +396,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const { data: teams = [], refetch: refetchTeams } = useQuery<Team[]>({
     queryKey: ["/api/teams", gameSessionId],
     queryFn: async () => {
+      console.log(
+        `[Teams Query] Fetching teams for gameSessionId=${gameSessionId}`
+      );
       if (!gameSessionId) return [];
       const res = await apiRequest(
         "GET",
         `/api/teams?gameSessionId=${gameSessionId}`
       );
-      return await res.json();
+      const data = await res.json();
+      console.log(`[Teams Query] Received ${data.length} teams:`, data);
+      return data;
     },
     enabled: open && !!user && !!gameSessionId,
     refetchInterval: 2000,
@@ -586,7 +591,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             queryKey: ["/api/team-join-requests"],
           });
           if (data.gameSessionId) {
+            console.log(
+              "[Member Join Accepted] Invalidating teams query for gameSessionId:",
+              data.gameSessionId
+            );
             queryClient.invalidateQueries({
+              queryKey: ["/api/teams", data.gameSessionId],
+            });
+
+            // Force refetch to ensure data is fresh
+            queryClient.refetchQueries({
               queryKey: ["/api/teams", data.gameSessionId],
             });
           }
@@ -607,16 +621,47 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   // When countdown finishes, move everyone into the team battle game screen
   useEffect(() => {
-    if (countdown === 0 && !hasNavigatedToGame && gameSessionId && userTeam) {
+    console.log(
+      `[Navigation Check] countdown=${countdown}, hasNavigatedToGame=${hasNavigatedToGame}, gameSessionId=${gameSessionId}, userTeam=`,
+      userTeam
+    );
+    console.log(`[Navigation Check] teams=`, teams);
+    console.log(`[Navigation Check] user.id=`, user?.id);
+
+    // Navigate when countdown reaches 0
+    // Check if user is in ANY team (captain or member)
+    const isInAnyTeam = teams?.some((team: Team) =>
+      team.members.some((member: TeamMember) => member.userId === user?.id)
+    );
+
+    console.log(`[Navigation Check] isInAnyTeam=${isInAnyTeam}`);
+
+    if (
+      countdown === 0 &&
+      !hasNavigatedToGame &&
+      gameSessionId &&
+      isInAnyTeam
+    ) {
+      console.log(
+        `[Navigation] ✅ Navigating to game! gameSessionId=${gameSessionId}`
+      );
       setHasNavigatedToGame(true);
       onClose();
       setLocation(`/team-battle-game?gameSessionId=${gameSessionId}`);
+    } else if (countdown === 0 && !hasNavigatedToGame) {
+      console.warn(`[Navigation] ❌ Navigation blocked:`, {
+        gameSessionId: !!gameSessionId,
+        isInAnyTeam,
+        teamsCount: teams?.length,
+        userId: user?.id,
+      });
     }
   }, [
     countdown,
     hasNavigatedToGame,
     gameSessionId,
-    userTeam,
+    teams,
+    user,
     onClose,
     setLocation,
   ]);

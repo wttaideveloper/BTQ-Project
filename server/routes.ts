@@ -14,6 +14,23 @@ import fs from "fs";
 import path from "path";
 import { log } from "./vite";
 
+/**
+ * Helper function to extract user IDs from teammates array.
+ * Teammates can be stored as numbers or objects {id, username}.
+ */
+function extractTeammateIds(teammates: any[] | undefined): number[] {
+  if (!teammates) return [];
+  return teammates
+    .map(teammate => {
+      if (typeof teammate === 'number') return teammate;
+      if (typeof teammate === 'object' && teammate !== null && typeof teammate.id === 'number') {
+        return teammate.id;
+      }
+      return null;
+    })
+    .filter((id): id is number => id !== null);
+}
+
 // ElevenLabs API configuration
 const ELEVENLABS_API_KEY =
   process.env.ELEVENLABS_API_KEY ||
@@ -1821,8 +1838,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const participantIds = new Set<number>();
         participantIds.add(updatedBattle.teamACaptainId);
         if (updatedBattle.teamBCaptainId) participantIds.add(updatedBattle.teamBCaptainId);
-        for (const id of updatedBattle.teamATeammates || []) participantIds.add(id);
-        for (const id of updatedBattle.teamBTeammates || []) participantIds.add(id);
+        for (const id of extractTeammateIds(updatedBattle.teamATeammates)) participantIds.add(id);
+        for (const id of extractTeammateIds(updatedBattle.teamBTeammates)) participantIds.add(id);
 
         for (const userId of Array.from(participantIds)) {
           sendToUser(userId, {
@@ -1871,7 +1888,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user is a member of this team
       const isCaptain = (teamSide === "A" ? battle.teamACaptainId : battle.teamBCaptainId) === userId;
       const teammates = teamSide === "A" ? battle.teamATeammates : battle.teamBTeammates;
-      const isTeammate = teammates?.includes(userId) || false;
+      const teammateIds = extractTeammateIds(teammates);
+      const isTeammate = teammateIds.includes(userId);
 
       if (!isCaptain && !isTeammate) {
         return res.status(403).json({ message: "You are not a member of this team" });
@@ -1894,8 +1912,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const participantIds = new Set<number>();
           if (battle.teamACaptainId) participantIds.add(battle.teamACaptainId);
           if (battle.teamBCaptainId) participantIds.add(battle.teamBCaptainId);
-          for (const id of battle.teamATeammates || []) participantIds.add(id);
-          for (const id of battle.teamBTeammates || []) participantIds.add(id);
+          for (const id of extractTeammateIds(battle.teamATeammates)) participantIds.add(id);
+          for (const id of extractTeammateIds(battle.teamBTeammates)) participantIds.add(id);
 
           for (const participantId of Array.from(participantIds)) {
             if (participantId !== userId) {
@@ -1937,7 +1955,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const teams = await convertTeamBattleToTeams(updatedBattle);
           const participantIds = new Set<number>();
           if (updatedBattle.teamACaptainId) participantIds.add(updatedBattle.teamACaptainId);
-          for (const id of updatedBattle.teamATeammates || []) participantIds.add(id);
+          for (const id of extractTeammateIds(updatedBattle.teamATeammates)) participantIds.add(id);
 
           for (const participantId of Array.from(participantIds)) {
             if (participantId !== userId) {
@@ -1966,7 +1984,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } else {
         // Teammate leaving - remove from the list
-        const updatedTeammates = teammates?.filter(id => id !== userId) || [];
+        const teammateIds = extractTeammateIds(teammates);
+        const updatedTeammates = teammateIds.filter(id => id !== userId);
         const updates: any = {};
         if (teamSide === "A") {
           updates.teamATeammates = updatedTeammates;
@@ -1981,8 +2000,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const participantIds = new Set<number>();
         if (updatedBattle.teamACaptainId) participantIds.add(updatedBattle.teamACaptainId);
         if (updatedBattle.teamBCaptainId) participantIds.add(updatedBattle.teamBCaptainId);
-        for (const id of updatedBattle.teamATeammates || []) participantIds.add(id);
-        for (const id of updatedBattle.teamBTeammates || []) participantIds.add(id);
+        for (const id of extractTeammateIds(updatedBattle.teamATeammates)) participantIds.add(id);
+        for (const id of extractTeammateIds(updatedBattle.teamBTeammates)) participantIds.add(id);
 
         for (const participantId of Array.from(participantIds)) {
           if (participantId !== userId) {
@@ -2359,8 +2378,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const teamSide = invitation.teamSide;
             const currentTeammates =
               teamSide === "A" ? battle.teamATeammates : battle.teamBTeammates;
+            const currentTeammateIds = extractTeammateIds(currentTeammates);
 
-            if (currentTeammates.length >= 2) {
+            if (currentTeammateIds.length >= 2) {
               return res.status(400).json({
                 message: "Team is already full (3 members including captain)",
               });
@@ -2369,9 +2389,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Update the battle with new teammate
             const updates: Partial<any> = {};
             if (teamSide === "A") {
-              updates.teamATeammates = [...currentTeammates, req.user!.id];
+              updates.teamATeammates = [...currentTeammateIds, req.user!.id];
             } else {
-              updates.teamBTeammates = [...currentTeammates, req.user!.id];
+              updates.teamBTeammates = [...currentTeammateIds, req.user!.id];
             }
 
             const updatedBattle = await database.updateTeamBattle(

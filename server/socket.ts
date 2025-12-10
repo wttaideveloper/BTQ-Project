@@ -12,6 +12,23 @@ import {
   Notification,
 } from "@shared/schema";
 
+/**
+ * Helper function to extract user IDs from teammates array.
+ * Teammates can be stored as numbers or objects {id, username}.
+ */
+function extractTeammateIds(teammates: any[] | undefined): number[] {
+  if (!teammates) return [];
+  return teammates
+    .map(teammate => {
+      if (typeof teammate === 'number') return teammate;
+      if (typeof teammate === 'object' && teammate !== null && typeof teammate.id === 'number') {
+        return teammate.id;
+      }
+      return null;
+    })
+    .filter((id): id is number => id !== null);
+}
+
 interface Client {
   id: string;
   ws: WebSocket;
@@ -329,8 +346,8 @@ export function setupWebSocketServer(server: Server) {
                 const participantIds = new Set<number>();
                 if (battle.teamACaptainId) participantIds.add(battle.teamACaptainId);
                 if (battle.teamBCaptainId) participantIds.add(battle.teamBCaptainId);
-                for (const id of battle.teamATeammates || []) participantIds.add(id);
-                for (const id of battle.teamBTeammates || []) participantIds.add(id);
+                for (const id of extractTeammateIds(battle.teamATeammates)) participantIds.add(id);
+                for (const id of extractTeammateIds(battle.teamBTeammates)) participantIds.add(id);
 
                 for (const userId of Array.from(participantIds)) {
                   if (userId !== client.userId) {
@@ -354,7 +371,7 @@ export function setupWebSocketServer(server: Server) {
                 // Notify remaining participants
                 const participantIds = new Set<number>();
                 participantIds.add(battle.teamACaptainId);
-                for (const id of battle.teamATeammates || []) participantIds.add(id);
+                for (const id of extractTeammateIds(battle.teamATeammates)) participantIds.add(id);
 
                 for (const userId of Array.from(participantIds)) {
                   sendToUser(userId, {
@@ -369,16 +386,16 @@ export function setupWebSocketServer(server: Server) {
                 }
               } else {
                 // Regular teammate disconnected - remove from their team
-                const isTeamAMember = battle.teamATeammates?.includes(client.userId);
-                const isTeamBMember = battle.teamBTeammates?.includes(client.userId);
+                const isTeamAMember = extractTeammateIds(battle.teamATeammates).includes(client.userId);
+                const isTeamBMember = extractTeammateIds(battle.teamBTeammates).includes(client.userId);
 
                 if (isTeamAMember) {
-                  const updatedTeammates = battle.teamATeammates?.filter(id => id !== client.userId) || [];
+                  const updatedTeammates = extractTeammateIds(battle.teamATeammates).filter(id => id !== client.userId);
                   updatedBattle = await database.updateTeamBattle(battle.id, {
                     teamATeammates: updatedTeammates,
                   });
                 } else if (isTeamBMember) {
-                  const updatedTeammates = battle.teamBTeammates?.filter(id => id !== client.userId) || [];
+                  const updatedTeammates = extractTeammateIds(battle.teamBTeammates).filter(id => id !== client.userId);
                   updatedBattle = await database.updateTeamBattle(battle.id, {
                     teamBTeammates: updatedTeammates,
                   });
@@ -388,8 +405,8 @@ export function setupWebSocketServer(server: Server) {
                 const participantIds = new Set<number>();
                 participantIds.add(battle.teamACaptainId);
                 if (battle.teamBCaptainId) participantIds.add(battle.teamBCaptainId);
-                for (const id of battle.teamATeammates || []) participantIds.add(id);
-                for (const id of battle.teamBTeammates || []) participantIds.add(id);
+                for (const id of extractTeammateIds(battle.teamATeammates)) participantIds.add(id);
+                for (const id of extractTeammateIds(battle.teamBTeammates)) participantIds.add(id);
 
                 for (const userId of Array.from(participantIds)) {
                   if (userId !== client.userId) {
@@ -891,7 +908,7 @@ async function getTeamsForTeamBattleSession(gameSessionId: string) {
       role: "captain" as const,
       joinedAt: battle.createdAt,
     });
-    for (const teammateId of battle.teamATeammates || []) {
+    for (const teammateId of extractTeammateIds(battle.teamATeammates)) {
       const info = await getUserInfo(teammateId);
       if (info) {
         teamAMembers.push({
@@ -931,7 +948,7 @@ async function getTeamsForTeamBattleSession(gameSessionId: string) {
         role: "captain" as const,
         joinedAt: battle.createdAt,
       });
-      for (const teammateId of battle.teamBTeammates || []) {
+      for (const teammateId of extractTeammateIds(battle.teamBTeammates)) {
         const info = await getUserInfo(teammateId);
         if (info) {
           teamBMembers.push({
@@ -3044,10 +3061,12 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
     if (battle.teamBCaptainId) {
       participantIds.add(battle.teamBCaptainId);
     }
-    for (const id of battle.teamATeammates || []) {
+    
+    // Add all teammates from both teams
+    for (const id of extractTeammateIds(battle.teamATeammates)) {
       participantIds.add(id);
     }
-    for (const id of battle.teamBTeammates || []) {
+    for (const id of extractTeammateIds(battle.teamBTeammates)) {
       participantIds.add(id);
     }
 

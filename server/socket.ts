@@ -170,7 +170,7 @@ export function listJoinRequestsForTeam(teamId: string): JoinRequest[] {
   return result;
 }
 
-export function createJoinRequest(teamId: string, requesterId: number, requesterUsername: string): JoinRequest {
+export function createJoinRequest(teamId: string, requesterId: number, requesterUsername: string, gameSessionId?: string): JoinRequest {
   const id = `jr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const expiresAt = Date.now() + 60_000;
   const jr: JoinRequest = {
@@ -183,14 +183,23 @@ export function createJoinRequest(teamId: string, requesterId: number, requester
     expiresAt,
   };
   joinRequests.set(id, jr);
-  broadcast({
+
+  // Create the broadcast payload with gameSessionId if provided
+  const broadcastPayload: GameEvent = {
     type: "join_request_created",
     teamId,
     requesterId,
     requesterUsername,
     joinRequestId: id,
     expiresAt: new Date(expiresAt),
-  });
+  };
+
+  // Add gameSessionId to payload if provided for session-specific filtering
+  if (gameSessionId) {
+    broadcastPayload.gameSessionId = gameSessionId;
+  }
+
+  broadcast(broadcastPayload);
   // auto-expire
   setTimeout(() => {
     const current = joinRequests.get(id);

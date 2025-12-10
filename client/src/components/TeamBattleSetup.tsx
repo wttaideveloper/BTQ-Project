@@ -178,16 +178,35 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           }
 
           case "join_request_created": {
-            // Reduce polling impact by refreshing requests
-            queryClient.invalidateQueries({
-              queryKey: ["/api/team-join-requests"],
-            });
+            // Enhanced debug logging for join request created event
+            console.log("[Socket] join_request_created event received:", data);
+            console.log(
+              "[Socket] Current gameSessionId:",
+              gameSessionId,
+              "Event gameSessionId:",
+              data.gameSessionId
+            );
+
+            // Only invalidate if the event belongs to current game session
+            // or if no gameSessionId is provided (backward compatibility)
+            if (!data.gameSessionId || data.gameSessionId === gameSessionId) {
+              console.log(
+                "[Socket] Invalidating join requests for current session"
+              );
+              queryClient.invalidateQueries({
+                queryKey: ["/api/team-join-requests", gameSessionId],
+              });
+            } else {
+              console.log(
+                `[Socket] Ignoring join request from different session ${data.gameSessionId}`
+              );
+            }
             break;
           }
 
           case "join_request_updated": {
             queryClient.invalidateQueries({
-              queryKey: ["/api/team-join-requests"],
+              queryKey: ["/api/team-join-requests", gameSessionId],
             });
             if (wsSessionId) {
               queryClient.invalidateQueries({
@@ -466,7 +485,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               description: `${data.requesterUsername} requested to join ${team.name}`,
             });
             queryClient.invalidateQueries({
-              queryKey: ["/api/team-join-requests"],
+              queryKey: ["/api/team-join-requests", gameSessionId],
             });
           } else if (data.teamId) {
             // Show generic toast even if team not found yet
@@ -478,7 +497,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               description: `${data.requesterUsername} wants to join your team`,
             });
             queryClient.invalidateQueries({
-              queryKey: ["/api/team-join-requests"],
+              queryKey: ["/api/team-join-requests", gameSessionId],
             });
           }
         } catch (err) {
@@ -984,29 +1003,44 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   // Join-as-member: fetch available teams and manage join requests
   const { data: joinRequests = [] } = useQuery<TeamJoinRequest[]>({
-    queryKey: ["/api/team-join-requests"],
+    queryKey: ["/api/team-join-requests", gameSessionId],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/team-join-requests");
+      if (!gameSessionId) return [];
+      console.log(
+        `[TeamBattleSetup] Fetching join requests for session: ${gameSessionId}`
+      );
+      const res = await apiRequest(
+        "GET",
+        `/api/team-join-requests?gameSessionId=${gameSessionId}`
+      );
       const raw = await res.json();
+      console.log(`[TeamBattleSetup] Raw join requests response:`, raw);
       const now = Date.now();
       const normalized = (Array.isArray(raw) ? raw : []).map((jr: any) => ({
         id: jr.id,
         teamId: jr.teamId ?? jr.team_id,
         requesterId: jr.requesterId ?? jr.requester_id,
-        requesterUsername: jr.requesterUsername ?? jr.requester_username,
+        requesterUsername:
+          jr.requesterUsername ?? jr.requester_username ?? "Unknown",
         status: jr.status,
         createdAt: jr.createdAt ?? jr.created_at,
         expiresAt: jr.expiresAt ?? jr.expires_at ?? null,
       }));
-      return normalized.filter((jr: any) => {
+      const filtered = normalized.filter((jr: any) => {
         if (jr.status !== "pending") return true;
         if (!jr.expiresAt) return true;
         const exp = new Date(jr.expiresAt).getTime();
         return isNaN(exp) ? true : exp > now;
       });
+      console.log(`[TeamBattleSetup] Filtered join requests:`, filtered);
+      return filtered;
     },
-    enabled: open && !!user,
+    enabled: open && !!user && !!gameSessionId,
     refetchInterval: 3000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const sendJoinRequestMutation = useMutation({
@@ -1019,7 +1053,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         title: "Join Request Sent",
         description: "Your request was sent to the team leader.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/team-join-requests", gameSessionId],
+      });
     },
     onError: (error: any) => {
       toast({
@@ -1041,7 +1077,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     },
     onSuccess: () => {
       toast({ title: "Cancelled", description: "Join request cancelled." });
-      queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/team-join-requests", gameSessionId],
+      });
     },
   });
 
@@ -1059,7 +1097,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     },
     onSuccess: () => {
       toast({ title: "Updated", description: "Join request updated." });
-      queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/team-join-requests", gameSessionId],
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/teams/available"] });
       if (gameSessionId) {
         queryClient.invalidateQueries({

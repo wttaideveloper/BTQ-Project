@@ -66,11 +66,7 @@ const TeamDisplay = ({
   const [isUpdating, setIsUpdating] = useState(false);
 
   const isCaptain = currentUserId ? team.captainId === currentUserId : false;
-  const canReady = Boolean(
-    onReady &&
-    isUserTeam &&
-    isCaptain
-  );
+  const canReady = Boolean(onReady && isUserTeam && isCaptain);
 
   const handleOpenEdit = () => {
     setEditedName(team.name);
@@ -84,7 +80,7 @@ const TeamDisplay = ({
 
   const handleSaveEdit = async () => {
     if (!editedName.trim() || !onUpdateTeamName) return;
-    
+
     setIsUpdating(true);
     try {
       await onUpdateTeamName(team.id, editedName.trim());
@@ -192,34 +188,63 @@ const TeamDisplay = ({
         </ul>
       </div>
 
+      {(() => {
+        console.log(
+          `[TeamDisplay] Team: ${team.name}, isCaptain: ${isCaptain}, joinRequests:`,
+          joinRequests
+        );
+        return null;
+      })()}
       {isCaptain && joinRequests?.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-gray-500 mb-2">Join Requests</h4>
+          <h4 className="text-sm font-medium text-gray-500 mb-2">
+            Join Requests
+          </h4>
           <ul className="space-y-2">
             {joinRequests
               .filter((jr) => jr.teamId === team.id && jr.status === "pending")
-              .map((jr) => (
-                <li key={jr.id} className="flex items-center justify-between p-2 bg-amber-50 rounded border border-amber-200">
-                  <span className="font-medium text-amber-900">{jr.requesterUsername}</span>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => onAcceptJoinRequest?.(jr.id)}
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onRejectJoinRequest?.(jr.id)}
-                      className="border-red-300 text-red-600 hover:bg-red-50"
-                    >
-                      Reject
-                    </Button>
-                  </div>
-                </li>
-              ))}
+              .map((jr) => {
+                console.log(
+                  `[TeamDisplay] Rendering join request for ${jr.requesterUsername}`
+                );
+                return (
+                  <li
+                    key={jr.id}
+                    className="flex items-center justify-between p-2 bg-amber-50 rounded border border-amber-200"
+                  >
+                    <span className="font-medium text-amber-900">
+                      {jr.requesterUsername}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          console.log(
+                            `[TeamDisplay] Accepting join request ${jr.id}`
+                          );
+                          onAcceptJoinRequest?.(jr.id);
+                        }}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        Accept
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          console.log(
+                            `[TeamDisplay] Rejecting join request ${jr.id}`
+                          );
+                          onRejectJoinRequest?.(jr.id);
+                        }}
+                        className="border-red-300 text-red-600 hover:bg-red-50"
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
           </ul>
         </div>
       )}
@@ -281,10 +306,7 @@ const TeamDisplay = ({
             </p>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowLeaveDialog(false)}
-            >
+            <Button variant="outline" onClick={() => setShowLeaveDialog(false)}>
               Cancel
             </Button>
             <Button

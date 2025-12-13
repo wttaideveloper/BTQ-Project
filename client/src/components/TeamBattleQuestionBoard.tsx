@@ -234,11 +234,12 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
                 </div>
 
                 {answerSuggestions.length > 0 && (
-                  <div className="absolute top-3 right-4 flex flex-wrap gap-2">
-                    {answerSuggestions.map((s) => (
+                  <div className="absolute top-3 right-2 sm:right-4 flex flex-wrap gap-1 sm:gap-2 max-w-[calc(100%-1rem)]">
+                    {answerSuggestions.slice(0, 3).map((s) => (
                       <span
                         key={s.userId}
-                        className="px-3 py-1 text-sm rounded-full bg-gradient-to-r from-blue-500 to-blue-700 text-white font-semibold shadow-lg"
+                        className="px-2 sm:px-3 py-0.5 sm:py-1 text-xs sm:text-sm rounded-full bg-gradient-to-r from-blue-500 to-blue-700 text-white font-semibold shadow-lg truncate max-w-16 sm:max-w-24"
+                        title={s.username}
                       >
                         {s.username}
                       </span>

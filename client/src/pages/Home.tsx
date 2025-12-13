@@ -177,8 +177,8 @@ const Home: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-secondary-dark font-heading">
       {/* Header with Auth Controls */}
-      <header className="relative w-full py-6 px-6">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
+      <header className="relative w-full py-5 px-4 sm:py-6 sm:px-6">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 sm:gap-4">
           {/* Logo */}
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
@@ -236,7 +236,7 @@ const Home: React.FC = () => {
       </header>
 
       {/* Hero Section */}
-      <section className="relative w-full py-16 px-6">
+      <section className="relative w-full py-10 px-4 sm:py-16 sm:px-6">
         <div className="max-w-7xl mx-auto text-center">
           {/* Animated Title */}
           <div
@@ -244,7 +244,7 @@ const Home: React.FC = () => {
               titleEffect ? "scale-105" : "scale-100"
             }`}
           >
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-6 tracking-tight">
+            <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-6 tracking-tight">
               Faith<span className="text-accent drop-shadow-lg">IQ</span>
             </h1>
             <div className="w-full max-w-2xl mx-auto h-2 bg-white/20 rounded-full overflow-hidden mb-6">
@@ -253,7 +253,7 @@ const Home: React.FC = () => {
                 style={{ width: "75%" }}
               ></div>
             </div>
-            <p className="text-xl md:text-2xl text-white/90 font-light max-w-3xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-xl md:text-2xl text-white/90 font-light max-w-3xl mx-auto leading-relaxed px-2">
               Test your Bible knowledge with the ultimate trivia experience
             </p>
           </div>
@@ -261,7 +261,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* Main Content */}
-      <main className="w-full max-w-7xl mx-auto px-6 py-12">
+      <main className="w-full max-w-7xl mx-auto px-4 py-8 sm:px-6 sm:py-12">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left Column - Game Options */}
           <div className="space-y-8">
@@ -538,7 +538,7 @@ const Home: React.FC = () => {
               <div className="space-y-4">
                 {/* Single Player Card */}
                 <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-accent/50 transition-all duration-300 hover:shadow-2xl hover:shadow-accent/20">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center space-x-4">
                       <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
                         <Play className="h-6 w-6 text-primary" />
@@ -598,7 +598,7 @@ const Home: React.FC = () => {
                     </div>
                     <Button
                       onClick={handleSinglePlayerStart}
-                      className="bg-accent hover:bg-accent/90 text-primary font-bold px-6 py-3"
+                      className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-primary font-bold px-6 py-3"
                     >
                       <Play className="mr-2 h-4 w-4" /> Start
                     </Button>
@@ -607,7 +607,7 @@ const Home: React.FC = () => {
 
                 {/* Multiplayer Card */}
                 <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-secondary/50 transition-all duration-300 hover:shadow-2xl hover:shadow-secondary/20">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center space-x-4">
                       <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center flex-shrink-0">
                         <Sword className="h-6 w-6 text-white" />
@@ -667,7 +667,7 @@ const Home: React.FC = () => {
                     </div>
                     <Button
                       onClick={handleMultiplayerStart}
-                      className="bg-secondary hover:bg-secondary/90 text-white font-bold px-6 py-3"
+                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-6 py-3"
                     >
                       <Sword className="mr-2 h-4 w-4" /> Play
                     </Button>
@@ -676,7 +676,7 @@ const Home: React.FC = () => {
 
                 {/* Team Battle Card */}
                 <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-secondary/50 transition-all duration-300 hover:shadow-2xl hover:shadow-secondary/20">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center space-x-4">
                       <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center flex-shrink-0">
                         <Sword className="h-6 w-6 text-white" />
@@ -735,7 +735,7 @@ const Home: React.FC = () => {
                     </div>
                     <Button
                       onClick={() => setShowTeamBattleSetup(true)}
-                      className="bg-secondary hover:bg-secondary/90 text-white font-bold px-6 py-3"
+                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-6 py-3"
                     >
                       <Sword className="mr-2 h-4 w-4" /> Enter Team Battle
                     </Button>

@@ -41,12 +41,12 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
       subtitle: "Your journey to biblical knowledge starts here...",
       content: (
         <div className="text-center space-y-4">
-          <div className="text-6xl mb-4">📖</div>
-          <p className="text-lg text-gray-700 leading-relaxed">
+          <div className="text-4xl sm:text-5xl lg:text-6xl mb-4">📖</div>
+          <p className="text-base sm:text-lg text-gray-700 leading-relaxed">
             Test your Bible knowledge with the ultimate trivia experience! Join
             thousands of players in this exciting journey through scripture.
           </p>
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <div className="bg-blue-50 p-3 sm:p-4 rounded-lg border border-blue-200">
             <p className="text-sm text-blue-800">
               <strong>Perfect for:</strong> Bible study groups, families,
               individuals, and anyone who loves learning about God's Word!
@@ -272,12 +272,12 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
       subtitle: "Your biblical adventure awaits",
       content: (
         <div className="text-center space-y-4 sm:space-y-6">
-          <div className="text-4xl sm:text-6xl">🎯</div>
+          <div className="text-3xl sm:text-4xl lg:text-6xl">🎯</div>
           <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white text-center p-4 sm:p-6 rounded-xl shadow-lg border border-blue-400/20">
-            <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-center">
+            <h3 className="text-base sm:text-lg lg:text-xl font-bold mb-3 sm:mb-4 text-center">
               Remember :
             </h3>
-            <ul className="space-y-2 sm:space-y-3 text-xs sm:text-sm max-w-md mx-auto">
+            <ul className="space-y-2 sm:space-y-3 text-xs sm:text-sm lg:text-base max-w-md mx-auto">
               <li className="text-center">
                 <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
                 <span className="leading-relaxed">
@@ -345,7 +345,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-full sm:w-[95vw] max-w-none sm:max-w-4xl max-h-[95vh] overflow-y-auto p-0 bg-white shadow-2xl border-2 border-accent/20 rounded-none sm:rounded-xl">
-        <DialogHeader className="p-4 sm:p-6 pb-3 sm:pb-4 pt-5 sm:pt-6 pr-12 sm:pr-16 border-b bg-gradient-to-r from-accent/5 to-accent/10">
+        <DialogHeader className="p-3 sm:p-5 pb-2 sm:pb-3 pt-4 sm:pt-5 pr-10 sm:pr-12 lg:pr-16 border-b bg-gradient-to-r from-accent/5 to-accent/10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <div className="flex-shrink-0">{currentTutorialStep.icon}</div>
@@ -365,22 +365,22 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
             {tutorialSteps.map((_, index) => (
               <div
                 key={index}
-                className={`h-2 sm:h-3 flex-1 rounded-full transition-all duration-300 ${
+                className={`h-1.5 sm:h-2 lg:h-3 flex-1 rounded-full transition-all duration-300 ${
                   index <= currentStep ? "bg-accent shadow-sm" : "bg-gray-200"
                 }`}
               />
             ))}
           </div>
-          <p className="text-xs sm:text-sm text-gray-500 text-center mt-2 sm:mt-3 font-medium">
+          <p className="text-xs sm:text-sm lg:text-base text-gray-500 text-center mt-2 sm:mt-3 font-medium">
             Step {currentStep + 1} of {tutorialSteps.length}
           </p>
         </DialogHeader>
 
-        <div className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto">
+        <div className="p-3 sm:p-5 lg:p-8 flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto">{currentTutorialStep.content}</div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 sm:p-6 pt-3 sm:pt-4 border-t bg-gradient-to-r from-gray-50 to-gray-100">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-3 sm:p-5 pt-2 sm:pt-3 lg:p-6 lg:pt-4 border-t bg-gradient-to-r from-gray-50 to-gray-100">
           <Button
             variant="outline"
             onClick={prevStep}

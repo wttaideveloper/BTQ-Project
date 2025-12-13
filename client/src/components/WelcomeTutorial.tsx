@@ -61,8 +61,8 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
       subtitle: "Find the perfect way to play",
       content: (
         <div className="space-y-4 sm:space-y-6">
-          <div className="grid gap-3 sm:gap-4">
-            <Card className="border-green-200 bg-green-50 hover:shadow-md transition-shadow">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <Card className="border-green-200 bg-green-50 hover:shadow-md transition-shadow h-full">
               <CardContent className="p-3 sm:p-4">
                 <div className="flex items-start gap-3">
                   <div className="bg-green-100 p-2 rounded-lg flex-shrink-0">
@@ -87,7 +87,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
               </CardContent>
             </Card>
 
-            <Card className="border-purple-200 bg-purple-50 hover:shadow-md transition-shadow">
+            <Card className="border-purple-200 bg-purple-50 hover:shadow-md transition-shadow h-full">
               <CardContent className="p-3 sm:p-4">
                 <div className="flex items-start gap-3">
                   <div className="bg-purple-100 p-2 rounded-lg flex-shrink-0">
@@ -112,7 +112,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
               </CardContent>
             </Card>
 
-            <Card className="border-orange-200 bg-orange-50 hover:shadow-md transition-shadow">
+            <Card className="border-orange-200 bg-orange-50 hover:shadow-md transition-shadow h-full">
               <CardContent className="p-3 sm:p-4">
                 <div className="flex items-start gap-3">
                   <div className="bg-orange-100 p-2 rounded-lg flex-shrink-0">
@@ -145,8 +145,8 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
       subtitle: "Different ways to experience the game",
       content: (
         <div className="space-y-4 sm:space-y-6">
-          <div className="grid gap-3 sm:gap-4">
-            <Card className="border-blue-200 bg-blue-50 hover:shadow-md transition-shadow">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <Card className="border-blue-200 bg-blue-50 hover:shadow-md transition-shadow h-full">
               <CardContent className="p-3 sm:p-4">
                 <div className="flex items-start gap-3">
                   <div className="bg-blue-100 p-2 rounded-lg flex-shrink-0">
@@ -170,7 +170,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
               </CardContent>
             </Card>
 
-            <Card className="border-red-200 bg-red-50 hover:shadow-md transition-shadow">
+            <Card className="border-red-200 bg-red-50 hover:shadow-md transition-shadow h-full">
               <CardContent className="p-3 sm:p-4">
                 <div className="flex items-start gap-3">
                   <div className="bg-red-100 p-2 rounded-lg flex-shrink-0">
@@ -204,7 +204,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
       subtitle: "Make the game perfect for you",
       content: (
         <div className="space-y-3 sm:space-y-4">
-          <div className="grid gap-2 sm:gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
             <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-yellow-50 rounded-lg border border-yellow-200 hover:shadow-sm transition-shadow">
               <div className="bg-yellow-100 p-1.5 sm:p-2 rounded-lg flex-shrink-0">
                 <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
@@ -343,14 +343,14 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
   const currentTutorialStep = tutorialSteps[currentStep];
 
   return (
-    <Dialog open={isOpen} onOpenChange={() => {}}>
-      <DialogContent className="w-[95vw] max-w-4xl max-h-[95vh] overflow-y-auto p-0 bg-white shadow-2xl border-2 border-accent/20">
-        <DialogHeader className="p-4 sm:p-6 pb-3 sm:pb-4 border-b bg-gradient-to-r from-accent/5 to-accent/10">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="w-full sm:w-[95vw] max-w-none sm:max-w-4xl max-h-[95vh] overflow-y-auto p-0 bg-white shadow-2xl border-2 border-accent/20 rounded-none sm:rounded-xl">
+        <DialogHeader className="p-4 sm:p-6 pb-3 sm:pb-4 pt-5 sm:pt-6 pr-12 sm:pr-16 border-b bg-gradient-to-r from-accent/5 to-accent/10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <div className="flex-shrink-0">{currentTutorialStep.icon}</div>
               <div className="min-w-0 flex-1">
-                <DialogTitle className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate">
+                <DialogTitle className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate break-words">
                   {currentTutorialStep.title}
                 </DialogTitle>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1 hidden sm:block">
@@ -377,7 +377,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
         </DialogHeader>
 
         <div className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto">
-          <div className="max-w-none">{currentTutorialStep.content}</div>
+          <div className="max-w-3xl mx-auto">{currentTutorialStep.content}</div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-4 sm:p-6 pt-3 sm:pt-4 border-t bg-gradient-to-r from-gray-50 to-gray-100">
@@ -389,16 +389,16 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
             size="sm"
           >
             <ChevronLeft className="h-4 w-4" />
-            <span className="hidden xs:inline">Previous</span>
+            <span className="hidden sm:inline">Previous</span>
           </Button>
 
           <div className="flex gap-2 sm:gap-3 order-1 sm:order-2 flex-1 sm:flex-initial justify-center sm:justify-end">
             {currentStep === tutorialSteps.length - 1 ? (
               <>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   onClick={handleSkip}
-                  className="flex-1 sm:flex-initial text-xs sm:text-sm"
+                  className="flex-1 sm:flex-initial text-xs sm:text-sm shadow-sm focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                   size="sm"
                 >
                   Skip Tutorial
@@ -414,9 +414,9 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
             ) : (
               <div className="flex gap-3 sm:gap-4">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   onClick={handleSkip}
-                  className="text-xs sm:text-sm"
+                  className="text-xs sm:text-sm shadow-sm focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                   size="sm"
                 >
                   Skip Tutorial
@@ -426,7 +426,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
                   className="flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white shadow-md hover:shadow-lg transition-all duration-200 text-xs sm:text-sm"
                   size="sm"
                 >
-                  <span className="hidden xs:inline">Next</span>
+                  <span className="hidden sm:inline">Next</span>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>

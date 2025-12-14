@@ -633,6 +633,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.user as any;
       const teamId = req.params.id;
       const { userId } = req.body || {};
+
+      // Check if this is a team battle team (virtual team)
+      const teamIdParts = teamId.split("-team-");
+      if (teamIdParts.length === 2) {
+        // Handle team battle team
+        const battleId = teamIdParts[0];
+        const teamSide = teamIdParts[1].toLowerCase(); // "a" or "b"
+
+        if (teamSide !== "a" && teamSide !== "b") {
+          return res.status(400).json({ message: "Invalid team side" });
+        }
+
+        const battle = await database.getTeamBattle(battleId);
+        if (!battle) return res.status(404).json({ message: "Team battle not found" });
+
+        // Check if user is captain of this team
+        const isTeamACaptain = teamSide === "a" && battle.teamACaptainId === user.id;
+        const isTeamBCaptain = teamSide === "b" && battle.teamBCaptainId === user.id;
+        if (!isTeamACaptain && !isTeamBCaptain) {
+          return res.status(403).json({ message: "Forbidden - not team captain" });
+        }
+
+        if (battle.status !== "forming") {
+          return res.status(400).json({ message: "Cannot remove after battle starts" });
+        }
+
+        if (userId === user.id) {
+          return res.status(400).json({ message: "Captain cannot remove themselves" });
+        }
+
+        // Remove member from the appropriate team
+        const teammatesField = teamSide === "a" ? "teamATeammates" : "teamBTeammates";
+        const currentTeammates = battle[teammatesField] || [];
+        console.log(`[Backend] Removing member ${userId} from ${teamSide.toUpperCase()} team in battle ${battleId}`);
+        console.log(`[Backend] Current teammates:`, currentTeammates);
+        const updatedTeammates = currentTeammates.filter(teammate => {
+          const teammateId = typeof teammate === 'number' ? teammate : teammate.id;
+          return teammateId !== userId;
+        });
+        console.log(`[Backend] Updated teammates:`, updatedTeammates);
+
+        await database.updateTeamBattle(battleId, {
+          [teammatesField]: updatedTeammates
+        });
+        console.log(`[Backend] Database updated for battle ${battleId}`);
+
+        // Get updated battle to send fresh data
+        const updatedBattle = await database.getTeamBattle(battleId);
+        console.log(`[Backend] Updated battle teammates:`, updatedBattle.teamATeammates, updatedBattle.teamBTeammates);
+
+        // Notify all participants about the team update (don't fail if this errors)
+        try {
+          sendToGameSession(battle.gameSessionId, {
+            type: "teams_updated",
+            teams: await convertTeamBattleToTeams(updatedBattle),
+          });
+        } catch (notifyError) {
+          console.error("[Backend] Failed to send teams_updated notification:", notifyError);
+        }
+
+        // Notify removed user (don't fail if this errors)
+        try {
+          sendToUser(userId, {
+            type: "team_member_removed",
+            teamId,
+          });
+        } catch (notifyError) {
+          console.error("[Backend] Failed to send team_member_removed notification:", notifyError);
+        }
+
+        res.json({ ok: true, members: updatedTeammates });
+        console.log(`[Backend] Remove member response sent`);
+        return;
+      }
+
+      // Handle regular team (from teams table)
       const team = await database.getTeam(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
       if (team.captainId !== user.id) return res.status(403).json({ message: "Forbidden" });
@@ -1727,12 +1803,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/teams", ensureAuthenticated, async (req, res) => {
     try {
       const gameSessionId = req.query.gameSessionId as string;
+      console.log(`[Backend] GET /api/teams called for gameSessionId: ${gameSessionId}`);
       if (!gameSessionId) {
         return res.status(400).json({ message: "Game session ID required" });
       }
 
       const battles = await database.getTeamBattlesByGameSession(gameSessionId);
+      console.log(`[Backend] Found ${battles.length} battles for session ${gameSessionId}`);
       if (battles.length === 0) {
+        console.log(`[Backend] No battles found, returning empty array`);
         return res.json([]);
       }
 
@@ -1743,6 +1822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         allTeams.push(...teams);
       }
 
+      console.log(`[Backend] Returning ${allTeams.length} teams:`, allTeams.map(t => ({ id: t.id, name: t.name, membersCount: t.members.length })));
       res.json(allTeams);
     } catch (err) {
       console.error("Failed to fetch teams:", err);

@@ -60,6 +60,13 @@ const TeamDisplay = ({
   onRejectJoinRequest,
   onRemoveMember,
 }: TeamDisplayProps) => {
+  console.log(
+    "[TeamDisplay] Rendering for team:",
+    team.name,
+    "members:",
+    team.members.map((m) => m.username)
+  );
+
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [editedName, setEditedName] = useState(team.name);

@@ -176,6 +176,10 @@ export interface IDatabase {
     userId: number,
     status?: string
   ): Promise<TeamInvitation[]>;
+  getTeamInvitationsByBattle(
+    battleId: string,
+    invitationType?: string
+  ): Promise<TeamInvitation[]>;
   createTeamInvitation(invitation: TeamInvitation): Promise<TeamInvitation>;
   updateTeamInvitation(
     id: string,
@@ -1959,6 +1963,23 @@ class PostgreSQLDatabase implements IDatabase {
 
     if (status) {
       conditions.push(eq(teamInvitations.status, status as any));
+    }
+
+    const result = await db
+      .select()
+      .from(teamInvitations)
+      .where(and(...conditions));
+    return result as TeamInvitation[];
+  }
+
+  async getTeamInvitationsByBattle(
+    battleId: string,
+    invitationType?: string
+  ): Promise<TeamInvitation[]> {
+    let conditions = [eq(teamInvitations.teamBattleId, battleId)];
+
+    if (invitationType) {
+      conditions.push(eq(teamInvitations.invitationType, invitationType as any));
     }
 
     const result = await db

@@ -2381,6 +2381,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
             }
 
+            // 🔒 CRITICAL FIX: Check if Team B slot is already filled (first-come-first-serve)
+            if (existingBattle.teamBCaptainId || existingBattle.teamBName) {
+              console.log(
+                `❌ Team B already filled! Battle: ${existingBattle.id}, Team B Captain: ${existingBattle.teamBCaptainId}`
+              );
+
+              // Update this invitation to expired
+              await database.updateTeamInvitation(invitationId, {
+                status: "expired"
+              });
+
+              // Expire all other pending opponent invitations for this battle
+              const allPendingOpponentInvites = await database.getTeamInvitationsByBattle(
+                existingBattle.id,
+                "opponent"
+              );
+
+              for (const pendingInv of allPendingOpponentInvites) {
+                if (pendingInv.status === "pending") {
+                  await database.updateTeamInvitation(pendingInv.id, {
+                    status: "expired"
+                  });
+                }
+              }
+
+              return res.status(409).json({
+                message: "The opponent slot has already been filled by another player. This invitation has expired.",
+                error: "OPPONENT_SLOT_FILLED"
+              });
+            }
+
             // ✅ FIX: VERIFY Team A name is NOT overwritten - preserve it
             console.log(
               `📝 Preserving Team A Name: "${existingBattle.teamAName}"`
@@ -2405,6 +2436,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await database.updateTeamInvitation(invitationId, {
               teamBattleId: existingBattle.id,
             });
+
+            // 🔒 CRITICAL: Expire all other pending opponent invitations for this battle
+            // (First-come-first-serve: only first acceptor gets the opponent slot)
+            console.log(
+              `🔒 Expiring all other pending opponent invitations for battle: ${existingBattle.id}`
+            );
+            const allOpponentInvites = await database.getTeamInvitationsByBattle(
+              existingBattle.id,
+              "opponent"
+            );
+
+            for (const pendingInv of allOpponentInvites) {
+              if (pendingInv.id !== invitationId && pendingInv.status === "pending") {
+                await database.updateTeamInvitation(pendingInv.id, {
+                  status: "expired"
+                });
+
+                // Notify the user that their invitation expired
+                try {
+                  sendToUser(pendingInv.inviteeId, {
+                    type: "invitation_expired",
+                    message: `The opponent slot for ${existingBattle.teamAName} has been filled by another player.`,
+                    invitationId: pendingInv.id,
+                  });
+                } catch (wsError) {
+                  console.error("Error sending expiration notification:", wsError);
+                }
+              }
+            }
 
             // Notify the inviter that opponent accepted and team battle was created
             try {

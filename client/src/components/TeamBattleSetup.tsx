@@ -254,6 +254,23 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             break;
           }
 
+          case "invitation_expired": {
+            // Handle when an invitation expires because another player accepted first
+            console.log("[WebSocket] invitation_expired received", data);
+
+            // Invalidate invitations to update the UI
+            queryClient.invalidateQueries({
+              queryKey: ["/api/team-invitations"],
+            });
+
+            toast({
+              title: "Invitation Expired",
+              description: data.message || "This invitation has expired.",
+              variant: "destructive",
+            });
+            break;
+          }
+
           case "teams_updated":
           case "team_update": {
             console.log("[WebSocket] teams_updated received", data);
@@ -877,6 +894,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         `/api/team-invitations/${invitationId}`,
         payload
       );
+
+      // Check for conflict error (opponent slot already filled)
+      if (!res.ok) {
+        const errorData = await res.json();
+        if (errorData.error === "OPPONENT_SLOT_FILLED") {
+          throw new Error(
+            errorData.message || "The opponent slot has already been filled."
+          );
+        }
+        throw new Error(errorData.message || "Failed to respond to invitation");
+      }
+
       return await res.json();
     },
     onSuccess: async (data, variables) => {
@@ -967,11 +996,20 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setPendingResponseId(null);
     },
     onError: (error: any) => {
+      // Close team name dialog if open
+      setShowTeamNameDialog(false);
+      setPendingInvitationId(null);
+      setNewTeamName("");
+
       toast({
         title: "Error",
         description: error.message || "Failed to respond to invitation",
         variant: "destructive",
       });
+
+      // Refresh invitations to remove expired ones
+      queryClient.invalidateQueries({ queryKey: ["/api/team-invitations"] });
+
       setPendingResponseId(null);
     },
   });

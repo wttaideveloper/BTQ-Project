@@ -262,6 +262,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 setGameSessionId(wsSessionId);
               }
 
+              // Show notification toast if message provided
+              if (data.message) {
+                toast({
+                  title: "Team Update",
+                  description: data.message,
+                });
+              }
+
               // Always invalidate to ensure all clients refetch fresh data
               queryClient.invalidateQueries({
                 queryKey: ["/api/teams"],

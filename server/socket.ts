@@ -458,25 +458,73 @@ export function setupWebSocketServer(server: Server) {
                   });
                 }
 
-                // Notify remaining participants
-                const participantIds = new Set<number>();
-                participantIds.add(battle.teamACaptainId);
-                if (battle.teamBCaptainId) participantIds.add(battle.teamBCaptainId);
-                for (const id of extractTeammateIds(battle.teamATeammates)) participantIds.add(id);
-                for (const id of extractTeammateIds(battle.teamBTeammates)) participantIds.add(id);
+                // Separate same-team members from opposing team members
+                const sameTeamMemberIds = new Set<number>();
+                const opposingTeamMemberIds = new Set<number>();
 
-                for (const userId of Array.from(participantIds)) {
-                  if (userId !== client.userId) {
+                // Add Team A members
+                if (isTeamAMember) {
+                  sameTeamMemberIds.add(battle.teamACaptainId);
+                  for (const id of extractTeammateIds(battle.teamATeammates)) {
+                    if (id !== client.userId) sameTeamMemberIds.add(id);
+                  }
+                  // Team B members are opposing
+                  if (battle.teamBCaptainId) opposingTeamMemberIds.add(battle.teamBCaptainId);
+                  for (const id of extractTeammateIds(battle.teamBTeammates)) {
+                    opposingTeamMemberIds.add(id);
+                  }
+                } else if (isTeamBMember && battle.teamBCaptainId) {
+                  sameTeamMemberIds.add(battle.teamBCaptainId);
+                  for (const id of extractTeammateIds(battle.teamBTeammates)) {
+                    if (id !== client.userId) sameTeamMemberIds.add(id);
+                  }
+                  // Team A members are opposing
+                  opposingTeamMemberIds.add(battle.teamACaptainId);
+                  for (const id of extractTeammateIds(battle.teamATeammates)) {
+                    opposingTeamMemberIds.add(id);
+                  }
+                }
+
+                // For opposing team members:
+                // - If captain disconnects → show popup (opponent_disconnected)
+                // - If member disconnects → show toast (opponent_team_member_disconnected)
+                // Check if disconnected user is a captain
+                const isDisconnectedCaptain = (isTeamAMember && battle.teamACaptainId === client.userId) ||
+                  (isTeamBMember && battle.teamBCaptainId === client.userId);
+
+                for (const userId of Array.from(opposingTeamMemberIds)) {
+                  if (isDisconnectedCaptain) {
+                    // Captain disconnected from opponent team → show popup
                     sendToUser(userId, {
                       type: "opponent_disconnected",
                       gameSessionId: client.gameSessionId,
                       disconnectedPlayerName: client.playerName || 'A player',
                       disconnectedTeamName: isTeamAMember ? (battle.teamAName || 'Team A') : (isTeamBMember ? (battle.teamBName || 'Team B') : 'Unknown'),
-                      message: `⚠️ ${client.playerName || 'A player'} has disconnected from team setup.`,
+                      message: `⚠️ ${client.playerName || 'A player'} (Captain) has disconnected from team setup.`,
                       severity: "warning",
                       timestamp: new Date(),
                     });
+                  } else {
+                    // Member disconnected from opponent team → show toast (not popup)
+                    sendToUser(userId, {
+                      type: "opponent_team_member_disconnected",
+                      gameSessionId: client.gameSessionId,
+                      disconnectedPlayerName: client.playerName || 'A player',
+                      disconnectedTeamName: isTeamAMember ? (battle.teamAName || 'Team A') : (isTeamBMember ? (battle.teamBName || 'Team B') : 'Unknown'),
+                      message: `${client.playerName || 'A player'} from team "${isTeamAMember ? (battle.teamAName || 'Team A') : (battle.teamBName || 'Team B')}" has disconnected from team setup.`,
+                    });
                   }
+                }
+
+                // Send "teammate_disconnected" to same-team members (simple toast, not popup)
+                for (const userId of Array.from(sameTeamMemberIds)) {
+                  sendToUser(userId, {
+                    type: "teammate_disconnected",
+                    gameSessionId: client.gameSessionId,
+                    disconnectedPlayerName: client.playerName || 'A player',
+                    teamName: isTeamAMember ? (battle.teamAName || 'Team A') : (battle.teamBName || 'Team B'),
+                    message: `${client.playerName || 'A player'} has left your team.`,
+                  });
                 }
               }
 
@@ -2817,26 +2865,59 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
     // Get updated teams after removal
     const updatedTeams = await getTeamsForTeamBattleSession(gameSessionId);
 
-    // Notify all other participants in the session about the disconnection
-    const participantIds = new Set<number>();
+    // Separate same-team members from opposing team members
+    const sameTeamMemberIds = new Set<number>();
+    const opposingTeamMemberIds = new Set<number>();
+
     for (const team of updatedTeams) {
+      const isSameTeam = team.id === leavingTeam.id;
       for (const member of team.members) {
         if (member.userId !== userId) { // Don't notify the leaving user themselves
-          participantIds.add(member.userId);
+          if (isSameTeam) {
+            sameTeamMemberIds.add(member.userId);
+          } else {
+            opposingTeamMemberIds.add(member.userId);
+          }
         }
       }
     }
 
-    // Send notification to all other participants
-    for (const participantId of Array.from(participantIds)) {
+    // For opposing team members:
+    // - If captain disconnects → show popup (opponent_disconnected)
+    // - If member disconnects → show toast (opponent_team_member_disconnected)
+    for (const participantId of Array.from(opposingTeamMemberIds)) {
+      if (isCaptain) {
+        // Captain disconnected from opponent team → show popup
+        sendToUser(participantId, {
+          type: "opponent_disconnected",
+          gameSessionId: gameSessionId,
+          disconnectedPlayerName: username || client.playerName || "A player",
+          disconnectedTeamName: leavingTeam.name,
+          message: `⚠️ ${username || client.playerName || "A player"} (Captain) from team "${leavingTeam.name}" has disconnected from team setup.`,
+          severity: "warning",
+          timestamp: new Date(),
+        });
+      } else {
+        // Member disconnected from opponent team → show toast (not popup)
+        sendToUser(participantId, {
+          type: "opponent_team_member_disconnected",
+          gameSessionId: gameSessionId,
+          disconnectedPlayerName: username || client.playerName || "A player",
+          disconnectedTeamName: leavingTeam.name,
+          message: `${username || client.playerName || "A player"} from team "${leavingTeam.name}" has disconnected from team setup.`,
+        });
+      }
+    }
+
+    // For same-team members, send a simple teammate_disconnected event (or just rely on teams_updated)
+    // This will show a toast notification instead of the full popup
+    for (const participantId of Array.from(sameTeamMemberIds)) {
       sendToUser(participantId, {
-        type: "opponent_disconnected",
+        type: "teammate_disconnected",
         gameSessionId: gameSessionId,
         disconnectedPlayerName: username || client.playerName || "A player",
-        disconnectedTeamName: leavingTeam.name,
-        message: `⚠️ ${username || client.playerName || "A player"} from team "${leavingTeam.name}" has disconnected from team setup.`,
-        severity: "warning",
-        timestamp: new Date(),
+        teamName: leavingTeam.name,
+        message: `${username || client.playerName || "A player"} has left your team.`,
       });
     }
 

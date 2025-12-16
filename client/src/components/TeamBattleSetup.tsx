@@ -345,15 +345,39 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             break;
           }
 
-          case "opponent_team_member_disconnected": {
-            // Handle team member disconnection during active battle
+          case "teammate_disconnected": {
+            // Handle when a teammate (same team) disconnects - show simple toast, not popup
             toast({
-              title: "Team Member Disconnected",
+              title: "Teammate Disconnected",
               description:
                 data.message ||
-                `${data.disconnectedPlayerName} from ${data.disconnectedTeamName} has disconnected.`,
-              variant: "destructive",
+                `${data.disconnectedPlayerName} has left your team.`,
+              variant: "default",
             });
+            // Refresh teams data to reflect the disconnection
+            if (wsSessionId) {
+              queryClient.invalidateQueries({
+                queryKey: ["/api/teams", wsSessionId],
+              });
+            }
+            break;
+          }
+
+          case "opponent_team_member_disconnected": {
+            // Handle opponent team member disconnection (not captain) - show toast, not popup
+            toast({
+              title: "Opponent Team Member Disconnected",
+              description:
+                data.message ||
+                `${data.disconnectedPlayerName} from team "${data.disconnectedTeamName}" has disconnected.`,
+              variant: "default",
+            });
+            // Refresh teams data to reflect the disconnection
+            if (wsSessionId) {
+              queryClient.invalidateQueries({
+                queryKey: ["/api/teams", wsSessionId],
+              });
+            }
             break;
           }
 

@@ -212,7 +212,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 flex-grow">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 flex-grow min-w-0">
           {answers.map((answer, index) => {
             const answerSuggestions = getSuggestionsForAnswer(answer.id);
 
@@ -222,13 +222,13 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
                 type="button"
                 onClick={() => handleClick(answer.id)}
                 disabled={isQuestionLocked}
-                className="answer-button bg-primary hover:bg-primary/90 text-white font-medium py-3 sm:py-4 md:py-5 px-3 sm:px-5 md:px-6 rounded-xl flex flex-col items-stretch text-left gap-2"
+                className="answer-button bg-primary hover:bg-primary/90 text-white font-medium py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 rounded-xl flex flex-col items-stretch text-left gap-2 min-w-0 w-full relative"
               >
-                <div className="flex items-center">
-                  <span className="bg-accent text-primary font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md">
+                <div className="flex items-center min-w-0">
+                  <span className="bg-accent text-primary font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md flex-shrink-0">
                     {labels[index]}
                   </span>
-                  <span className="text-sm sm:text-base md:text-lg text-white line-clamp-2 sm:line-clamp-none flex-1">
+                  <span className="text-sm sm:text-base md:text-lg text-white line-clamp-2 sm:line-clamp-none flex-1 min-w-0 overflow-hidden">
                     {answer.text}
                   </span>
                 </div>
@@ -260,8 +260,8 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
         </div>
       </div>
 
-      <div className="bg-gradient-to-r from-secondary to-secondary-dark p-3 sm:p-4 md:p-5 flex flex-wrap sm:flex-nowrap justify-between items-center gap-3 sm:gap-2">
-        <div className="flex items-center">
+      <div className="bg-gradient-to-r from-secondary to-secondary-dark p-3 sm:p-4 md:p-5 flex flex-wrap sm:flex-nowrap justify-between items-center gap-3 sm:gap-2 min-w-0">
+        <div className="flex items-center min-w-0 flex-shrink">
           <span className="text-white font-bold mr-2 sm:mr-3 text-sm sm:text-base md:text-lg">
             TEAM SCORE:
           </span>

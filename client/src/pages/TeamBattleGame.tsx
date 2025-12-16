@@ -597,8 +597,8 @@ export default function TeamBattleGame() {
   };
 
   const renderWaitingPhase = () => (
-    <div className="max-w-xl mx-auto p-6">
-      <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
+    <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6 w-full min-w-0 overflow-x-hidden">
+      <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-8 sm:py-10 min-w-0">
         {/* Icon */}
         <div className="flex justify-center mb-6">
           <div className="h-20 w-20 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg">
@@ -634,7 +634,7 @@ export default function TeamBattleGame() {
               }
               setLocation("/");
             }}
-            className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 text-base font-semibold border-0"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 sm:px-6 md:px-8 py-3 text-sm sm:text-base font-semibold border-0 whitespace-nowrap w-full sm:w-auto"
           >
             Exit to Home
           </Button>
@@ -654,7 +654,7 @@ export default function TeamBattleGame() {
     );
 
     return (
-      <div className="max-w-5xl mx-auto p-6 relative bg-gradient-to-br from-secondary to-secondary-dark text-white">
+      <div className="max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative bg-gradient-to-br from-secondary to-secondary-dark text-white w-full min-w-0 overflow-x-hidden">
         <TeamBattleQuestionBoard
           question={{ id: question.id, text: question.text }}
           answers={question.answers.map((a) => ({ id: a.id, text: a.text }))}
@@ -905,7 +905,7 @@ export default function TeamBattleGame() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-primary-dark to-black text-white relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
         {/* Header with logo on left and controls on right */}
         <header className="flex items-center justify-between mb-4 gap-4">
           {/* Logo Section */}
@@ -919,7 +919,7 @@ export default function TeamBattleGame() {
           </div>
 
           {/* Controls Section */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
             {/* Pause/Resume Button */}
             <Button
               variant="outline"
@@ -1077,10 +1077,10 @@ export default function TeamBattleGame() {
             <div className="space-y-4">
               <Button
                 onClick={handleResume}
-                className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-4 text-lg rounded-xl"
+                className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 sm:py-4 text-base sm:text-lg rounded-xl min-w-0"
               >
-                <Play size={24} className="mr-3" />
-                Resume Game
+                <Play size={20} className="mr-2 sm:mr-3 flex-shrink-0" />
+                <span className="whitespace-nowrap">Resume Game</span>
               </Button>
 
               <Button
@@ -1106,10 +1106,10 @@ export default function TeamBattleGame() {
                   }
                   setLocation("/");
                 }}
-                className="w-full border-red-500/30 bg-red-600/20 text-red-400 hover:bg-red-600/30 hover:border-red-500/50 py-4 text-lg rounded-xl flex items-center gap-2 justify-center"
+                className="w-full border-red-500/30 bg-red-600/20 text-red-400 hover:bg-red-600/30 hover:border-red-500/50 py-3 sm:py-4 text-base sm:text-lg rounded-xl flex items-center gap-2 justify-center min-w-0"
               >
-                <X className="h-5 w-5" />
-                Leave Game
+                <X className="h-5 w-5 flex-shrink-0" />
+                <span className="whitespace-nowrap">Leave Game</span>
               </Button>
             </div>
           </div>

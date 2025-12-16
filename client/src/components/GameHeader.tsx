@@ -110,22 +110,22 @@ const GameHeader: React.FC<GameHeaderProps> = ({
   };
 
   return (
-    <div>
-      <header className="relative flex justify-between items-center mb-2 z-10">
-        <div className="flex items-center">
-          <h1 className="game-title text-3xl md:text-4xl font-heading font-bold text-primary">
+    <div className="w-full min-w-0 overflow-x-hidden">
+      <header className="relative flex flex-wrap justify-between items-center mb-2 z-10 gap-2 min-w-0 w-full">
+        <div className="flex items-center min-w-0 flex-shrink">
+          <h1 className="game-title text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-primary whitespace-nowrap">
             Faith<span className="text-accent">IQ</span>
           </h1>
-          <span className="ml-2 bg-accent text-primary px-2 py-1 rounded-md text-sm font-semibold">Bible Trivia</span>
+          <span className="ml-1 sm:ml-2 bg-accent text-primary px-1 sm:px-2 py-1 rounded-md text-xs sm:text-sm font-semibold whitespace-nowrap flex-shrink-0">Bible Trivia</span>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0 flex-wrap">
           {/* Timer for time-based games */}
           {gameType === 'time' && gameTimeRemaining !== undefined && (
-            <div className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 text-white px-3 py-1 rounded-full shadow-lg">
-              <Clock size={16} />
-              <span className="font-bold text-sm">{formatTime(gameTimeRemaining)}</span>
-              <div className="w-16 h-1 bg-white/30 rounded-full overflow-hidden">
+            <div className="flex items-center gap-1 sm:gap-2 bg-gradient-to-r from-orange-500 to-red-500 text-white px-2 sm:px-3 py-1 rounded-full shadow-lg flex-shrink-0">
+              <Clock size={14} className="sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="font-bold text-xs sm:text-sm whitespace-nowrap">{formatTime(gameTimeRemaining)}</span>
+              <div className="w-12 sm:w-16 h-1 bg-white/30 rounded-full overflow-hidden flex-shrink-0">
                 <div 
                   className="h-full bg-white transition-all duration-1000 ease-linear"
                   style={{ width: `${getTimeProgress()}%` }}

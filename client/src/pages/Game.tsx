@@ -1051,7 +1051,7 @@ const Game: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center w-full max-w-full px-4">
             <button
               onClick={() => {
                 // Stop voice narration before navigating
@@ -1062,10 +1062,10 @@ const Game: React.FC = () => {
                 stopSpeaking();
                 setLocation("/");
               }}
-              className="bg-white/10 hover:bg-white/20 text-white font-bold py-4 px-8 rounded-xl transition-all duration-200 border border-white/20 flex items-center gap-2"
+              className="bg-white/10 hover:bg-white/20 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 md:px-8 rounded-xl transition-all duration-200 border border-white/20 flex items-center justify-center gap-2 w-full sm:w-auto min-w-0"
             >
-              <Home className="h-5 w-5" />
-              HOME
+              <Home className="h-5 w-5 flex-shrink-0" />
+              <span className="whitespace-nowrap">HOME</span>
             </button>
             <button
               onClick={() => {
@@ -1083,10 +1083,10 @@ const Game: React.FC = () => {
                 // The questions query will automatically refetch with the new gameId
                 console.log("✅ PLAY AGAIN - game reset complete");
               }}
-              className="bg-gradient-to-r from-accent to-accent-dark hover:from-accent/90 hover:to-accent-dark/90 text-white font-bold py-4 px-8 rounded-xl transition-all duration-200 shadow-lg flex items-center gap-2"
+              className="bg-gradient-to-r from-accent to-accent-dark hover:from-accent/90 hover:to-accent-dark/90 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 md:px-8 rounded-xl transition-all duration-200 shadow-lg flex items-center justify-center gap-2 w-full sm:w-auto min-w-0"
             >
-              <RotateCcw className="h-5 w-5" />
-              PLAY AGAIN
+              <RotateCcw className="h-5 w-5 flex-shrink-0" />
+              <span className="whitespace-nowrap">PLAY AGAIN</span>
             </button>
           </div>
         </div>
@@ -1097,9 +1097,9 @@ const Game: React.FC = () => {
   return (
     <div
       id="app"
-      className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-secondary-dark"
+      className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-secondary-dark overflow-x-hidden max-w-full"
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 w-full min-w-0">
         <GameHeader
           soundEnabled={soundEnabled}
           setSoundEnabled={setSoundEnabled}

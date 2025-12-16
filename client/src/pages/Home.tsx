@@ -175,10 +175,10 @@ const Home: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-secondary-dark font-heading">
+    <div className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-secondary-dark font-heading overflow-x-hidden max-w-full">
       {/* Header with Auth Controls */}
-      <header className="relative w-full py-5 px-4 sm:py-6 sm:px-6">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+      <header className="relative w-full py-5 px-3 sm:py-6 sm:px-4 md:px-6 max-w-full">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 sm:gap-4 min-w-0">
           {/* Logo */}
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
@@ -190,14 +190,14 @@ const Home: React.FC = () => {
           </div>
 
           {/* Auth Controls */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 min-w-0">
             {user ? (
               <>
-                <div className="hidden sm:flex items-center gap-2 text-white bg-black/20 px-3 py-2 rounded-lg">
-                  <User size={16} />
-                  <span className="font-medium">{user.username}</span>
+                <div className="hidden sm:flex items-center gap-2 text-white bg-black/20 px-2 sm:px-3 py-2 rounded-lg min-w-0">
+                  <User size={16} className="flex-shrink-0" />
+                  <span className="font-medium truncate max-w-[100px] sm:max-w-none">{user.username}</span>
                   {user.isAdmin && (
-                    <span className="bg-accent text-primary text-xs font-bold px-2 py-1 rounded-full">
+                    <span className="bg-accent text-primary text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
                       ADMIN
                     </span>
                   )}
@@ -207,18 +207,18 @@ const Home: React.FC = () => {
                     onClick={() => setLocation("/admin")}
                     variant="outline"
                     size="sm"
-                    className="border-accent/50 text-accent bg-black/20 hover:bg-accent/10"
+                    className="border-accent/50 text-accent bg-black/20 hover:bg-accent/10 whitespace-nowrap flex-shrink-0"
                   >
-                    <Database size={16} className="mr-1" /> Admin
+                    <Database size={16} className="mr-1 flex-shrink-0" /> <span className="hidden sm:inline">Admin</span>
                   </Button>
                 )}
                 <Button
                   onClick={() => logoutMutation.mutate()}
                   variant="outline"
                   size="sm"
-                  className="border-white/30 text-white bg-black/20 hover:bg-white/10"
+                  className="border-white/30 text-white bg-black/20 hover:bg-white/10 whitespace-nowrap flex-shrink-0"
                 >
-                  <LogOut size={16} className="mr-1" /> Logout
+                  <LogOut size={16} className="mr-1 flex-shrink-0" /> <span className="hidden sm:inline">Logout</span>
                 </Button>
               </>
             ) : (
@@ -226,9 +226,9 @@ const Home: React.FC = () => {
                 onClick={() => setLocation("/auth")}
                 variant="outline"
                 size="sm"
-                className="border-white/30 text-white bg-black/20 hover:bg-white/10"
+                className="border-white/30 text-white bg-black/20 hover:bg-white/10 whitespace-nowrap flex-shrink-0"
               >
-                <LogIn size={16} className="mr-1" /> Login
+                <LogIn size={16} className="mr-1 flex-shrink-0" /> <span className="hidden sm:inline">Login</span>
               </Button>
             )}
           </div>
@@ -236,8 +236,8 @@ const Home: React.FC = () => {
       </header>
 
       {/* Hero Section */}
-      <section className="relative w-full py-10 px-4 sm:py-16 sm:px-6">
-        <div className="max-w-7xl mx-auto text-center">
+      <section className="relative w-full py-10 px-3 sm:py-16 sm:px-4 md:px-6 max-w-full overflow-x-hidden">
+        <div className="max-w-7xl mx-auto text-center min-w-0">
           {/* Animated Title */}
           <div
             className={`mb-8 transition-all duration-700 ${
@@ -261,8 +261,8 @@ const Home: React.FC = () => {
       </section>
 
       {/* Main Content */}
-      <main className="w-full max-w-7xl mx-auto px-4 py-8 sm:px-6 sm:py-12">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+      <main className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-8 sm:py-12 min-w-0 overflow-x-hidden">
+        <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center min-w-0">
           {/* Left Column - Game Options */}
           <div className="space-y-8">
             {/* Host Avatar */}
@@ -598,9 +598,9 @@ const Home: React.FC = () => {
                     </div>
                     <Button
                       onClick={handleSinglePlayerStart}
-                      className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-primary font-bold px-6 py-3"
+                      className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-primary font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0"
                     >
-                      <Play className="mr-2 h-4 w-4" /> Start
+                      <Play className="mr-2 h-4 w-4 flex-shrink-0" /> Start
                     </Button>
                   </div>
                 </div>
@@ -667,9 +667,9 @@ const Home: React.FC = () => {
                     </div>
                     <Button
                       onClick={handleMultiplayerStart}
-                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-6 py-3"
+                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0"
                     >
-                      <Sword className="mr-2 h-4 w-4" /> Play
+                      <Sword className="mr-2 h-4 w-4 flex-shrink-0" /> Play
                     </Button>
                   </div>
                 </div>
@@ -735,9 +735,9 @@ const Home: React.FC = () => {
                     </div>
                     <Button
                       onClick={() => setShowTeamBattleSetup(true)}
-                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-6 py-3"
+                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0"
                     >
-                      <Sword className="mr-2 h-4 w-4" /> Enter Team Battle
+                      <Sword className="mr-2 h-4 w-4 flex-shrink-0" /> <span className="hidden sm:inline">Enter Team Battle</span><span className="sm:hidden">Team Battle</span>
                     </Button>
                   </div>
                 </div>
@@ -805,10 +805,9 @@ const Home: React.FC = () => {
             <div className="space-y-3 sm:space-y-4">
               <Button
                 onClick={() => setLocation("/leaderboard")}
-                className="w-full bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-primary font-bold py-3 sm:py-4 text-sm sm:text-base md:text-lg transition-all duration-300"
+                className="w-full bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-primary font-bold py-3 sm:py-4 text-sm sm:text-base md:text-lg transition-all duration-300 whitespace-nowrap min-w-0"
               >
-                <Trophy className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" /> View
-                Leaderboard
+                <Trophy className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" /> <span className="truncate">View Leaderboard</span>
               </Button>
 
               {user && (
@@ -858,8 +857,8 @@ const Home: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="w-full py-4 sm:py-6 md:py-8 px-4 sm:px-6 border-t border-white/10 mt-8">
-        <div className="max-w-7xl mx-auto text-center">
+      <footer className="w-full py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 border-t border-white/10 mt-8 max-w-full overflow-x-hidden">
+        <div className="max-w-7xl mx-auto text-center min-w-0">
           <p className="text-white/60 text-xs sm:text-sm">
             © {new Date().getFullYear()} FaithIQ. All rights reserved.
           </p>

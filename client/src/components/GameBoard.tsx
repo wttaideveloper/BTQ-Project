@@ -411,7 +411,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
         </div>
 
         {/* Family Feud Style Answer Options */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 flex-grow">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 flex-grow min-w-0">
           {answers.map((answer, index) => (
             <button
               key={answer.id}
@@ -419,15 +419,15 @@ const GameBoard: React.FC<GameBoardProps> = ({
               disabled={isQuestionAnswered}
               className={`${getButtonClass(
                 answer
-              )} answer-button font-medium py-4 sm:py-4 md:py-5 px-4 sm:px-5 md:px-6 rounded-xl flex items-center ${
+              )} answer-button font-medium py-4 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 rounded-xl flex items-center min-w-0 w-full ${
                 answer.isCorrect && isQuestionAnswered ? "correct-answer" : ""
               } reveal-animation`}
               style={{ animationDelay: `${0.2 + index * 0.1}s` }}
             >
-              <span className="bg-accent text-primary font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md">
+              <span className="bg-accent text-primary font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md flex-shrink-0">
                 {labels[index]}
               </span>
-              <span className="text-left text-sm sm:text-base md:text-lg text-white line-clamp-2 sm:line-clamp-none flex-1">
+              <span className="text-left text-sm sm:text-base md:text-lg text-white line-clamp-2 sm:line-clamp-none flex-1 min-w-0 overflow-hidden">
                 {answer.text}
               </span>
               {isQuestionAnswered && answer.isCorrect && (
@@ -448,21 +448,21 @@ const GameBoard: React.FC<GameBoardProps> = ({
       </div>
 
       {/* Family Feud Style Game Footer */}
-      <div className="bg-gradient-to-r from-secondary to-secondary-dark p-3 sm:p-4 md:p-5 flex flex-wrap sm:flex-nowrap justify-between items-center gap-3 sm:gap-2">
-        <div className="flex items-center">
-          <span className="text-white font-bold mr-2 sm:mr-3 text-sm sm:text-base md:text-lg">
+      <div className="bg-gradient-to-r from-secondary to-secondary-dark p-3 sm:p-4 md:p-5 flex flex-wrap sm:flex-nowrap justify-between items-center gap-3 sm:gap-2 min-w-0">
+        <div className="flex items-center min-w-0 flex-shrink">
+          <span className="text-white font-bold mr-2 sm:mr-3 text-sm sm:text-base md:text-lg whitespace-nowrap">
             SCORE:
           </span>
-          <div className="bg-accent text-primary font-bold px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded-lg text-base sm:text-lg md:text-xl shadow-glow animate-pulse-slow">
+          <div className="bg-accent text-primary font-bold px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded-lg text-base sm:text-lg md:text-xl shadow-glow animate-pulse-slow whitespace-nowrap">
             {score}
           </div>
         </div>
 
-        <div className="flex gap-2 sm:gap-4 w-full sm:w-auto justify-end p-1">
+        <div className="flex gap-2 sm:gap-4 w-full sm:w-auto justify-end p-1 min-w-0 flex-shrink-0">
           <Button
             variant="outline"
             size="sm"
-            className="border-2 border-white text-white bg-[#34495e] hover:bg-[#3b3b3b] font-bold text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-10"
+            className="border-2 border-white text-white bg-[#34495e] hover:bg-[#3b3b3b] font-bold text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-10 whitespace-nowrap flex-shrink-0"
             onClick={() => {
               onAnswer(
                 { id: "skip", text: "Skipped", isCorrect: false },
@@ -477,7 +477,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
           {isQuestionAnswered && (
             <Button
               size="sm"
-              className="bg-accent hover:bg-accent/90 text-primary font-bold animate-pulse-slow text-xs sm:text-sm px-2 sm:px-4 h-8 sm:h-10 shadow-lg border-2 border-accent/90 ml-1"
+              className="bg-accent hover:bg-accent/90 text-primary font-bold animate-pulse-slow text-xs sm:text-sm px-2 sm:px-4 h-8 sm:h-10 shadow-lg border-2 border-accent/90 whitespace-nowrap flex-shrink-0"
               onClick={onNextQuestion}
             >
               NEXT

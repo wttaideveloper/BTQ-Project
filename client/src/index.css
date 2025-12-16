@@ -290,3 +290,79 @@
   0% { opacity: 0; transform: scale(0.9) translateY(-20px); }
   100% { opacity: 1; transform: scale(1) translateY(0); }
 }
+
+/* Responsive Design Fixes for Mobile Devices */
+/* Prevent horizontal overflow */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  position: relative;
+}
+
+/* Ensure all containers respect viewport width */
+#root, #app {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Fix button overflow on mobile */
+button, .answer-button {
+  max-width: 100%;
+  min-width: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
+}
+
+/* Responsive button padding */
+@media (max-width: 640px) {
+  button {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+  
+  .answer-button {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+}
+
+/* Fix flex containers to prevent overflow */
+.flex {
+  min-width: 0;
+}
+
+.flex > * {
+  min-width: 0;
+}
+
+/* Ensure text doesn't overflow in buttons */
+button span, .answer-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Fix grid layouts on mobile */
+.grid {
+  min-width: 0;
+}
+
+.grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Prevent text overflow in containers */
+.container, .max-w-7xl, .max-w-6xl, .max-w-5xl, .max-w-4xl {
+  max-width: 100vw;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container, .max-w-7xl, .max-w-6xl, .max-w-5xl, .max-w-4xl {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}

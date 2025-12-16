@@ -69,6 +69,8 @@ interface GameEvent {
     answerId: string;
   };
   // Additional team event fields
+  gameState?: any; // Added for game_state_update
+  playerTeam?: any; // Added for game_state_update
   team?: any;
   teams?: any[];
   invitation?: any;
@@ -2826,7 +2828,20 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
         submittedBy: client.userId,
       };
 
+      // Fixed: Prevent duplicate finalization for the same question
       const existingFinalAnswers = sessionTeam.finalAnswers || [];
+      const alreadyFinalized = existingFinalAnswers.some(
+        (fa: any) => fa.questionId === finalAnswer.questionId
+      );
+
+      if (alreadyFinalized) {
+        sendToClient(clientId, {
+          type: "error",
+          message: "This question has already been finalized by your team",
+        });
+        return;
+      }
+
       sessionTeam.finalAnswers = [...existingFinalAnswers, finalAnswer];
 
       // Notify all team members
@@ -2857,6 +2872,11 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
         );
 
         if (allTeamsFinalized) {
+          // Fixed: Clear timeout to prevent double processing when all teams answer early
+          if (gameSession.questionTimeout) {
+            clearTimeout(gameSession.questionTimeout);
+            gameSession.questionTimeout = undefined;
+          }
           await processTeamBattleAnswers(gameSession.id);
         }
       }
@@ -3918,7 +3938,14 @@ async function startTeamBattleQuestions(gameId: string) {
     });
 
     if (questions.length === 0) {
-      // End battle if no questions available
+      // Fixed: Notify clients and gracefully end battle if questions cannot be loaded
+      const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+      for (const client of gameClients) {
+        sendToClient(client.id, {
+          type: "error",
+          message: "No questions available. The battle cannot continue.",
+        });
+      }
       endTeamBattle(gameId, "No questions available");
       return;
     }
@@ -3929,7 +3956,19 @@ async function startTeamBattleQuestions(gameId: string) {
     // Send first question to all teams
     sendTeamBattleQuestion(gameId);
   } catch (error) {
-    endTeamBattle(gameId, "Error loading questions");
+    // Fixed: Notify clients and gracefully end battle if questions cannot be loaded
+    try {
+      const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+      for (const client of gameClients) {
+        sendToClient(client.id, {
+          type: "error",
+          message: "Error loading questions. The battle cannot continue.",
+        });
+      }
+      endTeamBattle(gameId, "Error loading questions");
+    } catch (err) {
+      // Silent error handling
+    }
   }
 }
 
@@ -3965,14 +4004,14 @@ function sendTeamBattleQuestion(gameId: string) {
         questionNumber: (gameSession.currentQuestionIndex || 0) + 1,
         totalQuestions: gameSession.questions.length,
         teamId: player.teamId,
-        timeLimit: 30000,
+        timeLimit: 15000, // Fixed: Changed from 30000 to 15000 to match frontend expectation
       });
     }
   }
 
   gameSession.questionTimeout = setTimeout(() => {
     processTeamBattleAnswers(gameId);
-  }, 30000);
+  }, 15000); // Fixed: Changed from 30000 to 15000 to match frontend expectation
 }
 
 async function processTeamBattleAnswers(gameId: string) {
@@ -3992,6 +4031,19 @@ async function processTeamBattleAnswers(gameId: string) {
   // fires after the battle has been cleaned up or questions were not
   // initialized correctly.
   if (!currentQuestion || !Array.isArray((currentQuestion as any).answers)) {
+    // Fixed: Notify clients about the error and end the battle gracefully
+    try {
+      const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+      for (const client of gameClients) {
+        sendToClient(client.id, {
+          type: "error",
+          message: "Error processing question: Question data is missing or invalid.",
+        });
+      }
+      endTeamBattle(gameId, "Error processing question");
+    } catch (error) {
+      // Silent error handling
+    }
     return;
   }
 
@@ -4310,12 +4362,20 @@ async function handleTeamBattlePlayerDisconnect(
           });
         }
 
-        // Auto-finalize answer if all members have answered
+        // Auto-finalize answer if all members have answered AND the battle is still active
         const currentQuestion = gameSession.questions?.[gameSession.currentQuestionIndex || 0];
-        if (currentQuestion) {
+        const isBattleActive = gameSession.status === "playing" && 
+          gameSession.currentQuestionIndex !== undefined && 
+          gameSession.currentQuestionIndex < (gameSession.questions?.length || 0);
+
+        if (currentQuestion && isBattleActive) {
           const questionId = currentQuestion.id;
           const memberAnswers = disconnectedTeam.memberAnswers?.[questionId] || {};
-          if (Object.keys(memberAnswers).length === disconnectedTeam.members.length) {
+          const teamAlreadyFinalized = disconnectedTeam.finalAnswers?.some(
+            (fa: any) => fa.questionId === questionId
+          );
+
+          if (!teamAlreadyFinalized && Object.keys(memberAnswers).length === disconnectedTeam.members.length) {
             // All members have answered, finalize
             const answerCounts: Record<string, number> = {};
             Object.values(memberAnswers).forEach((answer: any) => {
@@ -4672,12 +4732,36 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
       // Always associate this client with the active team battle session so that
       // future team_battle_question broadcasts (which target gameId) reach it.
       client.gameId = battleSession.id;
+      client.gameSessionId = event.gameSessionId;
+
+      // Determine game phase based on battle status
+      let gamePhase: "waiting" | "ready" | "playing" | "question" | "results" | "finished" = "waiting";
+      if (battleSession.status === "playing") {
+        gamePhase = "playing";
+      } else if (battleSession.status === "finished") {
+        gamePhase = "finished";
+      }
+
+      // Send complete game state update
+      sendToClient(clientId, {
+        type: "game_state_update",
+        gameState: {
+          phase: gamePhase,
+          teams: battleSession.teams || sessionTeams,
+          currentQuestion: battleSession.questions?.[battleSession.currentQuestionIndex || 0],
+          questionNumber: (battleSession.currentQuestionIndex || 0) + 1,
+          totalQuestions: battleSession.questions?.length || 0,
+        },
+        playerTeam: userTeam,
+        opposingTeam: opposingTeam,
+      });
 
       if (battleSession.questions && battleSession.questions.length > 0) {
         const currentIndex = battleSession.currentQuestionIndex || 0;
         const currentQuestion = battleSession.questions[currentIndex];
 
-        if (currentQuestion) {
+        if (currentQuestion && battleSession.status === "playing") {
+          // Send current question if battle is active
           sendToClient(clientId, {
             type: "team_battle_question",
             gameId: battleSession.id,
@@ -4685,7 +4769,7 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
             questionNumber: currentIndex + 1,
             totalQuestions: battleSession.questions.length,
             teamId: userTeam.id,
-            timeLimit: 30000,
+            timeLimit: 15000, // Fixed: Changed from 30000 to 15000 to match frontend expectation
           });
         }
       }

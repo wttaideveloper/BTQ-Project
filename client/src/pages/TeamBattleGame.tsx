@@ -145,6 +145,25 @@ export default function TeamBattleGame() {
     // Setup WebSocket connection
     const socket = setupGameSocket(user.id);
 
+    // Request game state function - will be called after authentication
+    const requestGameState = () => {
+      if (gameSessionId && user?.id) {
+        sendGameEvent({
+          type: "get_game_state",
+          gameSessionId,
+          userId: user.id,
+        });
+      }
+    };
+
+    // If socket is already open, request game state after a short delay
+    // (authentication might already be complete)
+    if (socket.readyState === WebSocket.OPEN) {
+      setTimeout(() => {
+        requestGameState();
+      }, 500);
+    }
+
     // Add beforeunload listener to notify server when page is about to unload
     const handleBeforeUnload = () => {
       if (
@@ -167,13 +186,6 @@ export default function TeamBattleGame() {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
 
-    // Proactively request current game state for this team battle session
-    sendGameEvent({
-      type: "get_game_state",
-      gameSessionId,
-      userId: user.id,
-    });
-
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
@@ -184,10 +196,57 @@ export default function TeamBattleGame() {
             break;
 
           case "authenticated":
+            // Request game state after authentication completes
+            requestGameState();
             break;
 
           case "game_state_update":
             updateGameState(data);
+            break;
+
+          case "game_state_restored":
+            // Handle game state restoration on page refresh/reconnect
+            if (data.team) {
+              updateTeamsData([data.team]);
+              // Check if team is in a finished battle - redirect to setup
+              if (data.team.status === "finished") {
+                toast({
+                  title: "Battle Finished",
+                  description: "This battle has already finished. Redirecting to setup.",
+                });
+                setTimeout(() => {
+                  setLocation("/team-battle");
+                }, 2000);
+              } else {
+                // Team exists but battle may not have started - set phase to ready
+                setGameState((prev) => ({
+                  ...prev,
+                  playerTeam: data.team,
+                  phase: prev.phase === "waiting" ? "ready" : prev.phase,
+                }));
+                toast({
+                  title: "Reconnected",
+                  description: data.message || "Successfully reconnected to your team",
+                });
+              }
+            }
+            break;
+
+          case "no_active_game":
+            // No active game found - redirect to setup page
+            toast({
+              title: "No Active Battle",
+              description: data.message || "No active team battle found. Redirecting to team setup.",
+              variant: "destructive",
+            });
+            setTimeout(() => {
+              // Redirect to team battle setup page with the session ID if available
+              if (gameSessionId) {
+                setLocation(`/team-battle?session=${gameSessionId}`);
+              } else {
+                setLocation("/team-battle");
+              }
+            }, 2000);
             break;
 
           case "team_battle_started":
@@ -429,21 +488,28 @@ export default function TeamBattleGame() {
     initSounds();
   }, []);
 
-  // Add timeout for waiting phase - if stuck for too long, show error
+  // Add timeout for waiting phase - if stuck for too long, redirect to setup
   useEffect(() => {
-    if (gameState.phase === "waiting") {
+    if (gameState.phase === "waiting" && connected) {
       const timeout = setTimeout(() => {
         toast({
-          title: "Connection Issue",
-          description: "Unable to connect to game. Please try again.",
+          title: "Connection Timeout",
+          description: "Unable to restore game state. Redirecting to team setup.",
           variant: "destructive",
         });
-        // Don't auto-redirect, let user click exit button
-      }, 15000); // 15 seconds
+        // Redirect to setup page with session ID if available
+        setTimeout(() => {
+          if (gameSessionId) {
+            setLocation(`/team-battle?session=${gameSessionId}`);
+          } else {
+            setLocation("/team-battle");
+          }
+        }, 2000);
+      }, 10000); // 10 seconds - reduced for faster feedback
 
       return () => clearTimeout(timeout);
     }
-  }, [gameState.phase, toast]);
+  }, [gameState.phase, connected, gameSessionId, toast, setLocation]);
 
   // Game state tracking
 

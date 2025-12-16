@@ -355,6 +355,16 @@ const userConnections: Map<number, string[]> = new Map();
 // Store active team memberships for quick availability checking
 const activeTeamMemberships: Map<number, string> = new Map(); // userId -> teamId
 
+// Track pending disconnects with grace period (to handle page reload dialogs)
+interface PendingDisconnect {
+  userId: number;
+  gameSessionId: string;
+  clientId: string;
+  timeout: NodeJS.Timeout;
+  cancelled: boolean;
+}
+const pendingDisconnects: Map<string, PendingDisconnect> = new Map(); // clientId -> PendingDisconnect
+
 // Small helper type guard used when filtering optional arrays from maps
 function present<T>(v: T | undefined | null): v is T {
   return v !== undefined && v !== null;
@@ -385,16 +395,63 @@ export function setupWebSocketServer(server: Server) {
 
       if (client) {
         // Handle team setup disconnect (when user is in team but not in active battle)
+        // Add grace period to handle page reload dialogs - user might cancel and reconnect
         if (client.userId && client.gameSessionId && !client.gameId) {
-          try {
-            const battles = await database.getTeamBattlesByGameSession(client.gameSessionId);
-            if (battles.length > 0) {
+          // Check if there's already a pending disconnect for this client
+          const existingPending = pendingDisconnects.get(clientId);
+          if (existingPending) {
+            // Cancel the existing pending disconnect
+            clearTimeout(existingPending.timeout);
+            existingPending.cancelled = true;
+            pendingDisconnects.delete(clientId);
+          }
+
+          // Create a pending disconnect with grace period (3 seconds)
+          const pendingDisconnect: PendingDisconnect = {
+            userId: client.userId,
+            gameSessionId: client.gameSessionId,
+            clientId: clientId,
+            timeout: setTimeout(async () => {
+              // Check if this disconnect was cancelled (user reconnected)
+              if (pendingDisconnect.cancelled) {
+                pendingDisconnects.delete(clientId);
+                return;
+              }
+
+              // Check if user has reconnected (same userId with same gameSessionId)
+              const hasReconnected = Array.from(clients.values()).some(
+                (c: Client) =>
+                  c.userId === client.userId &&
+                  c.gameSessionId === client.gameSessionId &&
+                  c.id !== clientId &&
+                  c.ws &&
+                  c.ws.readyState === WebSocket.OPEN
+              );
+
+              if (hasReconnected) {
+                // User reconnected - cancel the disconnect
+                console.log(`[Disconnect Grace Period] User ${client.userId} reconnected, cancelling disconnect`);
+                pendingDisconnects.delete(clientId);
+                return;
+              }
+
+              // User didn't reconnect - process the disconnect
+              console.log(`[Disconnect Grace Period] Processing disconnect for user ${pendingDisconnect.userId} after grace period`);
+              pendingDisconnects.delete(clientId);
+
+              // Use values from pendingDisconnect (they're guaranteed to exist)
+              const disconnectUserId = pendingDisconnect.userId;
+              const disconnectGameSessionId = pendingDisconnect.gameSessionId;
+
+              try {
+                const battles = await database.getTeamBattlesByGameSession(disconnectGameSessionId);
+                if (battles.length > 0) {
               const battle = battles[0];
               let updatedBattle = battle;
               let teamRemoved = false;
 
               // Check if the disconnected user is a captain
-              if (battle.teamACaptainId === client.userId) {
+              if (battle.teamACaptainId === disconnectUserId) {
                 // Team A captain disconnected - remove Team A (required for battle)
                 await database.deleteTeamBattle(battle.id);
                 teamRemoved = true;
@@ -407,7 +464,7 @@ export function setupWebSocketServer(server: Server) {
                 for (const id of extractTeammateIds(battle.teamBTeammates)) participantIds.add(id);
 
                 for (const userId of Array.from(participantIds)) {
-                  if (userId !== client.userId) {
+                  if (userId !== disconnectUserId) {
                     sendToUser(userId, {
                       type: "team_battle_cancelled",
                       teamBattleId: battle.id,
@@ -417,7 +474,7 @@ export function setupWebSocketServer(server: Server) {
                     });
                   }
                 }
-              } else if (battle.teamBCaptainId === client.userId) {
+              } else if (battle.teamBCaptainId === disconnectUserId) {
                 // Team B captain disconnected - remove Team B (optional)
                 updatedBattle = await database.updateTeamBattle(battle.id, {
                   teamBCaptainId: null,
@@ -443,16 +500,16 @@ export function setupWebSocketServer(server: Server) {
                 }
               } else {
                 // Regular teammate disconnected - remove from their team
-                const isTeamAMember = extractTeammateIds(battle.teamATeammates).includes(client.userId);
-                const isTeamBMember = extractTeammateIds(battle.teamBTeammates).includes(client.userId);
+                const isTeamAMember = extractTeammateIds(battle.teamATeammates).includes(disconnectUserId);
+                const isTeamBMember = extractTeammateIds(battle.teamBTeammates).includes(disconnectUserId);
 
                 if (isTeamAMember) {
-                  const updatedTeammates = extractTeammateIds(battle.teamATeammates).filter(id => id !== client.userId);
+                  const updatedTeammates = extractTeammateIds(battle.teamATeammates).filter(id => id !== disconnectUserId);
                   updatedBattle = await database.updateTeamBattle(battle.id, {
                     teamATeammates: updatedTeammates,
                   });
                 } else if (isTeamBMember) {
-                  const updatedTeammates = extractTeammateIds(battle.teamBTeammates).filter(id => id !== client.userId);
+                  const updatedTeammates = extractTeammateIds(battle.teamBTeammates).filter(id => id !== disconnectUserId);
                   updatedBattle = await database.updateTeamBattle(battle.id, {
                     teamBTeammates: updatedTeammates,
                   });
@@ -466,7 +523,7 @@ export function setupWebSocketServer(server: Server) {
                 if (isTeamAMember) {
                   sameTeamMemberIds.add(battle.teamACaptainId);
                   for (const id of extractTeammateIds(battle.teamATeammates)) {
-                    if (id !== client.userId) sameTeamMemberIds.add(id);
+                    if (id !== disconnectUserId) sameTeamMemberIds.add(id);
                   }
                   // Team B members are opposing
                   if (battle.teamBCaptainId) opposingTeamMemberIds.add(battle.teamBCaptainId);
@@ -476,7 +533,7 @@ export function setupWebSocketServer(server: Server) {
                 } else if (isTeamBMember && battle.teamBCaptainId) {
                   sameTeamMemberIds.add(battle.teamBCaptainId);
                   for (const id of extractTeammateIds(battle.teamBTeammates)) {
-                    if (id !== client.userId) sameTeamMemberIds.add(id);
+                    if (id !== disconnectUserId) sameTeamMemberIds.add(id);
                   }
                   // Team A members are opposing
                   opposingTeamMemberIds.add(battle.teamACaptainId);
@@ -489,15 +546,15 @@ export function setupWebSocketServer(server: Server) {
                 // - If captain disconnects → show popup (opponent_disconnected)
                 // - If member disconnects → show toast (opponent_team_member_disconnected)
                 // Check if disconnected user is a captain
-                const isDisconnectedCaptain = (isTeamAMember && battle.teamACaptainId === client.userId) ||
-                  (isTeamBMember && battle.teamBCaptainId === client.userId);
+                const isDisconnectedCaptain = (isTeamAMember && battle.teamACaptainId === disconnectUserId) ||
+                  (isTeamBMember && battle.teamBCaptainId === disconnectUserId);
 
                 for (const userId of Array.from(opposingTeamMemberIds)) {
                   if (isDisconnectedCaptain) {
                     // Captain disconnected from opponent team → show popup
                     sendToUser(userId, {
                       type: "opponent_disconnected",
-                      gameSessionId: client.gameSessionId,
+                      gameSessionId: disconnectGameSessionId,
                       disconnectedPlayerName: client.playerName || 'A player',
                       disconnectedTeamName: isTeamAMember ? (battle.teamAName || 'Team A') : (isTeamBMember ? (battle.teamBName || 'Team B') : 'Unknown'),
                       message: `⚠️ ${client.playerName || 'A player'} (Captain) has disconnected from team setup.`,
@@ -508,7 +565,7 @@ export function setupWebSocketServer(server: Server) {
                     // Member disconnected from opponent team → show toast (not popup)
                     sendToUser(userId, {
                       type: "opponent_team_member_disconnected",
-                      gameSessionId: client.gameSessionId,
+                      gameSessionId: disconnectGameSessionId,
                       disconnectedPlayerName: client.playerName || 'A player',
                       disconnectedTeamName: isTeamAMember ? (battle.teamAName || 'Team A') : (isTeamBMember ? (battle.teamBName || 'Team B') : 'Unknown'),
                       message: `${client.playerName || 'A player'} from team "${isTeamAMember ? (battle.teamAName || 'Team A') : (battle.teamBName || 'Team B')}" has disconnected from team setup.`,
@@ -520,7 +577,7 @@ export function setupWebSocketServer(server: Server) {
                 for (const userId of Array.from(sameTeamMemberIds)) {
                   sendToUser(userId, {
                     type: "teammate_disconnected",
-                    gameSessionId: client.gameSessionId,
+                    gameSessionId: disconnectGameSessionId,
                     disconnectedPlayerName: client.playerName || 'A player',
                     teamName: isTeamAMember ? (battle.teamAName || 'Team A') : (battle.teamBName || 'Team B'),
                     message: `${client.playerName || 'A player'} has left your team.`,
@@ -530,7 +587,7 @@ export function setupWebSocketServer(server: Server) {
 
               // Send updated teams data if battle still exists
               if (!teamRemoved) {
-                const teams = await getTeamsForTeamBattleSession(client.gameSessionId);
+                const teams = await getTeamsForTeamBattleSession(disconnectGameSessionId);
                 const allClientsInSession = Array.from(clients.values()).filter(
                   (c: Client) => c.userId && teams.some(team => team.members.some((m: any) => m.userId === c.userId))
                 );
@@ -539,15 +596,23 @@ export function setupWebSocketServer(server: Server) {
                   sendToClient(sessionClient.id, {
                     type: "teams_updated",
                     teams: teams,
-                    gameSessionId: client.gameSessionId,
+                    gameSessionId: disconnectGameSessionId,
                     message: `${client.playerName || 'A player'} has disconnected from team setup.`,
                   });
                 }
               }
-            }
-          } catch (error) {
-            // Silent error handling
-          }
+                }
+              } catch (error) {
+                console.error("[Disconnect Grace Period] Error processing disconnect:", error);
+                // Silent error handling
+              }
+            }, 3000), // 3 second grace period
+            cancelled: false,
+          };
+
+          pendingDisconnects.set(clientId, pendingDisconnect);
+          console.log(`[Disconnect Grace Period] Started grace period for user ${client.userId}, client ${clientId}`);
+          // Don't process disconnect immediately - wait for grace period
         }
         
         if (client.gameId) {
@@ -752,6 +817,16 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
       client.playerName = playerName;
     }
 
+    // Cancel any pending disconnects for this user (they reconnected)
+    for (const [pendingClientId, pending] of pendingDisconnects.entries()) {
+      if (pending.userId === userId && pending.gameSessionId === client.gameSessionId) {
+        console.log(`[Disconnect Grace Period] User ${userId} reconnected, cancelling pending disconnect for client ${pendingClientId}`);
+        clearTimeout(pending.timeout);
+        pending.cancelled = true;
+        pendingDisconnects.delete(pendingClientId);
+      }
+    }
+
     // Replace connections list with current connection
     userConnections.set(userId, [clientId]);
     console.log(`[Socket Auth] User ${userId} authenticated with clientId ${clientId}`);
@@ -792,6 +867,17 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
     if (userTeam) {
       // Restore user's team context
       client.gameId = userTeam.gameSessionId;
+      client.gameSessionId = userTeam.gameSessionId;
+      
+      // Cancel any pending disconnects for this user with this gameSessionId (they reconnected)
+      for (const [pendingClientId, pending] of pendingDisconnects.entries()) {
+        if (pending.userId === userId && pending.gameSessionId === userTeam.gameSessionId) {
+          console.log(`[Disconnect Grace Period] User ${userId} reconnected with gameSessionId ${userTeam.gameSessionId}, cancelling pending disconnect for client ${pendingClientId}`);
+          clearTimeout(pending.timeout);
+          pending.cancelled = true;
+          pendingDisconnects.delete(pendingClientId);
+        }
+      }
 
       // Send team restoration data
       sendToClient(clientId, {

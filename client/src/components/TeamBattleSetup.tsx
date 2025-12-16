@@ -675,13 +675,56 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     teamName: string;
   } | null>(null);
 
+  // Ref to track if we should send leave event (only when page actually unloads)
+  const shouldSendLeaveEventRef = useRef(false);
+
   // Handle page unload (reload, close, exit, network issues)
   useEffect(() => {
-    if (!open || !userTeam) return;
+    if (!open || !userTeam) {
+      shouldSendLeaveEventRef.current = false;
+      return;
+    }
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Notify opponents about disconnection before page unloads
-      if (userTeam && user) {
+      // Only show the dialog - DON'T send the leave event yet
+      // The event will only be sent if the page actually unloads (user confirms)
+
+      // Prevent leaving if battle countdown is active
+      if (countdown !== null && countdown > 0) {
+        e.preventDefault();
+        e.returnValue =
+          "Battle is starting soon. Are you sure you want to leave?";
+        shouldSendLeaveEventRef.current = true;
+        return e.returnValue;
+      }
+
+      // If user is in a team, show warning
+      if (userTeam) {
+        e.preventDefault();
+        e.returnValue = `You will be removed from "${userTeam.name}". Are you sure you want to leave?`;
+        // Set flag - if page actually unloads, we'll send the event
+        shouldSendLeaveEventRef.current = true;
+        return e.returnValue;
+      }
+    };
+
+    // Detect if user cancels (page becomes visible again without unloading)
+    const handleVisibilityChange = () => {
+      // If page becomes visible again and flag is set, user likely cancelled
+      if (document.visibilityState === 'visible' && shouldSendLeaveEventRef.current) {
+        // Reset flag after a short delay to allow pagehide to fire if user actually reloads
+        setTimeout(() => {
+          // Only reset if page is still visible (user cancelled)
+          if (document.visibilityState === 'visible') {
+            shouldSendLeaveEventRef.current = false;
+          }
+        }, 200);
+      }
+    };
+
+    // Only send leave event when page actually unloads (user confirmed the dialog)
+    const handlePageHide = () => {
+      if (shouldSendLeaveEventRef.current && userTeam && user) {
         try {
           sendGameEvent({
             type: "player_leaving_team_setup",
@@ -695,27 +738,37 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           // Silent error handling - WebSocket might already be closing
         }
       }
+    };
 
-      // Prevent leaving if battle countdown is active
-      if (countdown !== null && countdown > 0) {
-        e.preventDefault();
-        e.returnValue =
-          "Battle is starting soon. Are you sure you want to leave?";
-        return e.returnValue;
-      }
-
-      // If user is in a team, show warning
-      if (userTeam) {
-        e.preventDefault();
-        e.returnValue = `You will be removed from "${userTeam.name}". Are you sure you want to leave?`;
-        return e.returnValue;
+    // Also handle unload as fallback (though pagehide is more reliable)
+    const handleUnload = () => {
+      if (shouldSendLeaveEventRef.current && userTeam && user) {
+        try {
+          sendGameEvent({
+            type: "player_leaving_team_setup",
+            gameSessionId: userTeam.gameSessionId || gameSessionId || undefined,
+            userId: user.id,
+            username: user.username,
+            teamId: userTeam.id,
+            teamName: userTeam.name,
+          });
+        } catch (error) {
+          // Silent error handling - WebSocket might already be closing
+        }
       }
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("unload", handleUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      shouldSendLeaveEventRef.current = false;
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("unload", handleUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [open, userTeam, countdown, user, gameSessionId]);
 

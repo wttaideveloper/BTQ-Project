@@ -2727,9 +2727,99 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
       return;
     }
 
+    // Check if the leaving user is a captain or a member
+    const isCaptain = leavingTeam.captainId === userId;
+    const isMember = leavingTeam.members.some((m: any) => m.userId === userId && m.role === "member");
+
+    // Handle removal based on team storage type
+    // First check if it's a team_battles team (has teamBattleId)
+    if (leavingTeam.teamBattleId) {
+      // If it's a member (not captain), remove them from the team in the database
+      if (isMember) {
+        const battle = await database.getTeamBattle(leavingTeam.teamBattleId);
+        if (battle) {
+          if (leavingTeam.teamSide === "A") {
+            // Remove from Team A teammates
+            const updatedTeammates = extractTeammateIds(battle.teamATeammates).filter(
+              (id) => id !== userId
+            );
+            await database.updateTeamBattle(leavingTeam.teamBattleId, {
+              teamATeammates: updatedTeammates,
+            });
+          } else if (leavingTeam.teamSide === "B") {
+            // Remove from Team B teammates
+            const updatedTeammates = extractTeammateIds(battle.teamBTeammates).filter(
+              (id) => id !== userId
+            );
+            await database.updateTeamBattle(leavingTeam.teamBattleId, {
+              teamBTeammates: updatedTeammates,
+            });
+          }
+        }
+      } else if (isCaptain) {
+        // If captain disconnects, handle it differently
+        // Team A captain disconnect - remove entire battle
+        if (leavingTeam.teamSide === "A" && leavingTeam.teamBattleId) {
+          await database.deleteTeamBattle(leavingTeam.teamBattleId);
+          
+          // Notify all participants that battle was cancelled
+          const participantIds = new Set<number>();
+          for (const team of sessionTeams) {
+            for (const member of team.members) {
+              if (member.userId !== userId) {
+                participantIds.add(member.userId);
+              }
+            }
+          }
+
+          for (const participantId of Array.from(participantIds)) {
+            sendToUser(participantId, {
+              type: "team_battle_cancelled",
+              teamBattleId: leavingTeam.teamBattleId,
+              gameSessionId: gameSessionId,
+              reason: "Team A captain disconnected",
+              message: "The team battle has been cancelled because the Team A captain disconnected.",
+            });
+          }
+          return; // Exit early since battle was deleted
+        } else if (leavingTeam.teamSide === "B" && leavingTeam.teamBattleId) {
+          // Team B captain disconnect - remove Team B
+          await database.updateTeamBattle(leavingTeam.teamBattleId, {
+            teamBCaptainId: null,
+            teamBName: null,
+            teamBTeammates: [],
+          });
+        }
+      }
+    } else {
+      // Fallback: Handle teams stored in the teams table (legacy system)
+      // Try to find the team in the teams table
+      const teamsFromTable = await database.getTeamsByGameSession(gameSessionId);
+      const teamFromTable = teamsFromTable.find((team: any) =>
+        team.members.some((member: any) => member.userId === userId)
+      );
+
+      if (teamFromTable) {
+        // Remove member from team
+        if (isMember) {
+          await database.removeMemberFromTeam(teamFromTable.id, userId);
+        } else if (isCaptain) {
+          // If captain leaves, we might want to assign a new captain or remove the team
+          // For now, just remove the member (captain) from the team
+          await database.removeMemberFromTeam(teamFromTable.id, userId);
+        }
+      }
+    }
+
+    // Remove from activeTeamMemberships cache
+    activeTeamMemberships.delete(userId);
+
+    // Get updated teams after removal
+    const updatedTeams = await getTeamsForTeamBattleSession(gameSessionId);
+
     // Notify all other participants in the session about the disconnection
     const participantIds = new Set<number>();
-    for (const team of sessionTeams) {
+    for (const team of updatedTeams) {
       for (const member of team.members) {
         if (member.userId !== userId) { // Don't notify the leaving user themselves
           participantIds.add(member.userId);
@@ -2750,20 +2840,24 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
       });
     }
 
-    // Also send teams_updated to refresh the UI for all participants
+    // Broadcast updated teams to all participants so captain sees the updated team without disconnected member
     const allClientsInSession = Array.from(clients.values()).filter(
-      (c: Client) => c.userId && sessionTeams.some(team => team.members.some((m: any) => m.userId === c.userId))
+      (c: Client) => c.userId && updatedTeams.some(team => team.members.some((m: any) => m.userId === c.userId))
     );
 
     for (const sessionClient of allClientsInSession) {
       sendToClient(sessionClient.id, {
         type: "teams_updated",
         gameSessionId: gameSessionId,
-        teams: sessionTeams,
+        teams: updatedTeams,
         message: `${username || client.playerName || "A player"} has disconnected from team setup.`,
       });
     }
+
+    // Update availability status
+    await broadcastOnlineStatusUpdate();
   } catch (error) {
+    console.error("[handlePlayerLeavingTeamSetup] Error:", error);
     // Silent error handling
   }
 }

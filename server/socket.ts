@@ -294,6 +294,61 @@ export function getOnlineUserIds(): number[] {
   return Array.from(onlineUserIds);
 }
 
+/**
+ * Expires all pending join requests and invitations for a user when they join a team.
+ * This ensures a member can only be in one team at a time.
+ */
+export async function expireAllPendingRequestsAndInvitationsForUser(userId: number): Promise<void> {
+  try {
+    // Get all pending join requests for this user
+    const pendingJoinRequests = await database.getJoinRequestsByUser(userId);
+    const pendingRequests = pendingJoinRequests.filter(
+      (jr: any) => jr.status === "pending"
+    );
+
+    // Expire all pending join requests
+    for (const jr of pendingRequests) {
+      await database.updateJoinRequestStatus(jr.id, "expired");
+      
+      // Notify the user that their request expired
+      sendToUser(userId, {
+        type: "join_request_updated",
+        joinRequestId: jr.id,
+        status: "expired",
+        teamId: jr.team_id || jr.teamId,
+        requesterId: userId,
+        message: "This join request has expired because you joined another team.",
+      });
+    }
+
+    // Get all pending invitations for this user
+    const pendingInvitations = await database.getTeamInvitationsByUser(userId, "pending");
+
+    // Expire all pending invitations
+    for (const invitation of pendingInvitations) {
+      await database.updateTeamInvitation(invitation.id, {
+        status: "expired",
+      });
+
+      // Notify the user that their invitation expired
+      sendToUser(userId, {
+        type: "invitation_expired",
+        invitation: invitation,
+        message: "This invitation has expired because you joined another team.",
+      });
+    }
+
+    console.log(
+      `[expireAllPendingRequestsAndInvitationsForUser] Expired ${pendingRequests.length} join requests and ${pendingInvitations.length} invitations for user ${userId}`
+    );
+  } catch (error) {
+    console.error(
+      "[expireAllPendingRequestsAndInvitationsForUser] Error expiring requests/invitations:",
+      error
+    );
+  }
+}
+
 // Store users' WebSocket connections for notifications
 const userConnections: Map<number, string[]> = new Map();
 
@@ -3736,7 +3791,7 @@ async function handleAcceptTeamInvitation(clientId: string, event: GameEvent) {
       if (userAlreadyInTeam) {
         sendToClient(clientId, {
           type: "error",
-          message: "You are already in a team for this game",
+          message: "You are already in a team for this game. You cannot join multiple teams.",
         });
         return;
       }
@@ -3760,6 +3815,10 @@ async function handleAcceptTeamInvitation(clientId: string, event: GameEvent) {
       await database.updateTeamInvitation(invitation.id, {
         status: "accepted",
       });
+
+      // 🔒 CRITICAL: Expire all other pending join requests and invitations for this user
+      // This ensures a member can only join one team (the first one that accepts)
+      await expireAllPendingRequestsAndInvitationsForUser(client.userId);
 
       // Update availability immediately after joining team
       await broadcastOnlineStatusUpdate();

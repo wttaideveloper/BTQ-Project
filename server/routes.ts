@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { database } from "./database";
-import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions } from "./socket";
+import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser } from "./socket";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
@@ -545,10 +545,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const requesterId = jr.requester_id || jr.requesterId;
         const requesterUsername = jr.requester_username || jr.requesterUsername;
         
+        // Check if user is already in any team for this game session
+        const allTeams = await database.getTeamsByGameSession(team.gameSessionId);
+        const userAlreadyInTeam = allTeams.find((t) =>
+          t.members.some((member) => member.userId === requesterId)
+        );
+
+        if (userAlreadyInTeam) {
+          return res.status(400).json({ 
+            message: "You are already in a team for this game session. You cannot join multiple teams." 
+          });
+        }
+        
         await addMemberToTeamBattle(teamId, {
           id: requesterId,
           username: requesterUsername,
         });
+        
+        // 🔒 CRITICAL: Expire all other pending join requests and invitations for this user
+        // This ensures a member can only join one team (the first one that accepts)
+        await expireAllPendingRequestsAndInvitationsForUser(requesterId);
         
         // auto-reject if full now
         const updatedTeam = await getTeamFromBattle(teamId);

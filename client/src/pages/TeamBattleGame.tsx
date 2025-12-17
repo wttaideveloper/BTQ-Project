@@ -748,6 +748,7 @@ export default function TeamBattleGame() {
           isPaused={isPaused}
           isReadOnly={!isYourTurn}
           answeringTeamName={gameState.answeringTeamName}
+          selectedAnswerId={selectedAnswer}
         />
 
         {teamAnswer && !isYourTurn && (
@@ -909,86 +910,158 @@ export default function TeamBattleGame() {
     const opponentTeam =
       opponentFromScores || gameState.opposingTeam || teams[1];
 
+    // Determine winner
+    const yourScore = yourTeam?.score ?? 0;
+    const opponentScore = opponentTeam?.score ?? 0;
+    const isDraw = yourScore === opponentScore;
+    const isWinner = yourScore > opponentScore;
+    const winnerTeam = isDraw ? null : (isWinner ? yourTeam : opponentTeam);
+    const isYourTeamWinner = isWinner && !isDraw;
+
     return (
-      <div className="max-w-xl mx-auto p-6">
-        <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
-          {/* Top Score Circle */}
-          <div className="flex justify-center mb-6">
-            <div className="h-20 w-20 rounded-full bg-gradient-to-b from-yellow-400 to-yellow-600 flex items-center justify-center shadow-lg">
-              <span className="text-3xl font-bold">
-                {gameState.teams?.[0]?.score ?? 0}
-              </span>
-            </div>
+      <div className="max-w-2xl mx-auto p-4 sm:p-6">
+        <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-8 sm:py-10">
+          {/* Winner Announcement Section */}
+          <div className="text-center mb-8">
+            {isDraw ? (
+              <>
+                <div className="flex justify-center mb-4">
+                  <div className="h-24 w-24 rounded-full bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600 flex items-center justify-center shadow-2xl animate-pulse-slow border-4 border-yellow-300">
+                    <Crown className="h-12 w-12 text-white" />
+                  </div>
+                </div>
+                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">
+                  IT'S A DRAW!
+                </h1>
+                <p className="text-white/70 text-sm sm:text-base">
+                  Both teams performed equally well!
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-center mb-4">
+                  <div className={`h-24 w-24 rounded-full ${
+                    isYourTeamWinner 
+                      ? 'bg-gradient-to-br from-accent via-accent-dark to-accent-light' 
+                      : 'bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600'
+                  } flex items-center justify-center shadow-2xl animate-pulse-slow border-4 ${
+                    isYourTeamWinner ? 'border-accent-light' : 'border-yellow-300'
+                  }`}>
+                    <Crown className={`h-12 w-12 ${
+                      isYourTeamWinner ? 'text-primary' : 'text-white'
+                    }`} />
+                  </div>
+                </div>
+                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-accent to-accent-light bg-clip-text text-transparent">
+                  {isYourTeamWinner ? 'VICTORY!' : 'GAME OVER!'}
+                </h1>
+                <p className="text-white/80 text-base sm:text-lg font-semibold mb-1">
+                  {winnerTeam?.name || (isYourTeamWinner ? 'Your Team' : 'Opponent Team')} Wins!
+                </p>
+                <p className="text-white/60 text-sm sm:text-base">
+                  Final Score: <span className="font-bold text-accent">{Math.max(yourScore, opponentScore)}</span> points
+                </p>
+              </>
+            )}
           </div>
 
-          {/* Title */}
-          <h1 className="text-center text-4xl font-extrabold tracking-wide mb-8">
-            GAME OVER!
-          </h1>
-
           {/* Stats Box - both teams */}
-          <div className="bg-white/5 rounded-2xl p-6 border border-white/10 mb-10">
+          <div className="bg-white/5 rounded-2xl p-4 sm:p-6 border border-white/10 mb-8">
             {yourTeam && (
               <div className="space-y-4">
-                <div className="text-center text-sm font-semibold text-white/80 uppercase tracking-wide">
-                  {yourTeam.name || "Your Team"}
+                {/* Your Team */}
+                <div className={`rounded-xl p-4 ${
+                  isYourTeamWinner && !isDraw 
+                    ? 'bg-gradient-to-r from-accent/20 to-accent-dark/20 border-2 border-accent/50' 
+                    : 'bg-black/20 border border-white/10'
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      {isYourTeamWinner && !isDraw && (
+                        <Crown className="h-5 w-5 text-accent" />
+                      )}
+                      {yourTeam.name || "Your Team"}
+                    </div>
+                    {isYourTeamWinner && !isDraw && (
+                      <span className="text-xs sm:text-sm bg-accent text-primary px-2 py-1 rounded-full font-semibold">
+                        WINNER
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 sm:gap-4 text-center">
+                    <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
+                      <div className="text-2xl sm:text-3xl font-bold text-yellow-400">
+                        {yourTeam.score ?? 0}
+                      </div>
+                      <div className="text-xs sm:text-sm text-white/70 mt-1">
+                        Score
+                      </div>
+                    </div>
+
+                    <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
+                      <div className="text-2xl sm:text-3xl font-bold text-green-400">
+                        {yourTeam.correctAnswers ?? 0}
+                      </div>
+                      <div className="text-xs sm:text-sm text-white/70 mt-1">Correct</div>
+                    </div>
+
+                    <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
+                      <div className="text-2xl sm:text-3xl font-bold text-red-400">
+                        {yourTeam.incorrectAnswers ?? 0}
+                      </div>
+                      <div className="text-xs sm:text-sm text-white/70 mt-1">Wrong</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="bg-black/30 rounded-xl py-4 border border-white/10">
-                    <div className="text-3xl font-bold text-yellow-400">
-                      {yourTeam.score ?? 0}
-                    </div>
-                    <div className="text-sm text-white/70 mt-1">
-                      Final Score
-                    </div>
-                  </div>
 
-                  <div className="bg-black/30 rounded-xl py-4 border border-white/10">
-                    <div className="text-3xl font-bold text-green-400">
-                      {yourTeam.correctAnswers ?? 0}
-                    </div>
-                    <div className="text-sm text-white/70 mt-1">Correct</div>
-                  </div>
-
-                  <div className="bg-black/30 rounded-xl py-4 border border-white/10">
-                    <div className="text-3xl font-bold text-red-400">
-                      {yourTeam.incorrectAnswers ?? 0}
-                    </div>
-                    <div className="text-sm text-white/70 mt-1">Incorrect</div>
-                  </div>
-                </div>
-
+                {/* Opponent Team */}
                 {opponentTeam && (
                   <>
-                    <div className="h-px bg-white/10 my-2" />
-                    <div className="text-center text-sm font-semibold text-white/80 uppercase tracking-wide">
-                      {opponentTeam.name || "Opponent Team"}
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="bg-black/30 rounded-xl py-4 border border-white/10">
-                        <div className="text-3xl font-bold text-yellow-400">
-                          {opponentTeam.score ?? 0}
+                    <div className="h-px bg-white/10" />
+                    <div className={`rounded-xl p-4 ${
+                      !isYourTeamWinner && !isDraw 
+                        ? 'bg-gradient-to-r from-yellow-400/20 to-yellow-600/20 border-2 border-yellow-400/50' 
+                        : 'bg-black/20 border border-white/10'
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                          {!isYourTeamWinner && !isDraw && (
+                            <Crown className="h-5 w-5 text-yellow-400" />
+                          )}
+                          {opponentTeam.name || "Opponent Team"}
                         </div>
-                        <div className="text-sm text-white/70 mt-1">
-                          Final Score
-                        </div>
+                        {!isYourTeamWinner && !isDraw && (
+                          <span className="text-xs sm:text-sm bg-yellow-400 text-black px-2 py-1 rounded-full font-semibold">
+                            WINNER
+                          </span>
+                        )}
                       </div>
+                      <div className="grid grid-cols-3 gap-3 sm:gap-4 text-center">
+                        <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
+                          <div className="text-2xl sm:text-3xl font-bold text-yellow-400">
+                            {opponentTeam.score ?? 0}
+                          </div>
+                          <div className="text-xs sm:text-sm text-white/70 mt-1">
+                            Score
+                          </div>
+                        </div>
 
-                      <div className="bg-black/30 rounded-xl py-4 border border-white/10">
-                        <div className="text-3xl font-bold text-green-400">
-                          {opponentTeam.correctAnswers ?? 0}
+                        <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
+                          <div className="text-2xl sm:text-3xl font-bold text-green-400">
+                            {opponentTeam.correctAnswers ?? 0}
+                          </div>
+                          <div className="text-xs sm:text-sm text-white/70 mt-1">
+                            Correct
+                          </div>
                         </div>
-                        <div className="text-sm text-white/70 mt-1">
-                          Correct
-                        </div>
-                      </div>
 
-                      <div className="bg-black/30 rounded-xl py-4 border border-white/10">
-                        <div className="text-3xl font-bold text-red-400">
-                          {opponentTeam.incorrectAnswers ?? 0}
-                        </div>
-                        <div className="text-sm text-white/70 mt-1">
-                          Incorrect
+                        <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
+                          <div className="text-2xl sm:text-3xl font-bold text-red-400">
+                            {opponentTeam.incorrectAnswers ?? 0}
+                          </div>
+                          <div className="text-xs sm:text-sm text-white/70 mt-1">
+                            Wrong
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1002,9 +1075,9 @@ export default function TeamBattleGame() {
           <div className="flex items-center justify-center gap-4">
             <Button
               onClick={() => setLocation("/")}
-              className="bg-white/10 border border-white/20 text-white px-6 py-3 rounded-xl hover:bg-white/20 shadow-lg"
+              className="bg-gradient-to-r from-accent to-accent-dark text-primary px-6 sm:px-8 py-3 rounded-xl hover:from-accent-light hover:to-accent font-bold text-base sm:text-lg shadow-lg hover:shadow-xl transition-all duration-200"
             >
-              Home
+              Return Home
             </Button>
           </div>
         </Card>

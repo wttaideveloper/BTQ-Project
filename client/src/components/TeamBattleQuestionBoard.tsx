@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Clock } from "lucide-react";
+import { Clock, Check } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 import { playBasicSound } from "@/lib/basic-sound";
 import { voiceService } from "@/lib/voice-service";
@@ -42,6 +42,7 @@ interface TeamBattleQuestionBoardProps {
   isPaused?: boolean;
   isReadOnly?: boolean;
   answeringTeamName?: string;
+  selectedAnswerId?: string | null; // Track selected answer for highlighting
 }
 
 const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
@@ -62,6 +63,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   isPaused = false,
   isReadOnly = false,
   answeringTeamName,
+  selectedAnswerId = null,
 }) => {
   const [displayTime, setDisplayTime] = useState(timeRemaining);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -380,22 +382,43 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 flex-grow min-w-0">
           {answers.map((answer, index) => {
             const answerSuggestions = getSuggestionsForAnswer(answer.id);
+            const isSelected = selectedAnswerId === answer.id;
+            const isDisabled = isQuestionLocked || isReadOnly;
 
             return (
               <button
                 key={answer.id}
                 type="button"
                 onClick={() => handleClick(answer.id)}
-                disabled={isQuestionLocked || isReadOnly}
-                className={`answer-button ${isReadOnly ? 'bg-primary/50 cursor-not-allowed opacity-75' : 'bg-primary hover:bg-primary/90'} text-white font-medium py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 rounded-xl flex flex-col items-stretch text-left gap-2 min-w-0 w-full relative`}
+                disabled={isDisabled}
+                className={`answer-button transition-all duration-200 ${
+                  isReadOnly 
+                    ? 'bg-primary/50 cursor-not-allowed opacity-75' 
+                    : isSelected
+                    ? 'bg-gradient-to-r from-accent to-accent-dark border-2 border-accent-light shadow-glow scale-[1.02]'
+                    : 'bg-primary hover:bg-primary/90 hover:scale-[1.01]'
+                } text-white font-medium py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 rounded-xl flex flex-col items-stretch text-left gap-2 min-w-0 w-full relative`}
               >
                 <div className="flex items-center min-w-0">
-                  <span className="bg-accent text-primary font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md flex-shrink-0">
+                  <span className={`${
+                    isSelected 
+                      ? 'bg-white text-accent shadow-lg scale-110' 
+                      : 'bg-accent text-primary'
+                  } font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md flex-shrink-0 transition-all duration-200`}>
                     {labels[index]}
                   </span>
-                  <span className="text-sm sm:text-base md:text-lg text-white line-clamp-2 sm:line-clamp-none flex-1 min-w-0 overflow-hidden">
+                  <span className={`text-sm sm:text-base md:text-lg line-clamp-2 sm:line-clamp-none flex-1 min-w-0 overflow-hidden ${
+                    isSelected ? 'text-white font-semibold' : 'text-white'
+                  }`}>
                     {answer.text}
                   </span>
+                  {isSelected && !isDisabled && (
+                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+                      <div className="bg-accent-light rounded-full p-1 animate-pulse">
+                        <Check className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {answerSuggestions.length > 0 && (

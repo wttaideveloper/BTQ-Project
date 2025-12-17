@@ -366,8 +366,18 @@ export default function TeamBattleGame() {
             const playerTeamResult = data.teamResults?.find(
               (r: any) => r.teamId === resolvedPlayerTeamId
             );
-            const roundCorrect = !!playerTeamResult?.correct;
-            setLastRoundCorrect(roundCorrect);
+            
+            // Only set feedback if it was actually our turn to answer
+            // Use the wasYourTurn flag from server (more reliable than state)
+            const wasOurTurn = data.wasYourTurn === true;
+            if (wasOurTurn && playerTeamResult) {
+              const roundCorrect = !!playerTeamResult?.correct;
+              setLastRoundCorrect(roundCorrect);
+            } else {
+              // Not our turn - don't show feedback modal
+              setLastRoundCorrect(null);
+              setShowRoundFeedback(false);
+            }
 
             setGameState((prev) => {
               let updatedTeams = prev.teams;
@@ -397,6 +407,8 @@ export default function TeamBattleGame() {
                 phase: "results",
                 // Keep question data for results screen
                 currentQuestion: data.question || prev.currentQuestion,
+                // Update isYourTurn based on results (for results display)
+                isYourTurn: data.wasYourTurn !== false,
               };
             });
 
@@ -1011,11 +1023,14 @@ export default function TeamBattleGame() {
     );
   }
 
+  // Only show feedback modal if it was our turn to answer
+  const wasOurTurnForFeedback = gameState.isYourTurn !== false;
   const showFeedbackModal =
     showRoundFeedback &&
     gameState.currentQuestion &&
     correctAnswerId !== null &&
-    lastRoundCorrect !== null;
+    lastRoundCorrect !== null &&
+    wasOurTurnForFeedback; // Only show if it was our turn
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-primary-dark to-black text-white relative">

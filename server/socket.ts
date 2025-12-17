@@ -3176,24 +3176,49 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
         }
       });
 
-      // If all teams in this battle have finalized an answer for this question,
-      // immediately process and broadcast the results instead of waiting for
-      // the question timeout.
+      // In alternating format, only one team answers per question
+      // So when a team finalizes, we can immediately process results
+      // (no need to wait for the other team since they don't answer this question)
       if (gameSession && gameSession.teams && gameSession.teams.length > 0) {
         const currentQuestionId = finalAnswer.questionId;
-        const allTeamsFinalized = gameSession.teams.every((t: any) =>
-          (t.finalAnswers || []).some(
-            (fa: any) => fa.questionId === currentQuestionId
-          )
+        const currentQuestion = gameSession.questions?.find(
+          (q: any) => q.id === currentQuestionId
         );
-
-        if (allTeamsFinalized) {
-          // Fixed: Clear timeout to prevent double processing when all teams answer early
-          if (gameSession.questionTimeout) {
-            clearTimeout(gameSession.questionTimeout);
-            gameSession.questionTimeout = undefined;
+        
+        if (currentQuestion) {
+          const currentIndex = gameSession.questions?.indexOf(currentQuestion) ?? -1;
+          const questionNumber = currentIndex + 1;
+          const isTeamATurn = questionNumber % 2 === 1;
+          
+          // Find which team should have answered
+          let answeringTeam = gameSession.teams.find((team: any) => {
+            if (team.teamSide) {
+              if (isTeamATurn) {
+                return team.teamSide === "A";
+              } else {
+                return team.teamSide === "B";
+              }
+            }
+            return false;
+          });
+          
+          // Fallback: if no teamSide, use team order
+          if (!answeringTeam && gameSession.teams.length >= 2) {
+            answeringTeam = isTeamATurn ? gameSession.teams[0] : gameSession.teams[1];
           }
-          await processTeamBattleAnswers(gameSession.id);
+          
+          // If this is the team that should answer, process immediately
+          if (answeringTeam && sessionTeam.id === answeringTeam.id) {
+            // Clear timeout to prevent double processing
+            if (gameSession.questionTimeout) {
+              clearTimeout(gameSession.questionTimeout);
+              gameSession.questionTimeout = undefined;
+            }
+            // Process answers immediately (with a small delay for UX)
+            setTimeout(async () => {
+              await processTeamBattleAnswers(gameSession.id);
+            }, 500); // Small delay to show the answer was locked
+          }
         }
       }
 
@@ -4619,7 +4644,12 @@ async function processTeamBattleAnswers(gameId: string) {
   const gameClients = Array.from(clients.values()).filter(
     (c) => c.gameId === gameId
   );
+  
   for (const client of gameClients) {
+    const player = gameSession.players.find((p) => p.userId === client.userId);
+    const playerTeam = player ? gameSession.teams.find((t) => t.id === player.teamId) : null;
+    const wasPlayerTeamTurn = playerTeam && playerTeam.id === answeringTeam?.id;
+    
     sendToClient(client.id, {
       type: "team_battle_question_results",
       gameId: gameId,
@@ -4636,6 +4666,7 @@ async function processTeamBattleAnswers(gameId: string) {
       // Include info about whose turn it was
       answeringTeamId: answeringTeam?.id,
       answeringTeamName: answeringTeam?.name,
+      wasYourTurn: wasPlayerTeamTurn || false, // Explicitly tell client if it was their turn
     });
   }
 
@@ -4646,13 +4677,13 @@ async function processTeamBattleAnswers(gameId: string) {
   if (gameSession.currentQuestionIndex >= gameSession.questions.length) {
     // Battle completed - give teams a moment to see final results
     console.log(`[TeamBattle] All questions completed for gameId: ${gameId}`);
-    setTimeout(() => endTeamBattle(gameId), 3000);
+    setTimeout(() => endTeamBattle(gameId), 2000);
   } else {
     // Next question - send after a brief delay to show results
     console.log(`[TeamBattle] Moving to question ${gameSession.currentQuestionIndex + 1} for gameId: ${gameId}`);
     setTimeout(() => {
       sendTeamBattleQuestion(gameId);
-    }, 3000); // 3 seconds to show results before next question
+    }, 2000); // 2 seconds to show results before next question (reduced from 3)
   }
 }
 

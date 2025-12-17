@@ -4251,14 +4251,20 @@ async function startTeamBattleQuestions(gameId: string) {
   if (!gameSession) return;
 
   try {
+    console.log(`[TeamBattle] Starting to load questions for gameId: ${gameId}`);
+    
     // Get questions for the battle using pure random selection (no filters)
     // so that we always have a set of questions regardless of category/difficulty.
+    // Total 10 questions: Team A gets 5 (odd: 1,3,5,7,9), Team B gets 5 (even: 2,4,6,8,10)
     const questions = await database.getRandomQuestions({
-      count: 5,
+      count: 10,
     });
 
-    if (questions.length === 0) {
-      // Fixed: Notify clients and gracefully end battle if questions cannot be loaded
+    console.log(`[TeamBattle] Received ${questions?.length || 0} questions from database`);
+
+    // Validate questions
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      console.error(`[TeamBattle] Invalid questions array for gameId: ${gameId}`);
       const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
       for (const client of gameClients) {
         sendToClient(client.id, {
@@ -4270,37 +4276,95 @@ async function startTeamBattleQuestions(gameId: string) {
       return;
     }
 
-    gameSession.questions = questions;
+    // Filter out any invalid questions
+    const validQuestions = questions.filter(
+      (q) => q && q.id && q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0
+    );
+
+    if (validQuestions.length === 0) {
+      console.error(`[TeamBattle] No valid questions after filtering for gameId: ${gameId}`);
+      const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+      for (const client of gameClients) {
+        sendToClient(client.id, {
+          type: "error",
+          message: "No valid questions available. Please try again.",
+        });
+      }
+      endTeamBattle(gameId, "No valid questions available");
+      return;
+    }
+
+    if (validQuestions.length < 10) {
+      console.warn(`[TeamBattle] Only ${validQuestions.length} valid questions available (requested 10) for gameId: ${gameId}`);
+    }
+
+    gameSession.questions = validQuestions;
     gameSession.currentQuestionIndex = 0;
 
-    // Send first question to all teams
-    sendTeamBattleQuestion(gameId);
+    console.log(`[TeamBattle] Successfully loaded ${gameSession.questions.length} valid questions for gameId: ${gameId}, teams: ${gameSession.teams?.length || 0}`);
+
+    // Send first question to the appropriate team (Team A for question 1)
+    // Add a small delay to ensure all clients are ready
+    setTimeout(() => {
+      sendTeamBattleQuestion(gameId);
+    }, 500);
   } catch (error) {
+    console.error(`[TeamBattle] Error loading questions for gameId: ${gameId}:`, error);
     // Fixed: Notify clients and gracefully end battle if questions cannot be loaded
     try {
       const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
       for (const client of gameClients) {
         sendToClient(client.id, {
           type: "error",
-          message: "Error loading questions. The battle cannot continue.",
+          message: error instanceof Error ? `Error loading questions: ${error.message}` : "Error loading questions. The battle cannot continue.",
         });
       }
-      endTeamBattle(gameId, "Error loading questions");
+      endTeamBattle(gameId, `Error loading questions: ${error instanceof Error ? error.message : "Unknown error"}`);
     } catch (err) {
-      // Silent error handling
+      console.error(`[TeamBattle] Error notifying clients:`, err);
     }
   }
 }
 
 function sendTeamBattleQuestion(gameId: string) {
   const gameSession = gameSessions.get(gameId);
-  if (!gameSession || !gameSession.questions) return;
+  if (!gameSession) {
+    console.error(`[TeamBattle] Game session not found for gameId: ${gameId}`);
+    return;
+  }
 
-  const currentQuestion =
-    gameSession.questions[gameSession.currentQuestionIndex || 0];
+  if (!gameSession.questions) {
+    console.error(`[TeamBattle] Questions not initialized for gameId: ${gameId}`);
+    return;
+  }
+
+  if (!gameSession.teams || gameSession.teams.length === 0) {
+    console.error(`[TeamBattle] Teams not found for gameId: ${gameId}`);
+    return;
+  }
+
+  const currentIndex = gameSession.currentQuestionIndex || 0;
+  
+  // Check if questions array is empty or invalid
+  if (!gameSession.questions || gameSession.questions.length === 0) {
+    console.error(`[TeamBattle] Questions array is empty for gameId: ${gameId}. Cannot send question.`);
+    // Don't end battle - wait for questions to be loaded
+    return;
+  }
+  
+  const currentQuestion = gameSession.questions[currentIndex];
+  
   if (!currentQuestion) {
-    // No more questions, end battle
-    endTeamBattle(gameId);
+    // Check if we've actually run out of questions or if there's an issue
+    if (currentIndex >= gameSession.questions.length) {
+      // Legitimately out of questions
+      console.log(`[TeamBattle] All questions completed for gameId: ${gameId}. Index: ${currentIndex}, Total: ${gameSession.questions.length}`);
+      endTeamBattle(gameId);
+    } else {
+      // Question missing at index - this is an error
+      console.error(`[TeamBattle] Question missing at index ${currentIndex} for gameId: ${gameId}. Total questions: ${gameSession.questions.length}`);
+      // Don't end battle - this might be a temporary issue
+    }
     return;
   }
 
@@ -4309,29 +4373,132 @@ function sendTeamBattleQuestion(gameId: string) {
     gameSession.questionTimeout = undefined;
   }
 
-  // Send question to all team members
+  // Determine which team should answer this question
+  // Question numbers: 1,2,3,4,5,6,7,8,9,10
+  // Team A answers odd questions (1,3,5,7,9)
+  // Team B answers even questions (2,4,6,8,10)
+  const questionNumber = currentIndex + 1;
+  const isTeamATurn = questionNumber % 2 === 1; // Odd numbers = Team A
+
+  // Find the team that should answer (Team A or Team B)
+  // If teams don't have teamSide, assign by order (first team = A, second = B)
+  let answeringTeam = gameSession.teams.find((team) => {
+    if (team.teamSide) {
+      if (isTeamATurn) {
+        return team.teamSide === "A";
+      } else {
+        return team.teamSide === "B";
+      }
+    }
+    return false;
+  });
+
+  // Fallback: if no teamSide is set, use team order
+  if (!answeringTeam && gameSession.teams.length >= 2) {
+    answeringTeam = isTeamATurn ? gameSession.teams[0] : gameSession.teams[1];
+    console.log(`[TeamBattle] Using team order fallback. Question ${questionNumber}, isTeamATurn: ${isTeamATurn}, using team: ${answeringTeam.name}`);
+  }
+
+  // Find the opposing team
+  const opposingTeam = gameSession.teams.find((team) => team.id !== answeringTeam?.id);
+
+  if (!answeringTeam) {
+    console.error(`[TeamBattle] Cannot determine answering team for gameId: ${gameId}, question ${questionNumber}`);
+    // Send to all teams as last resort
+    const gameClients = Array.from(clients.values()).filter(
+      (c) => c.gameId === gameId
+    );
+    for (const client of gameClients) {
+      const player = gameSession.players.find((p) => p.userId === client.userId);
+      if (player) {
+        sendToClient(client.id, {
+          type: "team_battle_question",
+          gameId: gameId,
+          question: currentQuestion,
+          questionNumber: questionNumber,
+          totalQuestions: gameSession.questions.length,
+          teamId: player.teamId,
+          timeLimit: 15000,
+          isYourTurn: true,
+        });
+      }
+    }
+    return;
+  }
+
+  // Send question info to both teams, but indicate whose turn it is
   const gameClients = Array.from(clients.values()).filter(
     (c) => c.gameId === gameId
   );
 
-  for (const client of gameClients) {
-    const player = gameSession.players.find((p) => p.userId === client.userId);
-    if (player) {
-      sendToClient(client.id, {
-        type: "team_battle_question",
-        gameId: gameId,
-        question: currentQuestion,
-        questionNumber: (gameSession.currentQuestionIndex || 0) + 1,
-        totalQuestions: gameSession.questions.length,
-        teamId: player.teamId,
-        timeLimit: 15000, // Fixed: Changed from 30000 to 15000 to match frontend expectation
-      });
+    // Ensure we send question to ALL clients in the game
+    for (const client of gameClients) {
+      const player = gameSession.players.find((p) => p.userId === client.userId);
+      if (!player) {
+        console.warn(`[TeamBattle] Player not found for client ${client.id} in gameId: ${gameId}`);
+        // Still send question to client even if player not found
+        sendToClient(client.id, {
+          type: "team_battle_question",
+          gameId: gameId,
+          question: currentQuestion,
+          questionNumber: questionNumber,
+          totalQuestions: gameSession.questions.length,
+          timeLimit: 15000,
+          isYourTurn: false,
+          answeringTeamName: answeringTeam.name,
+        });
+        continue;
+      }
+
+      if (player.teamId === answeringTeam.id) {
+        // Send question to members of the answering team (their turn)
+        sendToClient(client.id, {
+          type: "team_battle_question",
+          gameId: gameId,
+          question: currentQuestion,
+          questionNumber: questionNumber,
+          totalQuestions: gameSession.questions.length,
+          teamId: player.teamId,
+          timeLimit: 15000,
+          isYourTurn: true,
+          answeringTeamName: answeringTeam.name,
+        });
+      } else if (opposingTeam && player.teamId === opposingTeam.id) {
+        // Send question info to the waiting team (read-only view) - CRITICAL: Always send to opposing team
+        sendToClient(client.id, {
+          type: "team_battle_question",
+          gameId: gameId,
+          question: currentQuestion,
+          questionNumber: questionNumber,
+          totalQuestions: gameSession.questions.length,
+          teamId: player.teamId,
+          timeLimit: 15000,
+          isYourTurn: false,
+          answeringTeamName: answeringTeam.name,
+          opposingTeamName: opposingTeam.name,
+        });
+      } else {
+        // Player's team not found in the battle - send question anyway (read-only)
+        console.warn(`[TeamBattle] Player ${player.userId} team ${player.teamId} not found in battle teams. Sending read-only question.`);
+        sendToClient(client.id, {
+          type: "team_battle_question",
+          gameId: gameId,
+          question: currentQuestion,
+          questionNumber: questionNumber,
+          totalQuestions: gameSession.questions.length,
+          teamId: player.teamId,
+          timeLimit: 15000,
+          isYourTurn: false,
+          answeringTeamName: answeringTeam.name,
+        });
+      }
     }
-  }
+    
+    console.log(`[TeamBattle] Sent question ${questionNumber} to ${gameClients.length} clients. Answering team: ${answeringTeam.name}`);
 
   gameSession.questionTimeout = setTimeout(() => {
     processTeamBattleAnswers(gameId);
-  }, 15000); // Fixed: Changed from 30000 to 15000 to match frontend expectation
+  }, 15000);
 }
 
 async function processTeamBattleAnswers(gameId: string) {
@@ -4369,9 +4536,46 @@ async function processTeamBattleAnswers(gameId: string) {
 
   const correctAnswer = (currentQuestion as any).answers.find((a: any) => a.isCorrect);
 
+  // Determine which team should have answered this question
+  // Question numbers: 1,2,3,4,5,6,7,8,9,10
+  // Team A answers odd questions (1,3,5,7,9)
+  // Team B answers even questions (2,4,6,8,10)
+  const questionNumber = currentIndex + 1;
+  const isTeamATurn = questionNumber % 2 === 1; // Odd numbers = Team A
+
+  // Find the team that should have answered
+  let answeringTeam = gameSession.teams.find((team) => {
+    if (team.teamSide) {
+      if (isTeamATurn) {
+        return team.teamSide === "A";
+      } else {
+        return team.teamSide === "B";
+      }
+    }
+    return false;
+  });
+
+  // Fallback: if no teamSide is set, use team order
+  if (!answeringTeam && gameSession.teams.length >= 2) {
+    answeringTeam = isTeamATurn ? gameSession.teams[0] : gameSession.teams[1];
+  }
+
   // Calculate team scores for this question
   const teamResults = [];
   for (const team of gameSession.teams) {
+    // Only process answer from the team that should have answered
+    if (team.id !== answeringTeam?.id) {
+      // Other team didn't answer (they weren't supposed to)
+      teamResults.push({
+        teamId: team.id,
+        teamName: team.name,
+        answered: false,
+        correct: false,
+        score: 0,
+      });
+      continue;
+    }
+
     const teamAnswer = team.finalAnswers?.find(
       (fa: any) => fa.questionId === currentQuestion.id
     );
@@ -4385,7 +4589,7 @@ async function processTeamBattleAnswers(gameId: string) {
       score: isCorrect ? 100 : 0,
     });
 
-    // Update team score
+    // Update team score only for the answering team
     if (isCorrect) {
       team.score = (team.score || 0) + 100;
       team.correctAnswers = (team.correctAnswers || 0) + 1;
@@ -4411,7 +4615,7 @@ async function processTeamBattleAnswers(gameId: string) {
     }
   }
 
-  // Send results to all players
+  // Send results to all players (both teams see the results)
   const gameClients = Array.from(clients.values()).filter(
     (c) => c.gameId === gameId
   );
@@ -4429,6 +4633,9 @@ async function processTeamBattleAnswers(gameId: string) {
           score: t.score || 0,
         }))
         .sort((a, b) => b.score - a.score),
+      // Include info about whose turn it was
+      answeringTeamId: answeringTeam?.id,
+      answeringTeamName: answeringTeam?.name,
     });
   }
 
@@ -4437,11 +4644,15 @@ async function processTeamBattleAnswers(gameId: string) {
     (gameSession.currentQuestionIndex || 0) + 1;
 
   if (gameSession.currentQuestionIndex >= gameSession.questions.length) {
-    // Battle completed
+    // Battle completed - give teams a moment to see final results
+    console.log(`[TeamBattle] All questions completed for gameId: ${gameId}`);
     setTimeout(() => endTeamBattle(gameId), 3000);
   } else {
-    // Next question
-    setTimeout(() => sendTeamBattleQuestion(gameId), 5000);
+    // Next question - send after a brief delay to show results
+    console.log(`[TeamBattle] Moving to question ${gameSession.currentQuestionIndex + 1} for gameId: ${gameId}`);
+    setTimeout(() => {
+      sendTeamBattleQuestion(gameId);
+    }, 3000); // 3 seconds to show results before next question
   }
 }
 

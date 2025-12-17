@@ -78,6 +78,8 @@ interface GameState {
   finalScore?: number;
   correct?: number;
   incorrect?: number;
+  isYourTurn?: boolean;
+  answeringTeamName?: string;
 }
 
 export default function TeamBattleGame() {
@@ -254,11 +256,24 @@ export default function TeamBattleGame() {
             toast({
               title: "Battle Started!",
               description:
-                "The team battle has begun. Get ready for questions!",
+                "Loading questions... Get ready!",
+              duration: 3000,
             });
+            // Show loading state while questions are being loaded
             break;
 
           case "team_battle_question":
+            // Validate question data before setting state
+            if (!data.question) {
+              console.error("Received team_battle_question without question data:", data);
+              toast({
+                title: "Error",
+                description: "Received invalid question data. Please wait...",
+                variant: "destructive",
+              });
+              break;
+            }
+
             setGameState((prev) => ({
               ...prev,
               phase: "question",
@@ -266,7 +281,12 @@ export default function TeamBattleGame() {
               questionNumber: data.questionNumber,
               totalQuestions: data.totalQuestions,
               timeRemaining: data.timeLimit || 15,
+              isYourTurn: data.isYourTurn !== false, // Default to true if not specified
+              answeringTeamName: data.answeringTeamName,
             }));
+            
+            // Reset answer state for BOTH teams when new question arrives
+            // This ensures clean state for both answering and waiting teams
             setSelectedAnswer(null);
             setHasSubmitted(false);
             setTeamAnswer(null);
@@ -322,15 +342,17 @@ export default function TeamBattleGame() {
           }
 
           case "team_answer_finalized":
-            // Our team has locked in an answer. Lock the question and show
-            // a waiting overlay until the server sends results.
+            // Our team has locked in an answer. In alternating format, 
+            // only one team answers per question, so just lock the answer
+            // and wait for the timer to expire (no need to wait for opponent)
             setTeamAnswer(data.finalAnswer.answerId);
             setHasSubmitted(true);
-            setWaitingForResults(true);
+            // Don't set waitingForResults - in alternating format, 
+            // we just wait for the timer, not for the other team
             break;
 
           case "team_battle_question_results": {
-            // Both teams have been evaluated for this question.
+            // Question results received - show feedback briefly, then move to next question
             setWaitingForResults(false);
 
             const correctId: string | null = data.correctAnswer?.id || null;
@@ -371,9 +393,14 @@ export default function TeamBattleGame() {
                 teams: updatedTeams,
                 playerTeam: playerTeam || prev.playerTeam,
                 opposingTeam: opposingTeam || prev.opposingTeam,
+                // Keep current question for results display
+                phase: "results",
+                // Keep question data for results screen
+                currentQuestion: data.question || prev.currentQuestion,
               };
             });
 
+            // Show feedback modal briefly, then next question will come from server
             break;
           }
 
@@ -644,7 +671,26 @@ export default function TeamBattleGame() {
   );
 
   const renderQuestionPhase = () => {
-    if (!gameState.currentQuestion || !gameState.playerTeam) return null;
+    // Always show something - if no question, show loading
+    if (!gameState.currentQuestion) {
+      return (
+        <div className="max-w-xl mx-auto p-6">
+          <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <div className="h-16 w-16 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg animate-pulse">
+                <Clock className="h-8 w-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-center">Loading Question</h2>
+              <p className="text-white/70 text-center text-sm">
+                Please wait...
+              </p>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+    
+    if (!gameState.playerTeam) return null;
 
     const question = gameState.currentQuestion;
     const timeLimit = 15;
@@ -652,6 +698,7 @@ export default function TeamBattleGame() {
       gameState.timeRemaining ?? timeLimit,
       timeLimit
     );
+    const isYourTurn = gameState.isYourTurn !== false; // Default to true if not specified
 
     return (
       <div className="max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative bg-gradient-to-br from-secondary to-secondary-dark text-white w-full min-w-0 overflow-x-hidden">
@@ -671,22 +718,22 @@ export default function TeamBattleGame() {
           onMemberSelect={handleMemberSelect}
           onCaptainSubmit={handleCaptainSubmit}
           isPaused={isPaused}
+          isReadOnly={!isYourTurn}
+          answeringTeamName={gameState.answeringTeamName}
         />
 
-        {waitingForResults && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-10">
+        {teamAnswer && !isYourTurn && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
             <Card className="max-w-sm w-full mx-4 bg-gradient-to-br from-secondary to-secondary-dark text-white border border-accent/60 shadow-2xl">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  Waiting for Opponent
+                  <Check className="h-5 w-5 text-green-400" />
+                  Answer Locked
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-white/80">
-                  Your team answer is locked in. Waiting for the other team to
-                  submit their answer. After both teams have answered, the
-                  correct answer will be shown.
+                  Your team's answer has been submitted. Waiting for time to expire...
                 </p>
               </CardContent>
             </Card>
@@ -697,19 +744,51 @@ export default function TeamBattleGame() {
   };
 
   const renderResultsPhase = () => {
-    if (!gameState.currentQuestion) return null;
+    // If no question but in results phase, we're transitioning - show loading
+    if (!gameState.currentQuestion) {
+      return (
+        <div className="max-w-xl mx-auto p-6">
+          <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <div className="h-16 w-16 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg animate-pulse">
+                <Clock className="h-8 w-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-center">Preparing Next Question</h2>
+              <p className="text-white/70 text-center text-sm">
+                Please wait...
+              </p>
+            </div>
+          </Card>
+        </div>
+      );
+    }
 
     const question = gameState.currentQuestion;
     const correctAnswer =
       correctAnswerId && question.answers.find((a) => a.id === correctAnswerId);
     const yourAnswer =
       teamAnswer && question.answers.find((a) => a.id === teamAnswer);
+    
+    // Determine if it was our turn
+    const wasOurTurn = gameState.isYourTurn !== false;
+    const resolvedPlayerTeamId =
+      gameState.playerTeam?.id ||
+      gameState.teams?.find((team) =>
+        team.members.some((member) => member.userId === user?.id)
+      )?.id;
+    const playerTeamResult = gameState.teams?.find(
+      (team) => team.id === resolvedPlayerTeamId
+    );
 
     return (
       <div className="max-w-4xl mx-auto p-6">
         <Card className="bg-gradient-to-br from-secondary to-secondary-dark text-white border border-accent/40 shadow-2xl">
           <CardHeader>
-            <CardTitle>Round Results</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              {wasOurTurn && lastRoundCorrect && <Check className="h-5 w-5 text-green-400" />}
+              {wasOurTurn && lastRoundCorrect === false && <X className="h-5 w-5 text-red-400" />}
+              <span>Round {gameState.questionNumber || 1} Results</span>
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -721,30 +800,65 @@ export default function TeamBattleGame() {
               <p className="font-semibold mb-1 text-accent-light">
                 Correct Answer
               </p>
-              <p className="text-green-300">
+              <p className="text-green-300 font-medium">
                 {correctAnswer ? correctAnswer.text : "Not available"}
               </p>
             </div>
 
-            <div>
-              <p className="font-semibold mb-1 text-accent-light">
-                Your Team's Answer
-              </p>
-              <p className="text-white/90">
-                {yourAnswer ? yourAnswer.text : "No answer submitted"}
-              </p>
+            {wasOurTurn && (
+              <div>
+                <p className="font-semibold mb-1 text-accent-light">
+                  Your Team's Answer
+                </p>
+                <p className={`font-medium ${
+                  lastRoundCorrect ? "text-green-300" : "text-red-300"
+                }`}>
+                  {yourAnswer ? yourAnswer.text : "No answer submitted"}
+                </p>
+                {lastRoundCorrect !== null && (
+                  <p className={`text-sm mt-2 ${
+                    lastRoundCorrect ? "text-green-400" : "text-red-400"
+                  }`}>
+                    {lastRoundCorrect ? "✓ Correct! +100 points" : "✗ Incorrect"}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!wasOurTurn && (
+              <div>
+                <p className="font-semibold mb-1 text-accent-light">
+                  {gameState.answeringTeamName || "Opponent Team"} answered this question
+                </p>
+                <p className="text-white/70 text-sm">
+                  You'll answer the next question.
+                </p>
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-white/10">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-white/70">Your Team Score</p>
+                  <p className="text-2xl font-bold text-accent">
+                    {playerTeamResult?.score || gameState.playerTeam?.score || 0}
+                  </p>
+                </div>
+                {gameState.opposingTeam && (
+                  <div className="text-right">
+                    <p className="text-sm text-white/70">{gameState.opposingTeam.name} Score</p>
+                    <p className="text-2xl font-bold text-secondary">
+                      {gameState.opposingTeam.score || 0}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
-              <Button
-                onClick={() => {
-                  // Do not modify result state here; wait for the server to
-                  // send the next team_battle_question.
-                }}
-                className="bg-gradient-to-r from-accent to-accent-dark text-primary hover:from-accent-light hover:to-accent font-bold"
-              >
-                Continue
-              </Button>
+            <div className="flex justify-center pt-2">
+              <p className="text-sm text-white/60 animate-pulse">
+                Next question loading...
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -906,6 +1020,78 @@ export default function TeamBattleGame() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-primary-dark to-black text-white relative">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
+        {/* Team Scores Header - Show during game */}
+        {gameState.phase === "question" && gameState.playerTeam && gameState.opposingTeam && (
+          <div className="mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-2xl p-4 border border-white/10">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Your Team */}
+              <div className={`flex-1 w-full sm:w-auto p-3 rounded-xl border-2 transition-all ${
+                gameState.isYourTurn !== false 
+                  ? 'bg-accent/20 border-accent shadow-lg shadow-accent/30' 
+                  : 'bg-primary/10 border-primary/30'
+              }`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs sm:text-sm text-white/70 mb-1">Your Team</div>
+                    <div className="text-lg sm:text-xl font-bold text-white">{gameState.playerTeam.name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs sm:text-sm text-white/70 mb-1">Score</div>
+                    <div className="text-2xl sm:text-3xl font-bold text-accent">{gameState.playerTeam.score || 0}</div>
+                  </div>
+                  {gameState.isYourTurn !== false && (
+                    <div className="px-3 py-1 bg-accent text-primary rounded-full text-xs font-bold animate-pulse">
+                      YOUR TURN
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* VS Separator */}
+              <div className="text-white/50 font-bold text-xl">VS</div>
+
+              {/* Opposing Team */}
+              <div className={`flex-1 w-full sm:w-auto p-3 rounded-xl border-2 transition-all ${
+                gameState.isYourTurn === false 
+                  ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/30' 
+                  : 'bg-secondary/10 border-secondary/30'
+              }`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs sm:text-sm text-white/70 mb-1">Opponent</div>
+                    <div className="text-lg sm:text-xl font-bold text-white">{gameState.opposingTeam.name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs sm:text-sm text-white/70 mb-1">Score</div>
+                    <div className="text-2xl sm:text-3xl font-bold text-secondary">{gameState.opposingTeam.score || 0}</div>
+                  </div>
+                  {gameState.isYourTurn === false && (
+                    <div className="px-3 py-1 bg-yellow-500 text-black rounded-full text-xs font-bold animate-pulse">
+                      THEIR TURN
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Question Progress */}
+            {gameState.questionNumber && gameState.totalQuestions && (
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-center gap-2 text-sm text-white/80">
+                  <span>Question {gameState.questionNumber} of {gameState.totalQuestions}</span>
+                  <span className="text-white/50">•</span>
+                  <span>
+                    {gameState.isYourTurn !== false 
+                      ? `Your team answers this question`
+                      : `${gameState.answeringTeamName || 'Opponent'} is answering`
+                    }
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Header with logo on left and controls on right */}
         <header className="flex items-center justify-between mb-4 gap-4">
           {/* Logo Section */}
@@ -1031,6 +1217,26 @@ export default function TeamBattleGame() {
         </header>
       </div>
       {gameState.phase === "waiting" && renderWaitingPhase()}
+      {gameState.phase === "playing" && (
+        <div className="max-w-xl mx-auto p-6">
+          <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
+            <div className="flex flex-col items-center justify-center space-y-6">
+              <div className="h-20 w-20 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg animate-pulse">
+                <Clock className="h-10 w-10 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-center">Preparing Battle</h2>
+              <p className="text-white/70 text-center">
+                Loading questions and setting up the game...
+              </p>
+              <div className="flex gap-2">
+                <div className="h-3 w-3 rounded-full bg-blue-400 animate-bounce"></div>
+                <div className="h-3 w-3 rounded-full bg-blue-500 animate-bounce delay-150"></div>
+                <div className="h-3 w-3 rounded-full bg-blue-600 animate-bounce delay-300"></div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
       {gameState.phase === "question" && renderQuestionPhase()}
       {gameState.phase === "results" && renderResultsPhase()}
       {gameState.phase === "finished" && renderFinishedPhase()}

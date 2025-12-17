@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Clock } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 import { playBasicSound } from "@/lib/basic-sound";
 
@@ -37,6 +38,8 @@ interface TeamBattleQuestionBoardProps {
   onMemberSelect: (answerId: string) => void;
   onCaptainSubmit: (answerId: string) => void;
   isPaused?: boolean;
+  isReadOnly?: boolean;
+  answeringTeamName?: string;
 }
 
 const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
@@ -55,6 +58,8 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   onMemberSelect,
   onCaptainSubmit,
   isPaused = false,
+  isReadOnly = false,
+  answeringTeamName,
 }) => {
   const [displayTime, setDisplayTime] = useState(timeRemaining);
 
@@ -65,7 +70,8 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   useEffect(() => {
     // Mirror single-player behavior: if the question is locked (team answer
     // submitted) or time has expired, stop the local countdown.
-    if (displayTime <= 0 || isQuestionLocked || isPaused) return;
+    // Also stop countdown if it's read-only (opponent's turn)
+    if (displayTime <= 0 || isQuestionLocked || isPaused || isReadOnly) return;
 
     const timer = setInterval(() => {
       setDisplayTime((prev) => {
@@ -108,7 +114,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   const labels = ["A", "B", "C", "D"];
 
   const handleClick = (answerId: string) => {
-    if (isQuestionLocked) return;
+    if (isQuestionLocked || isReadOnly) return;
     if (isCaptain) {
       onCaptainSubmit(answerId);
     } else {
@@ -121,10 +127,20 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   };
 
   return (
-    <div className="flex-grow flex flex-col bg-black rounded-3xl shadow-2xl overflow-hidden relative border-2 border-accent">
-      <div className="bg-gradient-to-r from-primary to-primary-dark p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-0">
+    <div className={`flex-grow flex flex-col bg-black rounded-3xl shadow-2xl overflow-hidden relative border-2 ${isReadOnly ? 'border-yellow-500/50' : 'border-accent'}`}>
+      {isReadOnly && (
+        <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-yellow-500/90 to-orange-500/90 text-white py-2 px-4 z-20 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <Clock className="h-4 w-4 animate-pulse" />
+            <span className="font-semibold text-sm sm:text-base">
+              {answeringTeamName || "Opponent Team"} is answering this question
+            </span>
+          </div>
+        </div>
+      )}
+      <div className={`bg-gradient-to-r from-primary to-primary-dark p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-0 ${isReadOnly ? 'pt-12 sm:pt-12' : ''}`}>
         <div className="flex items-center">
-          <span className="bg-accent text-primary font-bold rounded-full w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center mr-2 shadow-glow">
+          <span className={`${isReadOnly ? 'bg-yellow-500' : 'bg-accent'} text-primary font-bold rounded-full w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center mr-2 shadow-glow`}>
             {currentQuestionIndex + 1}
           </span>
           <span className="text-white font-medium text-sm sm:text-lg">
@@ -221,8 +237,8 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
                 key={answer.id}
                 type="button"
                 onClick={() => handleClick(answer.id)}
-                disabled={isQuestionLocked}
-                className="answer-button bg-primary hover:bg-primary/90 text-white font-medium py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 rounded-xl flex flex-col items-stretch text-left gap-2 min-w-0 w-full relative"
+                disabled={isQuestionLocked || isReadOnly}
+                className={`answer-button ${isReadOnly ? 'bg-primary/50 cursor-not-allowed opacity-75' : 'bg-primary hover:bg-primary/90'} text-white font-medium py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 rounded-xl flex flex-col items-stretch text-left gap-2 min-w-0 w-full relative`}
               >
                 <div className="flex items-center min-w-0">
                   <span className="bg-accent text-primary font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md flex-shrink-0">
@@ -247,10 +263,17 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
                   </div>
                 )}
 
-                {isCaptain && (
+                {isCaptain && !isReadOnly && (
                   <div className="mt-2 flex justify-end">
                     <span className="text-[11px] uppercase tracking-wide text-white/70 bg-white/10 rounded-full px-2 py-0.5">
                       Tap to submit for team
+                    </span>
+                  </div>
+                )}
+                {isReadOnly && (
+                  <div className="mt-2 flex justify-end">
+                    <span className="text-[11px] uppercase tracking-wide text-yellow-300/80 bg-yellow-500/20 rounded-full px-2 py-0.5">
+                      View Only - Not Your Turn
                     </span>
                   </div>
                 )}
@@ -271,15 +294,23 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
         </div>
 
         <div className="flex gap-2 sm:gap-4 w-full sm:w-auto justify-end p-1">
-          {!isCaptain && (
-            <span className="text-[11px] sm:text-xs text-white/80">
-              Your tap sends a suggestion to your captain
+          {isReadOnly ? (
+            <span className="text-[11px] sm:text-xs text-yellow-300/80">
+              Waiting for {answeringTeamName || "opponent"} to answer...
             </span>
-          )}
-          {isCaptain && (
-            <span className="text-[11px] sm:text-xs text-white/80">
-              Your tap will lock in the team answer
-            </span>
+          ) : (
+            <>
+              {!isCaptain && (
+                <span className="text-[11px] sm:text-xs text-white/80">
+                  Your tap sends a suggestion to your captain
+                </span>
+              )}
+              {isCaptain && (
+                <span className="text-[11px] sm:text-xs text-white/80">
+                  Your tap will lock in the team answer
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>

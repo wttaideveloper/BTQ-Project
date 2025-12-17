@@ -496,17 +496,38 @@ class PostgreSQLDatabase implements IDatabase {
         userSeed: filters.userId || 0,
       });
 
-      // Step 3: Shuffle questions and answers with user-specific entropy
+      // Step 3: Validate selected questions before shuffling
+      if (!selectedQuestions || selectedQuestions.length === 0) {
+        console.error("❌ No questions selected from enhancedRandomSelection");
+        throw new Error("No questions available to select");
+      }
+
+      // Filter out any invalid questions
+      const validSelectedQuestions = selectedQuestions.filter(
+        (q) => q && q.id && q.text && q.answers && Array.isArray(q.answers)
+      );
+
+      if (validSelectedQuestions.length === 0) {
+        console.error("❌ No valid questions after filtering");
+        throw new Error("No valid questions available");
+      }
+
+      // Step 4: Shuffle questions and answers with user-specific entropy
       const shuffledQuestions = this.shuffleQuestionsAndAnswers(
-        selectedQuestions,
+        validSelectedQuestions,
         filters.userId
       );
 
-      // Step 4: Additional randomization pass to ensure uniqueness
+      if (!shuffledQuestions || shuffledQuestions.length === 0) {
+        console.error("❌ No questions after shuffling");
+        throw new Error("Failed to shuffle questions");
+      }
+
+      // Step 5: Additional randomization pass to ensure uniqueness
       const finalQuestions = this.cryptoSecureShuffle(
         shuffledQuestions,
         this.generateUserSpecificSeed(filters.userId)
-      );
+      ).filter((q) => q && q.id && q.text); // Final safety filter
 
       // Step 6: Track question history if user provided
       if (filters.userId && finalQuestions.length > 0) {
@@ -1059,18 +1080,49 @@ class PostgreSQLDatabase implements IDatabase {
       return questions;
     }
 
+    // Filter out any undefined, null, or invalid questions
+    const validQuestions = questions.filter(
+      (q) => q && q.id && typeof q.id === 'string' && q.text && q.answers
+    );
+
+    if (validQuestions.length === 0) {
+      console.warn("⚠️ No valid questions found after filtering");
+      return [];
+    }
+
+    if (validQuestions.length !== questions.length) {
+      console.warn(
+        `⚠️ Filtered out ${questions.length - validQuestions.length} invalid questions`
+      );
+    }
+
     // Generate user-specific seed for personalized randomization
     const baseSeed = this.generateUserSpecificSeed(userId);
 
     // First shuffle the questions themselves with crypto-secure randomization
-    const shuffledQuestions = this.cryptoSecureShuffle(questions, baseSeed);
+    const shuffledQuestions = this.cryptoSecureShuffle(validQuestions, baseSeed);
 
     // Then shuffle answers for each question with different seeds
-    return shuffledQuestions.map((question, index) => {
-      // Use different seed for each question's answers
-      const answerSeed = baseSeed + index * 1000 + question.id.charCodeAt(0);
-      return this.shuffleQuestionAnswers(question, answerSeed);
-    });
+    return shuffledQuestions
+      .map((question, index) => {
+        if (!question || !question.id) {
+          console.warn(`⚠️ Invalid question at index ${index}, skipping`);
+          return null;
+        }
+        try {
+          // Use different seed for each question's answers
+          const answerSeed =
+            baseSeed + index * 1000 + (question.id.charCodeAt(0) || 0);
+          return this.shuffleQuestionAnswers(question, answerSeed);
+        } catch (error) {
+          console.error(
+            `❌ Error shuffling question ${question.id}:`,
+            error
+          );
+          return null;
+        }
+      })
+      .filter((q) => q !== null) as Question[];
   }
 
   /**

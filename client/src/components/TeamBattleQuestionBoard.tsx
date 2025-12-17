@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Clock } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 import { playBasicSound } from "@/lib/basic-sound";
+import { voiceService } from "@/lib/voice-service";
+import { isVoiceEnabled } from "@/lib/sounds";
 
 export type TeamBattleAnswer = {
   id: string;
@@ -62,38 +64,143 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   answeringTeamName,
 }) => {
   const [displayTime, setDisplayTime] = useState(timeRemaining);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const questionSessionIdRef = useRef<string | null>(null);
+  const hasReadQuestionRef = useRef(false);
+  const lastQuestionIdRef = useRef<string>(question.id);
+  const lastTimeRemainingRef = useRef<number>(timeRemaining);
 
+  // Sync displayTime with timeRemaining prop when question changes or timeRemaining prop updates
   useEffect(() => {
-    setDisplayTime(timeRemaining);
-  }, [question.id, timeLimit, timeRemaining]);
+    const questionChanged = lastQuestionIdRef.current !== question.id;
+    const timeChanged = lastTimeRemainingRef.current !== timeRemaining;
 
+    if (questionChanged) {
+      lastQuestionIdRef.current = question.id;
+      lastTimeRemainingRef.current = timeRemaining;
+      setDisplayTime(timeRemaining);
+      hasReadQuestionRef.current = false;
+      // Clear timer when question changes
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    } else if (timeChanged) {
+      // If timeRemaining prop changed (server update), sync it
+      lastTimeRemainingRef.current = timeRemaining;
+      setDisplayTime(timeRemaining);
+      // Restart timer with new time
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+  }, [question.id, timeRemaining]);
+
+  // Voice narration effect - similar to GameBoard
   useEffect(() => {
-    // Mirror single-player behavior: if the question is locked (team answer
-    // submitted) or time has expired, stop the local countdown.
-    // Also stop countdown if it's read-only (opponent's turn)
-    if (displayTime <= 0 || isQuestionLocked || isPaused || isReadOnly) return;
+    if (isReadOnly || isPaused) return; // Don't read if it's not our turn or paused
 
-    const timer = setInterval(() => {
-      setDisplayTime((prev) => {
-        if (prev <= 0) {
-          return 0;
+    // Generate unique session ID for this question
+    const newSessionId = `teambattle-q${currentQuestionIndex + 1}-${Date.now()}`;
+    questionSessionIdRef.current = newSessionId;
+
+    // Start new voice session for this question
+    voiceService.startNewSession(newSessionId);
+
+    // Read the question if voice is enabled
+    if (isVoiceEnabled() && !hasReadQuestionRef.current) {
+      const questionKey = `teambattle_questionRead_${question.id}`;
+      const isFreshLoad = !sessionStorage.getItem(questionKey);
+
+      if (isFreshLoad) {
+        sessionStorage.setItem(questionKey, "true");
+        hasReadQuestionRef.current = true;
+      }
+
+      // Ensure voice service is ready before speaking
+      const readQuestion = async () => {
+        try {
+          await voiceService.getVoiceStatus();
+          console.log(
+            `🔊 [TeamBattle] Voice service ready - reading Question ${currentQuestionIndex + 1} with session ${newSessionId}`
+          );
+
+          if (
+            document.visibilityState === "visible" &&
+            isFreshLoad &&
+            !isPaused &&
+            !isReadOnly
+          ) {
+            const textToSpeak = `Question ${currentQuestionIndex + 1}: ${question.text}`;
+            console.log(
+              `📢 [TeamBattle] Starting narration: "${textToSpeak.substring(0, 50)}..."`
+            );
+            await voiceService.speakWithClonedVoice(
+              textToSpeak,
+              newSessionId
+            );
+          }
+        } catch (error) {
+          console.error("❌ [TeamBattle] Error reading question:", error);
         }
+      };
 
-        if (prev <= 10 && prev > 5) {
-          if (prev % 2 === 0) {
+      // Use a delay to ensure everything is ready
+      const questionTimer = setTimeout(() => {
+        readQuestion();
+      }, 1000);
+
+      return () => {
+        clearTimeout(questionTimer);
+        const currentSession = voiceService.getCurrentSession();
+        if (currentSession === newSessionId) {
+          console.log(`🧹 [TeamBattle] Cleaning up session ${newSessionId}`);
+          voiceService.clearSession();
+        }
+      };
+    }
+  }, [question.id, question.text, currentQuestionIndex, isPaused, isReadOnly]);
+
+  // Timer effect - fixed to properly sync with server time
+  // This effect restarts when question.id, timeRemaining prop, or timer state changes
+  useEffect(() => {
+    // Clear any existing timer first
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Stop timer if question is locked, paused, read-only, or time expired
+    if (displayTime <= 0 || isQuestionLocked || isPaused || isReadOnly) {
+      return;
+    }
+
+    // Start countdown timer
+    timerRef.current = setInterval(() => {
+      setDisplayTime((prev) => {
+        const newTime = prev - 1;
+
+        // Play sounds based on remaining time
+        if (newTime <= 10 && newTime > 5) {
+          if (newTime % 2 === 0) {
             playSound("tick");
             playBasicSound("timeout");
           }
-        } else if (prev <= 5 && prev > 3) {
+        } else if (newTime <= 5 && newTime > 3) {
           playSound("tick");
           playBasicSound("timeout");
-        } else if (prev <= 3 && prev > 0) {
+        } else if (newTime <= 3 && newTime > 0) {
           playSound("countdownAlert");
           playBasicSound("timeout");
         }
 
-        if (prev <= 1) {
-          clearInterval(timer);
+        // Time expired
+        if (newTime <= 0) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
           playSound("timeout");
           playBasicSound("timeout");
           setTimeout(() => {
@@ -103,12 +210,17 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
           return 0;
         }
 
-        return prev - 1;
+        return newTime;
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [displayTime, timeLimit, isQuestionLocked, isPaused]);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [question.id, timeRemaining, isQuestionLocked, isPaused, isReadOnly]); // Restart timer when question or timeRemaining prop changes
 
   const timePercentage = (displayTime / timeLimit) * 100;
   const labels = ["A", "B", "C", "D"];

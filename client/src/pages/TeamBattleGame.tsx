@@ -72,6 +72,7 @@ interface GameState {
   questionNumber?: number;
   totalQuestions?: number;
   timeRemaining?: number;
+  timeLimit?: number; // Server time limit in milliseconds
   teams?: Team[];
   playerTeam?: Team;
   opposingTeam?: Team;
@@ -280,7 +281,9 @@ export default function TeamBattleGame() {
               currentQuestion: data.question,
               questionNumber: data.questionNumber,
               totalQuestions: data.totalQuestions,
-              timeRemaining: data.timeLimit || 15,
+              // Server sends timeLimit in milliseconds, convert to seconds for display
+              timeRemaining: data.timeLimit ? Math.floor(data.timeLimit / 1000) : 15,
+              timeLimit: data.timeLimit || 15000, // Store original milliseconds value
               isYourTurn: data.isYourTurn !== false, // Default to true if not specified
               answeringTeamName: data.answeringTeamName,
             }));
@@ -429,14 +432,24 @@ export default function TeamBattleGame() {
 
           case "team_battle_finished":
           case "team_battle_ended":
-            setGameState((prev) => ({
-              ...prev,
-              phase: "finished",
-              teams: data.finalScores,
-              finalScore: data.yourTeam?.score ?? prev.finalScore ?? 0,
-              correct: data.yourTeam?.correctAnswers ?? prev.correct ?? 0,
-              incorrect: data.yourTeam?.incorrectAnswers ?? prev.incorrect ?? 0,
-            }));
+            // Only set to finished if we actually have questions or the battle legitimately ended
+            // Don't end battle if questions haven't loaded yet
+            setGameState((prev) => {
+              // If we never received any questions and we're still in playing phase, something went wrong
+              // Don't change to finished - stay in playing to show loading
+              if (!prev.currentQuestion && prev.phase === "playing") {
+                console.warn("[TeamBattle] Received team_battle_ended but no questions were loaded. Staying in playing phase.");
+                return prev; // Don't change phase - keep showing loading
+              }
+              return {
+                ...prev,
+                phase: "finished",
+                teams: data.finalScores,
+                finalScore: data.yourTeam?.score ?? prev.finalScore ?? 0,
+                correct: data.yourTeam?.correctAnswers ?? prev.correct ?? 0,
+                incorrect: data.yourTeam?.incorrectAnswers ?? prev.incorrect ?? 0,
+              };
+            });
             setShowRoundFeedback(false);
             toast({
               title: "Battle Finished!",
@@ -706,7 +719,9 @@ export default function TeamBattleGame() {
     if (!gameState.playerTeam) return null;
 
     const question = gameState.currentQuestion;
-    const timeLimit = 15;
+    // Server sends timeLimit in milliseconds, convert to seconds
+    const serverTimeLimit = gameState.timeLimit || 15000;
+    const timeLimit = Math.floor(serverTimeLimit / 1000); // Convert ms to seconds
     const timeRemaining = Math.min(
       gameState.timeRemaining ?? timeLimit,
       timeLimit

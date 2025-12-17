@@ -4335,18 +4335,9 @@ async function startTeamBattleQuestions(gameId: string) {
       excludeRecentHours: 0, // We'll manually exclude below
     });
     
-    // Manually filter out questions that were seen by any team member
-    let filteredQuestions = questions;
-    if (allExcludedQuestionIds.length > 0) {
-      filteredQuestions = questions.filter(q => !allExcludedQuestionIds.includes(q.id));
-      console.log(`[TeamBattle] Filtered from ${questions.length} to ${filteredQuestions.length} questions after excluding team history`);
-    }
-
-    console.log(`[TeamBattle] Received ${filteredQuestions?.length || 0} questions after history filtering`);
-
-    // Validate questions
-    if (!filteredQuestions || !Array.isArray(filteredQuestions) || filteredQuestions.length === 0) {
-      console.error(`[TeamBattle] Invalid or empty questions array for gameId: ${gameId}`);
+    // Validate that we got questions from database first
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      console.error(`[TeamBattle] No questions returned from database for gameId: ${gameId}`);
       const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
       for (const client of gameClients) {
         sendToClient(client.id, {
@@ -4358,13 +4349,13 @@ async function startTeamBattleQuestions(gameId: string) {
       return;
     }
 
-    // Filter out any invalid questions
-    const validQuestions = filteredQuestions.filter(
+    // Filter out any invalid questions FIRST before history filtering
+    const validQuestions = questions.filter(
       (q) => q && q.id && q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0
     );
 
     if (validQuestions.length === 0) {
-      console.error(`[TeamBattle] No valid questions after filtering for gameId: ${gameId}`);
+      console.error(`[TeamBattle] No valid questions from database for gameId: ${gameId}`);
       const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
       for (const client of gameClients) {
         sendToClient(client.id, {
@@ -4376,8 +4367,29 @@ async function startTeamBattleQuestions(gameId: string) {
       return;
     }
 
+    // Manually filter out questions that were seen by any team member
+    // BUT: If all questions are filtered out, use the original questions anyway
+    // (we'll reuse them to ensure we always have 10)
+    let filteredQuestions = validQuestions;
+    if (allExcludedQuestionIds.length > 0) {
+      const historyFiltered = validQuestions.filter(q => !allExcludedQuestionIds.includes(q.id));
+      if (historyFiltered.length > 0) {
+        // We have some questions after history filtering - use them
+        filteredQuestions = historyFiltered;
+        console.log(`[TeamBattle] Filtered from ${validQuestions.length} to ${filteredQuestions.length} questions after excluding team history`);
+      } else {
+        // All questions were filtered out - use original questions anyway
+        // (we'll reuse them to ensure variety)
+        console.warn(`[TeamBattle] All questions were seen recently. Using original questions anyway (will reuse for variety).`);
+        filteredQuestions = validQuestions;
+      }
+    }
+
+    console.log(`[TeamBattle] Using ${filteredQuestions.length} questions for battle (will ensure 10 total)`);
+
     // Ensure we always have exactly 10 questions by reusing/shuffling if needed
-    let finalQuestions = [...validQuestions];
+    // Use filteredQuestions (after history filtering) as the base
+    let finalQuestions = [...filteredQuestions];
     if (finalQuestions.length < 10) {
       console.warn(`[TeamBattle] Only ${finalQuestions.length} valid questions available (requested 10) for gameId: ${gameId}. Reusing questions to reach 10.`);
       
@@ -4504,10 +4516,20 @@ function sendTeamBattleQuestion(gameId: string) {
 
   const currentIndex = gameSession.currentQuestionIndex || 0;
   
-  // Check if questions array is empty or invalid
+  // CRITICAL: Check if questions array is empty or invalid - don't end battle, just wait
   if (!gameSession.questions || gameSession.questions.length === 0) {
-    console.error(`[TeamBattle] Questions array is empty for gameId: ${gameId}. Cannot send question.`);
-    // Don't end battle - wait for questions to be loaded
+    console.warn(`[TeamBattle] Questions array is empty for gameId: ${gameId}. Waiting for questions to be loaded...`);
+    // Don't end battle - questions might still be loading
+    // Retry after a delay
+    setTimeout(() => {
+      const retrySession = gameSessions.get(gameId);
+      if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
+        console.log(`[TeamBattle] Questions loaded, retrying sendTeamBattleQuestion for gameId: ${gameId}`);
+        sendTeamBattleQuestion(gameId);
+      } else {
+        console.error(`[TeamBattle] Questions still not loaded after retry for gameId: ${gameId}`);
+      }
+    }, 1000);
     return;
   }
   
@@ -4515,14 +4537,14 @@ function sendTeamBattleQuestion(gameId: string) {
   
   if (!currentQuestion) {
     // Check if we've actually run out of questions or if there's an issue
-    if (currentIndex >= gameSession.questions.length) {
-      // Legitimately out of questions
+    if (currentIndex >= gameSession.questions.length && gameSession.questions.length > 0) {
+      // Legitimately out of questions - only end if we have questions and have gone through them all
       console.log(`[TeamBattle] All questions completed for gameId: ${gameId}. Index: ${currentIndex}, Total: ${gameSession.questions.length}`);
       endTeamBattle(gameId);
     } else {
-      // Question missing at index - this is an error
-      console.error(`[TeamBattle] Question missing at index ${currentIndex} for gameId: ${gameId}. Total questions: ${gameSession.questions.length}`);
-      // Don't end battle - this might be a temporary issue
+      // Question missing at index - this might be a temporary issue, don't end battle
+      console.warn(`[TeamBattle] Question missing at index ${currentIndex} for gameId: ${gameId}. Total questions: ${gameSession.questions.length}. Waiting...`);
+      // Don't end battle - questions might still be loading or there's a temporary issue
     }
     return;
   }
@@ -4808,9 +4830,17 @@ async function processTeamBattleAnswers(gameId: string) {
   gameSession.currentQuestionIndex =
     (gameSession.currentQuestionIndex || 0) + 1;
 
+  // CRITICAL: Only check if battle is complete if we have questions loaded
+  // If questions array is empty, don't end battle - questions might still be loading
+  if (!gameSession.questions || gameSession.questions.length === 0) {
+    console.warn(`[TeamBattle] Questions array is empty in processTeamBattleAnswers for gameId: ${gameId}. Waiting for questions...`);
+    // Don't end battle - questions might still be loading
+    return;
+  }
+
   if (gameSession.currentQuestionIndex >= gameSession.questions.length) {
     // Battle completed - give teams a moment to see final results
-    console.log(`[TeamBattle] All questions completed for gameId: ${gameId}`);
+    console.log(`[TeamBattle] All questions completed for gameId: ${gameId}. Index: ${gameSession.currentQuestionIndex}, Total: ${gameSession.questions.length}`);
     setTimeout(() => endTeamBattle(gameId), 2000);
   } else {
     // Next question - send after a brief delay to show results

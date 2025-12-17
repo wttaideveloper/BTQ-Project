@@ -109,26 +109,30 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
     voiceService.startNewSession(newSessionId);
 
     // Read the question if voice is enabled
+    // Only read if this question hasn't been read yet (tracked by ref)
     if (isVoiceEnabled() && !hasReadQuestionRef.current) {
-      const questionKey = `teambattle_questionRead_${question.id}`;
-      const isFreshLoad = !sessionStorage.getItem(questionKey);
-
-      if (isFreshLoad) {
-        sessionStorage.setItem(questionKey, "true");
-        hasReadQuestionRef.current = true;
-      }
+      // Mark as read immediately to prevent duplicate reads
+      hasReadQuestionRef.current = true;
 
       // Ensure voice service is ready before speaking
       const readQuestion = async () => {
         try {
+          // Double-check conditions before speaking
+          if (isPaused || isReadOnly) {
+            console.log(`⏭️ [TeamBattle] Skipping narration - paused or read-only`);
+            // Reset flag so it can retry when conditions are met
+            hasReadQuestionRef.current = false;
+            return;
+          }
+
           await voiceService.getVoiceStatus();
           console.log(
             `🔊 [TeamBattle] Voice service ready - reading Question ${currentQuestionIndex + 1} with session ${newSessionId}`
           );
 
+          // Only speak if document is visible and conditions are still met
           if (
             document.visibilityState === "visible" &&
-            isFreshLoad &&
             !isPaused &&
             !isReadOnly
           ) {
@@ -136,13 +140,29 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
             console.log(
               `📢 [TeamBattle] Starting narration: "${textToSpeak.substring(0, 50)}..."`
             );
-            await voiceService.speakWithClonedVoice(
-              textToSpeak,
-              newSessionId
-            );
+            
+            // Verify session is still valid before speaking
+            const currentSession = voiceService.getCurrentSession();
+            if (currentSession === newSessionId || !currentSession) {
+              await voiceService.speakWithClonedVoice(
+                textToSpeak,
+                newSessionId
+              );
+              console.log(`✅ [TeamBattle] Narration started successfully`);
+            } else {
+              console.log(`⚠️ [TeamBattle] Session changed, skipping narration. Current: ${currentSession}, Expected: ${newSessionId}`);
+              // Reset flag so it can retry
+              hasReadQuestionRef.current = false;
+            }
+          } else {
+            console.log(`⏭️ [TeamBattle] Skipping narration - document not visible or conditions changed`);
+            // Reset flag so it can retry when conditions are met
+            hasReadQuestionRef.current = false;
           }
         } catch (error) {
           console.error("❌ [TeamBattle] Error reading question:", error);
+          // Reset the flag on error so it can retry
+          hasReadQuestionRef.current = false;
         }
       };
 
@@ -159,6 +179,8 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
           voiceService.clearSession();
         }
       };
+    } else if (isVoiceEnabled() && hasReadQuestionRef.current) {
+      console.log(`⏭️ [TeamBattle] Question ${currentQuestionIndex + 1} already marked as read, skipping narration`);
     }
   }, [question.id, question.text, currentQuestionIndex, isPaused, isReadOnly]);
 
@@ -181,18 +203,17 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       setDisplayTime((prev) => {
         const newTime = prev - 1;
 
-        // Play sounds based on remaining time
-        if (newTime <= 10 && newTime > 5) {
-          if (newTime % 2 === 0) {
+        // Only play timer sounds in the last 5 seconds
+        if (newTime <= 5 && newTime > 0) {
+          if (newTime <= 3) {
+            // Urgent countdown for final 3 seconds
+            playSound("countdownAlert");
+            playBasicSound("timeout");
+          } else {
+            // Tick sound for 5-4 seconds
             playSound("tick");
             playBasicSound("timeout");
           }
-        } else if (newTime <= 5 && newTime > 3) {
-          playSound("tick");
-          playBasicSound("timeout");
-        } else if (newTime <= 3 && newTime > 0) {
-          playSound("countdownAlert");
-          playBasicSound("timeout");
         }
 
         // Time expired
@@ -221,6 +242,22 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       }
     };
   }, [question.id, timeRemaining, isQuestionLocked, isPaused, isReadOnly]); // Restart timer when question or timeRemaining prop changes
+
+  // Cleanup effect to clear intervals and voice session on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (questionSessionIdRef.current) {
+        const currentSession = voiceService.getCurrentSession();
+        if (currentSession === questionSessionIdRef.current) {
+          voiceService.clearSession();
+        }
+      }
+    };
+  }, []);
 
   const timePercentage = (displayTime / timeLimit) * 100;
   const labels = ["A", "B", "C", "D"];

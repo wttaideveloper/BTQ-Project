@@ -35,13 +35,17 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
     }
 
     // Start new feedback session (this will stop question narration)
-    voiceService.startNewSession(feedbackSessionId);
-    console.log(`🎬 Feedback modal opened with session ${feedbackSessionId}`);
+    // Skip for Team Battle mode since we don't use voice narration there
+    if (gameMode !== 'team' && gameMode !== 'teambattle') {
+      voiceService.startNewSession(feedbackSessionId);
+      console.log(`🎬 Feedback modal opened with session ${feedbackSessionId}`);
+    }
 
     // Play sequence of game show sounds based on correctness
     if (isCorrect) {
-      // For correct answers: a sequence of celebratory sounds
-      // Primary correct sound was already played in GameBoard
+      // For correct answers: play primary correct sound immediately
+      playSound('correct');
+      playBasicSound('correct'); // Use both sound systems
       
       // Delayed celebration sound - emulating game show applause
       setTimeout(() => {
@@ -56,8 +60,9 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
         playBasicSound('celebration'); // Use both sound systems
       }, 800);
     } else {
-      // For wrong answers: emphasize with additional sounds
-      // Primary wrong buzzer was already played in GameBoard
+      // For wrong answers: play primary wrong sound immediately
+      playSound('wrong');
+      playBasicSound('wrong'); // Use both sound systems
       
       // Add crowd reaction for wrong answers
       setTimeout(() => {
@@ -67,7 +72,8 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
     }
     
     // Speak the feedback if voice is enabled and user hasn't clicked continue
-    if (isVoiceEnabled() && !userClickedContinue) {
+    // Skip voice narration for Team Battle mode
+    if (isVoiceEnabled() && !userClickedContinue && gameMode !== 'team' && gameMode !== 'teambattle') {
       // For Single Player mode, exclude motivational messages from voice narration
       // Only speak the answer acknowledgement
       const feedback = gameMode === 'single'

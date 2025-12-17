@@ -634,20 +634,32 @@ class PostgreSQLDatabase implements IDatabase {
       }
 
       // Use simple random selection for better variety
-      const selected = this.simpleRandomSelection(
+      let selected = this.simpleRandomSelection(
         filteredQuestions,
         filters.count,
         filters.userSeed
       );
       
-      console.log(`✅ Selected ${selected.length} out of ${filters.count} requested questions`);
-      
-      // If we still don't have enough questions, log a warning
-      if (selected.length < filters.count) {
-        console.log(`⚠️ WARNING: Could only provide ${selected.length} questions instead of ${filters.count}`);
-        console.log(`📊 Available questions after all filtering: ${filteredQuestions.length}`);
-        console.log(`📊 Total questions in database: ${allQuestions.length}`);
+      // If we don't have enough questions, reuse questions to reach the requested count
+      if (selected.length < filters.count && filteredQuestions.length > 0) {
+        console.log(`⚠️ Only ${selected.length} questions available, need ${filters.count}. Reusing questions to reach count.`);
+        
+        // Create a shuffled pool from available questions
+        const shuffledPool = this.seededShuffle([...filteredQuestions], filters.userSeed || 0);
+        
+        // Fill up to requested count by reusing from the shuffled pool
+        while (selected.length < filters.count) {
+          const index = selected.length % shuffledPool.length;
+          selected.push(shuffledPool[index]);
+        }
+        
+        // Final shuffle to randomize the order
+        selected = this.seededShuffle(selected, (filters.userSeed || 0) + Date.now());
+        
+        console.log(`✅ Expanded to ${selected.length} questions by reusing available questions`);
       }
+      
+      console.log(`✅ Selected ${selected.length} out of ${filters.count} requested questions`);
       
       return selected;
     } catch (error) {

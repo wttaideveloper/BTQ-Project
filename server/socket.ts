@@ -129,6 +129,13 @@ interface GameEvent {
   seconds?: number;
   newCaptainId?: number;
   newCaptainName?: string;
+  // Team battle question fields
+  isYourTurn?: boolean;
+  answeringTeamName?: string;
+  answeringTeamId?: string;
+  wasYourTurn?: boolean;
+  opposingTeamName?: string;
+  invitationId?: string;
 }
 
 // Store active WebSocket clients
@@ -1281,10 +1288,13 @@ async function createAsyncGameSession(
 ) {
   try {
     // Create a game session in storage with random questions for the challenge
-    const questions = await database.getRandomQuestions({
+    // Use history-aware selection to exclude recent questions
+    const questions = await database.getRandomQuestionsWithHistory({
       category: category !== "All" ? category : undefined,
       difficulty: difficulty !== "All" ? difficulty : undefined,
       count: 10, // Standard 10 questions for challenges
+      userId: creatorId || undefined,
+      excludeRecentHours: creatorId ? 48 : 0, // Exclude recent questions if user is logged in
     });
 
     const now = new Date();
@@ -4278,18 +4288,65 @@ async function startTeamBattleQuestions(gameId: string) {
   try {
     console.log(`[TeamBattle] Starting to load questions for gameId: ${gameId}`);
     
-    // Get questions for the battle using pure random selection (no filters)
-    // so that we always have a set of questions regardless of category/difficulty.
+    // Collect all user IDs from all team members to exclude their recent questions
+    const allUserIds: number[] = [];
+    if (gameSession.teams && Array.isArray(gameSession.teams)) {
+      for (const team of gameSession.teams) {
+        if (team.members && Array.isArray(team.members)) {
+          for (const member of team.members) {
+            if (member.userId && typeof member.userId === 'number' && !allUserIds.includes(member.userId)) {
+              allUserIds.push(member.userId);
+            }
+          }
+        }
+      }
+    }
+    
+    console.log(`[TeamBattle] Found ${allUserIds.length} unique users in teams: [${allUserIds.join(', ')}]`);
+    
+    // Get questions excluded by ALL team members (union of all their recent questions)
+    let allExcludedQuestionIds: string[] = [];
+    if (allUserIds.length > 0) {
+      const excludeRecentHours = 48; // Exclude questions seen in last 48 hours
+      const historyPromises = allUserIds.map(userId => 
+        database.getUserQuestionHistory(userId, excludeRecentHours)
+      );
+      const allHistories = await Promise.all(historyPromises);
+      
+      // Combine all excluded question IDs (union - no duplicates)
+      const excludedSet = new Set<string>();
+      for (const history of allHistories) {
+        for (const entry of history) {
+          excludedSet.add(entry.questionId);
+        }
+      }
+      allExcludedQuestionIds = Array.from(excludedSet);
+      console.log(`[TeamBattle] Excluding ${allExcludedQuestionIds.length} questions recently seen by any team member`);
+    }
+    
+    // Get questions for the battle using history-aware selection
+    // Exclude questions seen by ANY team member in the last 48 hours
     // Total 10 questions: Team A gets 5 (odd: 1,3,5,7,9), Team B gets 5 (even: 2,4,6,8,10)
-    const questions = await database.getRandomQuestions({
+    // Use the first user ID for tracking purposes
+    const primaryUserId = allUserIds.length > 0 ? allUserIds[0] : undefined;
+    const questions = await database.getRandomQuestionsWithHistory({
       count: 10,
+      userId: primaryUserId,
+      excludeRecentHours: 0, // We'll manually exclude below
     });
+    
+    // Manually filter out questions that were seen by any team member
+    let filteredQuestions = questions;
+    if (allExcludedQuestionIds.length > 0) {
+      filteredQuestions = questions.filter(q => !allExcludedQuestionIds.includes(q.id));
+      console.log(`[TeamBattle] Filtered from ${questions.length} to ${filteredQuestions.length} questions after excluding team history`);
+    }
 
-    console.log(`[TeamBattle] Received ${questions?.length || 0} questions from database`);
+    console.log(`[TeamBattle] Received ${filteredQuestions?.length || 0} questions after history filtering`);
 
     // Validate questions
-    if (!questions || !Array.isArray(questions) || questions.length === 0) {
-      console.error(`[TeamBattle] Invalid questions array for gameId: ${gameId}`);
+    if (!filteredQuestions || !Array.isArray(filteredQuestions) || filteredQuestions.length === 0) {
+      console.error(`[TeamBattle] Invalid or empty questions array for gameId: ${gameId}`);
       const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
       for (const client of gameClients) {
         sendToClient(client.id, {
@@ -4302,7 +4359,7 @@ async function startTeamBattleQuestions(gameId: string) {
     }
 
     // Filter out any invalid questions
-    const validQuestions = questions.filter(
+    const validQuestions = filteredQuestions.filter(
       (q) => q && q.id && q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0
     );
 
@@ -4319,14 +4376,91 @@ async function startTeamBattleQuestions(gameId: string) {
       return;
     }
 
-    if (validQuestions.length < 10) {
-      console.warn(`[TeamBattle] Only ${validQuestions.length} valid questions available (requested 10) for gameId: ${gameId}`);
+    // Ensure we always have exactly 10 questions by reusing/shuffling if needed
+    let finalQuestions = [...validQuestions];
+    if (finalQuestions.length < 10) {
+      console.warn(`[TeamBattle] Only ${finalQuestions.length} valid questions available (requested 10) for gameId: ${gameId}. Reusing questions to reach 10.`);
+      
+      // Create a shuffled pool of questions to reuse
+      const shuffledPool = [...finalQuestions];
+      // Shuffle the pool using Fisher-Yates algorithm with gameId as seed
+      let seed = 0;
+      for (let i = 0; i < gameId.length; i++) {
+        seed += gameId.charCodeAt(i);
+      }
+      for (let i = shuffledPool.length - 1; i > 0; i--) {
+        const j = Math.floor((seed + i) % (i + 1));
+        [shuffledPool[i], shuffledPool[j]] = [shuffledPool[j], shuffledPool[i]];
+      }
+      
+      // Fill up to 10 questions by reusing from the shuffled pool
+      while (finalQuestions.length < 10) {
+        const index = finalQuestions.length % shuffledPool.length;
+        finalQuestions.push(shuffledPool[index]);
+      }
+      
+      // Final shuffle to randomize the order of all 10 questions
+      for (let i = finalQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor((seed + Date.now() + i) % (i + 1));
+        [finalQuestions[i], finalQuestions[j]] = [finalQuestions[j], finalQuestions[i]];
+      }
+      
+      console.log(`[TeamBattle] Expanded to ${finalQuestions.length} questions for gameId: ${gameId}`);
+    } else if (finalQuestions.length > 10) {
+      // If we have more than 10, take only 10 and shuffle them
+      // Shuffle using gameId as seed for consistent randomization per game
+      let seed = 0;
+      for (let i = 0; i < gameId.length; i++) {
+        seed += gameId.charCodeAt(i);
+      }
+      for (let i = finalQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor((seed + i) % (i + 1));
+        [finalQuestions[i], finalQuestions[j]] = [finalQuestions[j], finalQuestions[i]];
+      }
+      finalQuestions = finalQuestions.slice(0, 10);
+    } else {
+      // Exactly 10 questions - just shuffle them for variety
+      let seed = 0;
+      for (let i = 0; i < gameId.length; i++) {
+        seed += gameId.charCodeAt(i);
+      }
+      for (let i = finalQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor((seed + Date.now() + i) % (i + 1));
+        [finalQuestions[i], finalQuestions[j]] = [finalQuestions[j], finalQuestions[i]];
+      }
     }
 
-    gameSession.questions = validQuestions;
+    gameSession.questions = finalQuestions;
     gameSession.currentQuestionIndex = 0;
 
     console.log(`[TeamBattle] Successfully loaded ${gameSession.questions.length} valid questions for gameId: ${gameId}, teams: ${gameSession.teams?.length || 0}`);
+
+    // Track question history for ALL team members (non-blocking)
+    // This ensures users don't see the same questions in future games
+    if (allUserIds.length > 0 && finalQuestions.length > 0) {
+      // Track history for all users asynchronously (don't block game start)
+      Promise.all(
+        allUserIds.map(async (userId) => {
+          try {
+            for (const question of finalQuestions) {
+              await database.addUserQuestionHistory({
+                userId,
+                questionId: question.id,
+                category: question.category,
+                difficulty: question.difficulty,
+              });
+            }
+            console.log(`[TeamBattle] Tracked question history for user ${userId} (${finalQuestions.length} questions)`);
+          } catch (error) {
+            console.error(`[TeamBattle] Failed to track question history for user ${userId}:`, error);
+            // Non-critical error - continue even if history tracking fails
+          }
+        })
+      ).catch((error) => {
+        console.error(`[TeamBattle] Error tracking question history:`, error);
+        // Non-critical - game continues even if history tracking fails
+      });
+    }
 
     // Send first question to the appropriate team (Team A for question 1)
     // Add a small delay to ensure all clients are ready

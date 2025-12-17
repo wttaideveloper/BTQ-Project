@@ -684,9 +684,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const currentTeammates = battle[teammatesField] || [];
         console.log(`[Backend] Removing member ${userId} from ${teamSide.toUpperCase()} team in battle ${battleId}`);
         console.log(`[Backend] Current teammates:`, currentTeammates);
-        const updatedTeammates = currentTeammates.filter(teammate => {
-          const teammateId = typeof teammate === 'number' ? teammate : teammate.id;
-          return teammateId !== userId;
+        const updatedTeammates = currentTeammates.filter((teammate: any) => {
+          const teammateId = typeof teammate === 'number' ? teammate : (teammate?.id ?? null);
+          return teammateId !== null && teammateId !== userId;
         });
         console.log(`[Backend] Updated teammates:`, updatedTeammates);
 
@@ -697,16 +697,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Get updated battle to send fresh data
         const updatedBattle = await database.getTeamBattle(battleId);
-        console.log(`[Backend] Updated battle teammates:`, updatedBattle.teamATeammates, updatedBattle.teamBTeammates);
+        if (updatedBattle) {
+          console.log(`[Backend] Updated battle teammates:`, updatedBattle.teamATeammates, updatedBattle.teamBTeammates);
 
-        // Notify all participants about the team update (don't fail if this errors)
-        try {
-          sendToGameSession(battle.gameSessionId, {
-            type: "teams_updated",
-            teams: await convertTeamBattleToTeams(updatedBattle),
-          });
-        } catch (notifyError) {
-          console.error("[Backend] Failed to send teams_updated notification:", notifyError);
+          // Notify all participants about the team update (don't fail if this errors)
+          try {
+            // Use broadcastTeamUpdates from socket.ts if available, otherwise skip notification
+            const { broadcastTeamUpdates } = await import("./socket");
+            if (broadcastTeamUpdates) {
+              await broadcastTeamUpdates(battle.gameSessionId);
+            }
+          } catch (notifyError) {
+            console.error("[Backend] Failed to send teams_updated notification:", notifyError);
+          }
         }
 
         // Notify removed user (don't fail if this errors)
@@ -1090,12 +1093,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Use enhanced question selection with user history
+      // Exclude questions seen in last 48 hours to ensure fresh questions each game
       const questions = await database.getRandomQuestionsWithHistory({
         category: category !== "All Categories" ? category : undefined,
         difficulty,
         count,
         userId: userId || undefined,
-        excludeRecentHours: 0, // Disabled - only 24 questions total in database
+        excludeRecentHours: userId ? 48 : 0, // Exclude recent questions if user is logged in
       });
 
       console.log(`🎮 Game ${gameId}: Served ${questions.length} fresh questions to ${userId ? `user ${userId} (${req.user?.username})` : 'anonymous user'} with enhanced randomization`);
@@ -1103,6 +1107,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Log first few question IDs for debugging
       const questionIds = questions.slice(0, 3).map(q => q.id.substring(0, 8));
       console.log(`📝 Question IDs: [${questionIds.join(', ')}...]`);
+      
+      // History tracking is automatically done by getRandomQuestionsWithHistory when userId is provided
+      // Additional tracking happens when user answers via /api/question-analytics/track
       
       res.json(questions);
     } catch (err) {

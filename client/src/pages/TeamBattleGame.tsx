@@ -403,11 +403,12 @@ export default function TeamBattleGame() {
                 teams: updatedTeams,
                 playerTeam: playerTeam || prev.playerTeam,
                 opposingTeam: opposingTeam || prev.opposingTeam,
-                // Keep current question for results display
-                phase: "results",
-                // Keep question data for results screen
+                // Keep question data for feedback modal, but don't show results screen
+                // Phase stays as "question" so feedback modal can show over it
+                phase: "question",
+                // Keep current question for feedback modal display
                 currentQuestion: data.question || prev.currentQuestion,
-                // Update isYourTurn based on results (for results display)
+                // Update isYourTurn based on results
                 isYourTurn: data.wasYourTurn !== false,
               };
             });
@@ -1024,13 +1025,12 @@ export default function TeamBattleGame() {
   }
 
   // Only show feedback modal if it was our turn to answer
-  const wasOurTurnForFeedback = gameState.isYourTurn !== false;
+  // lastRoundCorrect is only set if it was our turn, so if it's not null, it was our turn
   const showFeedbackModal =
     showRoundFeedback &&
     gameState.currentQuestion &&
     correctAnswerId !== null &&
-    lastRoundCorrect !== null &&
-    wasOurTurnForFeedback; // Only show if it was our turn
+    lastRoundCorrect !== null; // If lastRoundCorrect is set, it means it was our turn
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-primary-dark to-black text-white relative">
@@ -1253,7 +1253,7 @@ export default function TeamBattleGame() {
         </div>
       )}
       {gameState.phase === "question" && renderQuestionPhase()}
-      {gameState.phase === "results" && renderResultsPhase()}
+      {/* Results phase removed - goes directly to next question */}
       {gameState.phase === "finished" && renderFinishedPhase()}
 
       {showFeedbackModal && gameState.currentQuestion && (

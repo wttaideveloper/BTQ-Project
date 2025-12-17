@@ -608,6 +608,9 @@ export default function TeamBattleGame() {
     if (!gameState.currentQuestion || !gameState.playerTeam) return;
     if (!isTeamCaptain()) return;
 
+    // Set selected answer for highlighting
+    setSelectedAnswer(answerId);
+
     sendGameEvent({
       type: "finalize_team_answer",
       teamId: gameState.playerTeam.id,

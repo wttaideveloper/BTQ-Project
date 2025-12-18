@@ -100,9 +100,9 @@ const TeamDisplay = ({
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow-sm border space-y-4">
-      <div className="space-y-3">
-        <div className="space-y-3">
+    <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm border space-y-3 sm:space-y-4">
+      <div className="space-y-2 sm:space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               {title && (
@@ -110,8 +110,8 @@ const TeamDisplay = ({
                   {title}
                 </p>
               )}
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-lg font-semibold text-gray-900 truncate">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
                   {team.name}
                 </h3>
                 {isCaptain && onUpdateTeamName && (
@@ -119,17 +119,17 @@ const TeamDisplay = ({
                     size="sm"
                     variant="ghost"
                     onClick={handleOpenEdit}
-                    className="h-7 w-7 p-0 hover:bg-gray-100 flex-shrink-0"
+                    className="h-6 w-6 sm:h-7 sm:w-7 p-0 hover:bg-gray-100 flex-shrink-0"
                     title="Edit team name"
                   >
-                    <Edit2 className="h-3.5 w-3.5" />
+                    <Edit2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                   </Button>
                 )}
                 {isUserTeam && (
-                  <span className="text-sm text-gray-500">(Your Team)</span>
+                  <span className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">(Your Team)</span>
                 )}
                 {isReady && (
-                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700 border border-green-300">
+                  <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700 border border-green-300 whitespace-nowrap">
                     Ready
                   </span>
                 )}
@@ -140,7 +140,7 @@ const TeamDisplay = ({
             {canReady && (
               <Button
                 onClick={onReady}
-                className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
+                className="bg-green-600 hover:bg-green-700 w-full sm:w-auto text-sm sm:text-base py-2 sm:py-2.5"
               >
                 Ready to Play
               </Button>
@@ -149,11 +149,12 @@ const TeamDisplay = ({
               <Button
                 onClick={() => setShowLeaveDialog(true)}
                 variant="outline"
-                className="border-red-300 text-red-600 hover:bg-red-50 w-full sm:w-auto"
+                className="border-red-300 text-red-600 hover:bg-red-50 w-full sm:w-auto text-sm sm:text-base py-2 sm:py-2.5"
                 title="Leave team and start over"
               >
-                <LogOut className="h-4 w-4 sm:mr-2" />
+                <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Leave Team</span>
+                <span className="sm:hidden">Leave</span>
               </Button>
             )}
           </div>
@@ -161,28 +162,28 @@ const TeamDisplay = ({
       </div>
 
       <div className="space-y-2">
-        <h4 className="text-sm font-medium text-gray-500 mb-2">Team Members</h4>
-        <ul className="space-y-2">
+        <h4 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Team Members</h4>
+        <ul className="space-y-1.5 sm:space-y-2">
           {team.members.map((member) => (
             <li
               key={member.userId}
-              className="flex items-center justify-between p-2 bg-gray-50 rounded"
+              className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 p-2 bg-gray-50 rounded"
             >
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{member.username}</span>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="font-medium text-sm sm:text-base truncate">{member.username}</span>
                 {member.role === "captain" && (
-                  <Crown className="h-4 w-4 text-yellow-500" />
+                  <Crown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-500 flex-shrink-0" />
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-500">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+                <span className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">
                   {member.role === "captain" ? "Captain" : "Member"}
                 </span>
                 {isCaptain && member.role !== "captain" && onRemoveMember && (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 px-2 text-xs border-red-300 text-red-600 hover:bg-red-50"
+                    className="h-6 sm:h-7 px-2 text-xs border-red-300 text-red-600 hover:bg-red-50 flex-shrink-0"
                     onClick={() => onRemoveMember(team.id, member.userId)}
                     title="Remove member"
                   >
@@ -204,10 +205,10 @@ const TeamDisplay = ({
       })()}
       {isCaptain && joinRequests?.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-gray-500 mb-2">
+          <h4 className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">
             Join Requests
           </h4>
-          <ul className="space-y-2">
+          <ul className="space-y-1.5 sm:space-y-2">
             {joinRequests
               .filter((jr) => jr.teamId === team.id && jr.status === "pending")
               .map((jr) => {
@@ -217,12 +218,12 @@ const TeamDisplay = ({
                 return (
                   <li
                     key={jr.id}
-                    className="flex items-center justify-between p-2 bg-amber-50 rounded border border-amber-200"
+                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 p-2 bg-amber-50 rounded border border-amber-200"
                   >
-                    <span className="font-medium text-amber-900">
+                    <span className="font-medium text-sm sm:text-base text-amber-900 truncate flex-1 min-w-0">
                       {jr.requesterUsername}
                     </span>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 w-full sm:w-auto">
                       <Button
                         size="sm"
                         onClick={() => {
@@ -231,7 +232,7 @@ const TeamDisplay = ({
                           );
                           onAcceptJoinRequest?.(jr.id);
                         }}
-                        className="bg-green-600 hover:bg-green-700 text-white"
+                        className="bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none text-xs sm:text-sm"
                       >
                         Accept
                       </Button>
@@ -244,7 +245,7 @@ const TeamDisplay = ({
                           );
                           onRejectJoinRequest?.(jr.id);
                         }}
-                        className="border-red-300 text-red-600 hover:bg-red-50"
+                        className="border-red-300 text-red-600 hover:bg-red-50 flex-1 sm:flex-none text-xs sm:text-sm"
                       >
                         Reject
                       </Button>

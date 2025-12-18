@@ -1554,93 +1554,93 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   }, [teams, userTeam]);
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-black/80 via-primary-dark/80 to-secondary-dark/80 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto py-6">
-      <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-2xl shadow-2xl w-full max-w-4xl mx-4 my-auto max-h-[95vh] overflow-hidden border border-white/20">
+    <div className="fixed inset-0 bg-gradient-to-br from-black/80 via-primary-dark/80 to-secondary-dark/80 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto py-2 sm:py-4 md:py-6 px-2 sm:px-4">
+      <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-4xl mx-auto my-auto max-h-[98vh] sm:max-h-[95vh] overflow-hidden border border-white/20">
         {/* Header Section */}
-        <div className="bg-gradient-to-r from-primary via-primary-dark to-secondary p-6 relative overflow-hidden">
+        <div className="bg-gradient-to-r from-primary via-primary-dark to-secondary p-3 sm:p-4 md:p-6 relative overflow-hidden">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
-          <div className="relative z-10 flex justify-between items-center">
+          <div className="relative z-10 flex justify-between items-center gap-2">
             <Button
               variant="ghost"
-              className="flex items-center gap-2 text-white hover:bg-white/20 transition-all duration-200"
+              className="flex items-center gap-1 sm:gap-2 text-white hover:bg-white/20 transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 text-sm sm:text-base"
               onClick={handleBackButton}
               disabled={
                 leaveTeamMutation.isPending ||
                 (countdown !== null && countdown > 0)
               }
             >
-              <span className="text-lg">←</span>
-              <span className="font-medium">
+              <span className="text-base sm:text-lg">←</span>
+              <span className="font-medium hidden xs:inline">
                 {leaveTeamMutation.isPending ? "Leaving..." : "Back"}
               </span>
             </Button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="text-white/80 text-sm font-medium">Live</span>
+              <span className="text-white/80 text-xs sm:text-sm font-medium">Live</span>
             </div>
           </div>
-          <div className="relative z-10 text-center mt-4">
-            <h1 className="text-4xl font-heading font-extrabold text-white mb-2 tracking-tight">
+          <div className="relative z-10 text-center mt-2 sm:mt-3 md:mt-4">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-heading font-extrabold text-white mb-1 sm:mb-2 tracking-tight">
               Team Battle Setup
             </h1>
-            <p className="text-white/90 text-base font-medium">
+            <p className="text-white/90 text-xs sm:text-sm md:text-base font-medium px-2">
               Configure your team battle with the same game settings
             </p>
           </div>
         </div>
 
         {/* Scrollable Content */}
-        <div className="overflow-y-auto max-h-[calc(95vh-180px)] p-6 bg-white/95">
+        <div className="overflow-y-auto max-h-[calc(98vh-140px)] sm:max-h-[calc(95vh-180px)] p-3 sm:p-4 md:p-6 bg-white/95">
           {/* Game Configuration Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl p-5 border border-blue-200/50 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center shadow-md">
-                  <Users className="h-5 w-5 text-white" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border border-blue-200/50 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
-                <h3 className="font-heading font-bold text-lg text-blue-900">
+                <h3 className="font-heading font-bold text-base sm:text-lg text-blue-900">
                   Game Mode
                 </h3>
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-blue-800">Team Battle</p>
-                <p className="text-sm text-blue-700/80">
+                <p className="font-semibold text-sm sm:text-base text-blue-800">Team Battle</p>
+                <p className="text-xs sm:text-sm text-blue-700/80">
                   Two teams compete using the selected configuration
                 </p>
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-5 border border-purple-200/50 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center shadow-md">
-                  <Crown className="h-5 w-5 text-white" />
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border border-purple-200/50 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-500 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                  <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
-                <h3 className="font-heading font-bold text-lg text-purple-900">
+                <h3 className="font-heading font-bold text-base sm:text-lg text-purple-900">
                   Configuration
                 </h3>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-white/60 rounded-lg p-2">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
+                <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
                   <span className="text-purple-600 text-xs font-medium">
                     Type
                   </span>
-                  <p className="font-semibold text-purple-900 mt-0.5">
+                  <p className="font-semibold text-purple-900 mt-0.5 text-xs sm:text-sm break-words">
                     {gameType === "question" ? "Question-Based" : "Time-Based"}
                   </p>
                 </div>
-                <div className="bg-white/60 rounded-lg p-2">
+                <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
                   <span className="text-purple-600 text-xs font-medium">
                     Difficulty
                   </span>
-                  <p className="font-semibold text-purple-900 mt-0.5">
+                  <p className="font-semibold text-purple-900 mt-0.5 text-xs sm:text-sm">
                     {difficulty}
                   </p>
                 </div>
-                <div className="col-span-2 bg-white/60 rounded-lg p-2">
+                <div className="col-span-2 bg-white/60 rounded-lg p-1.5 sm:p-2">
                   <span className="text-purple-600 text-xs font-medium">
                     Category
                   </span>
-                  <p className="font-semibold text-purple-900 mt-0.5">
+                  <p className="font-semibold text-purple-900 mt-0.5 text-xs sm:text-sm break-words">
                     {category}
                   </p>
                 </div>
@@ -1649,18 +1649,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           </div>
 
           {/* Current Teams Overview */}
-          <div className="mb-6 space-y-4">
-            <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-200/50">
-              <div>
-                <h3 className="text-xl font-heading font-bold text-gray-900 flex items-center gap-2">
-                  <Users className="h-5 w-5 text-blue-600" />
-                  Current Teams
+          <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-blue-200/50">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg sm:text-xl font-heading font-bold text-gray-900 flex items-center gap-2">
+                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+                  <span className="truncate">Current Teams</span>
                 </h3>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-xs sm:text-sm text-gray-600 mt-1">
                   Everyone can see who has joined each side in real time
                 </p>
               </div>
-              <div className="flex items-center gap-2 bg-white rounded-full px-4 py-2 shadow-sm">
+              <div className="flex items-center gap-2 bg-white rounded-full px-3 sm:px-4 py-1.5 sm:py-2 shadow-sm flex-shrink-0">
                 <div className="flex gap-1">
                   {[...Array(teams.length)].map((_, i) => (
                     <div
@@ -1675,13 +1675,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     ></div>
                   ))}
                 </div>
-                <span className="text-sm font-bold text-gray-700">
+                <span className="text-xs sm:text-sm font-bold text-gray-700 whitespace-nowrap">
                   {teams.length} / 2
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               {orderedTeams.map((team) => {
                 const isUserTeam = userTeam?.id === team.id;
                 const isUserInTeam = team.members.some(
@@ -1748,11 +1748,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               })}
 
               {teams.length < 2 && (
-                <div className="border border-dashed border-neutral-300 rounded-lg p-4 flex flex-col items-center justify-center text-center text-neutral-500 bg-neutral-50">
-                  <p className="font-medium text-neutral-700 mb-1">
+                <div className="border border-dashed border-neutral-300 rounded-lg p-3 sm:p-4 flex flex-col items-center justify-center text-center text-neutral-500 bg-neutral-50 min-h-[120px] sm:min-h-[140px]">
+                  <p className="font-medium text-sm sm:text-base text-neutral-700 mb-1">
                     Waiting for opposing team
                   </p>
-                  <p className="text-sm">
+                  <p className="text-xs sm:text-sm px-2">
                     Invite another captain to form the next team.
                   </p>
                 </div>
@@ -1762,50 +1762,50 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Countdown overlay when both captains are ready */}
           {countdown !== null && countdown > 0 && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]">
-              <div className="bg-white rounded-2xl px-10 py-8 shadow-2xl border border-neutral-200 text-center max-w-sm mx-4">
-                <p className="text-sm font-medium text-neutral-500 mb-2">
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white rounded-xl sm:rounded-2xl px-6 sm:px-8 md:px-10 py-6 sm:py-7 md:py-8 shadow-2xl border border-neutral-200 text-center max-w-sm w-full mx-4">
+                <p className="text-xs sm:text-sm font-medium text-neutral-500 mb-2">
                   Both teams are ready
                 </p>
-                <h2 className="text-5xl font-bold text-primary mb-3">
+                <h2 className="text-4xl sm:text-5xl font-bold text-primary mb-2 sm:mb-3">
                   {countdown}
                 </h2>
-                <p className="text-neutral-600">Game starting soon...</p>
+                <p className="text-sm sm:text-base text-neutral-600">Game starting soon...</p>
               </div>
             </div>
           )}
 
           {/* Landing: Enter Team Battle */}
           {currentStage === "enter" && (
-            <div className="mt-6 space-y-4">
-              <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-6 rounded-xl border border-blue-200/50 shadow-sm">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center shadow-md">
-                    <UserPlus className="h-6 w-6 text-white" />
+            <div className="mt-4 sm:mt-6 space-y-3 sm:space-y-4">
+              <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border border-blue-200/50 shadow-sm">
+                <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                    <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                   </div>
-                  <div>
-                    <h3 className="font-heading font-bold text-xl text-gray-900">
+                  <div className="min-w-0">
+                    <h3 className="font-heading font-bold text-lg sm:text-xl text-gray-900">
                       Enter Team Battle
                     </h3>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-xs sm:text-sm text-gray-600">
                       Choose how you'd like to participate
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <button
                   onClick={() => setCurrentStage("create-team")}
-                  className="group relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  className="group relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] sm:hover:scale-105"
                 >
                   <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <div className="relative z-10 flex flex-col items-center gap-3">
-                    <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center">
-                      <Crown className="h-7 w-7 text-white" />
+                  <div className="relative z-10 flex flex-col items-center gap-2 sm:gap-3">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-white/20 rounded-full flex items-center justify-center">
+                      <Crown className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
                     </div>
                     <div className="text-center">
-                      <p className="font-bold text-lg mb-1">Create a Team</p>
-                      <p className="text-sm text-white/90">
+                      <p className="font-bold text-base sm:text-lg mb-1">Create a Team</p>
+                      <p className="text-xs sm:text-sm text-white/90">
                         Become a team captain
                       </p>
                     </div>
@@ -1813,18 +1813,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </button>
                 <button
                   onClick={() => setCurrentStage("join-as-member")}
-                  className="group relative overflow-hidden bg-white hover:bg-gray-50 border-2 border-gray-300 hover:border-blue-400 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  className="group relative overflow-hidden bg-white hover:bg-gray-50 border-2 border-gray-300 hover:border-blue-400 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] sm:hover:scale-105"
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <div className="relative z-10 flex flex-col items-center gap-3">
-                    <div className="w-14 h-14 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center group-hover:from-blue-200 group-hover:to-purple-200 transition-colors duration-300">
-                      <Users className="h-7 w-7 text-blue-600" />
+                  <div className="relative z-10 flex flex-col items-center gap-2 sm:gap-3">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center group-hover:from-blue-200 group-hover:to-purple-200 transition-colors duration-300">
+                      <Users className="h-6 w-6 sm:h-7 sm:w-7 text-blue-600" />
                     </div>
                     <div className="text-center">
-                      <p className="font-bold text-lg mb-1 text-gray-900">
+                      <p className="font-bold text-base sm:text-lg mb-1 text-gray-900">
                         Join as Member
                       </p>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-xs sm:text-sm text-gray-600">
                         Join an existing team
                       </p>
                     </div>
@@ -1836,29 +1836,29 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Stage 1: Create Team */}
           {currentStage === "create-team" && (
-            <div className="mt-6 space-y-5">
-              <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-5 rounded-xl shadow-lg">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Crown className="h-6 w-6 text-white" />
+            <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
+              <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                   </div>
-                  <div>
-                    <h3 className="font-heading font-bold text-xl text-white mb-2">
+                  <div className="min-w-0">
+                    <h3 className="font-heading font-bold text-lg sm:text-xl text-white mb-1 sm:mb-2">
                       Step 1: Create Your Team
                     </h3>
-                    <p className="text-sm text-white/90">
+                    <p className="text-xs sm:text-sm text-white/90">
                       Create your team to start the battle. You'll become the
                       team captain
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-xl p-5 border border-gray-200 shadow-sm">
+              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-5 border border-gray-200 shadow-sm">
                 <Label
                   htmlFor="teamName"
-                  className="text-sm font-semibold text-gray-700 mb-2 block flex items-center gap-2"
+                  className="text-xs sm:text-sm font-semibold text-gray-700 mb-2 block flex items-center gap-2"
                 >
-                  <Users className="h-4 w-4 text-blue-600" />
+                  <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 flex-shrink-0" />
                   Team Name
                 </Label>
                 <input
@@ -1867,13 +1867,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
                   placeholder="Enter your team name"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
                 />
               </div>
               <Button
                 onClick={handleCreateTeam}
                 disabled={createTeamMutation.isPending || !teamName.trim()}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 sm:py-4 text-sm sm:text-base rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.01] sm:hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {createTeamMutation.isPending ? (
                   <div className="flex items-center gap-2">
@@ -1892,17 +1892,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Stage: Join as Member */}
           {currentStage === "join-as-member" && (
-            <div className="mt-6 space-y-5">
-              <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-5 rounded-xl shadow-lg">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <UserPlus className="h-6 w-6 text-white" />
+            <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
+              <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                   </div>
-                  <div>
-                    <h3 className="font-heading font-bold text-xl text-white mb-2">
+                  <div className="min-w-0">
+                    <h3 className="font-heading font-bold text-lg sm:text-xl text-white mb-1 sm:mb-2">
                       Join an Existing Team
                     </h3>
-                    <p className="text-sm text-white/90">
+                    <p className="text-xs sm:text-sm text-white/90">
                       Browse available teams and send a join request to the
                       leader
                     </p>
@@ -1911,18 +1911,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </div>
 
               {myActiveJoinRequest && (
-                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-xl border border-yellow-300 shadow-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-yellow-400 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Clock className="h-5 w-5 text-yellow-900" />
+                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-yellow-300 shadow-sm">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-yellow-400 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-900" />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-yellow-900 mb-1">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-semibold text-yellow-900 mb-1">
                         Pending Request
                       </p>
-                      <p className="text-sm text-yellow-800">
+                      <p className="text-xs sm:text-sm text-yellow-800 break-words">
                         You have a pending join request to team ID:{" "}
-                        {myActiveJoinRequest.teamId}
+                        <span className="font-mono text-xs">{myActiveJoinRequest.teamId}</span>
                       </p>
                       <Button
                         variant="outline"
@@ -1933,7 +1933,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                           )
                         }
                         disabled={cancelJoinRequestMutation.isPending}
-                        className="mt-3 border-yellow-400 text-yellow-800 hover:bg-yellow-100"
+                        className="mt-2 sm:mt-3 text-xs sm:text-sm border-yellow-400 text-yellow-800 hover:bg-yellow-100"
                       >
                         {cancelJoinRequestMutation.isPending
                           ? "Cancelling..."
@@ -1944,20 +1944,20 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </div>
               )}
 
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 px-5 py-3 border-b border-gray-200">
-                  <h4 className="font-heading font-bold text-gray-900 flex items-center gap-2">
-                    <Users className="h-5 w-5 text-purple-600" />
-                    Available Teams
+              <div className="bg-white rounded-lg sm:rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 px-3 sm:px-4 md:px-5 py-2 sm:py-3 border-b border-gray-200">
+                  <h4 className="font-heading font-bold text-sm sm:text-base text-gray-900 flex items-center gap-2">
+                    <Users className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 flex-shrink-0" />
+                    <span>Available Teams</span>
                   </h4>
                 </div>
-                <div className="max-h-64 overflow-y-auto">
+                <div className="max-h-48 sm:max-h-64 overflow-y-auto">
                   {availableTeamsForJoin.length === 0 && (
-                    <div className="px-5 py-8 text-center">
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Users className="h-8 w-8 text-gray-400" />
+                    <div className="px-4 sm:px-5 py-6 sm:py-8 text-center">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3">
+                        <Users className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
                       </div>
-                      <p className="text-sm text-gray-500 font-medium">
+                      <p className="text-xs sm:text-sm text-gray-500 font-medium">
                         No available teams right now
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
@@ -1975,14 +1975,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                         return (
                           <div
                             key={team.id}
-                            className="flex items-center justify-between px-5 py-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150"
+                            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 md:px-5 py-3 sm:py-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150"
                           >
-                            <div className="flex items-center gap-3 flex-1">
-                              <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-blue-400 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <Crown className="h-5 w-5 text-white" />
+                            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 w-full sm:w-auto">
+                              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-purple-400 to-blue-400 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                               </div>
-                              <div className="flex flex-col">
-                                <p className="font-semibold text-gray-900">
+                              <div className="flex flex-col min-w-0 flex-1">
+                                <p className="font-semibold text-sm sm:text-base text-gray-900 truncate">
                                   {team.name}{" "}
                                   {team.teamSide && (
                                     <span className="text-xs font-normal text-gray-500">
@@ -1990,15 +1990,15 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                     </span>
                                   )}
                                 </p>
-                                <div className="flex items-center gap-2 mt-1">
+                                <div className="flex items-center gap-1.5 sm:gap-2 mt-1 flex-wrap">
                                   <span className="text-xs text-gray-600 flex items-center gap-1">
-                                    <Users className="h-3 w-3" />
+                                    <Users className="h-3 w-3 flex-shrink-0" />
                                     {team.members.length}/3
                                   </span>
-                                  <span className="text-xs text-gray-400">
+                                  <span className="text-xs text-gray-400 hidden sm:inline">
                                     •
                                   </span>
-                                  <span className="text-xs text-gray-600">
+                                  <span className="text-xs text-gray-600 truncate">
                                     Captain ID: {team.captainId}
                                   </span>
                                 </div>
@@ -2017,7 +2017,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                 !!myActiveJoinRequest ||
                                 joinRequestingTeamId === team.id
                               }
-                              className="text-xs font-bold px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                              className="w-full sm:w-auto text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                             >
                               {isFull
                                 ? "Team Full"
@@ -2037,17 +2037,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <Button
                   variant="outline"
                   onClick={() => setCurrentStage("enter")}
-                  className="flex-1 border-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 font-semibold py-3 rounded-xl transition-all duration-200"
+                  className="flex-1 border-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 font-semibold py-2.5 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl transition-all duration-200"
                 >
                   Back
                 </Button>
                 <Button
                   onClick={() => setCurrentStage("create-team")}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-2.5 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
                 >
                   Create a Team Instead
                 </Button>
@@ -2057,17 +2057,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Stage 2: Invite Opponent */}
           {currentStage === "invite-opponent" && (
-            <div className="mt-6 space-y-5">
-              <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-5 rounded-xl shadow-lg">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Crown className="h-6 w-6 text-white" />
+            <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
+              <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                   </div>
-                  <div>
-                    <h3 className="font-heading font-bold text-xl text-white mb-2">
+                  <div className="min-w-0">
+                    <h3 className="font-heading font-bold text-lg sm:text-xl text-white mb-1 sm:mb-2">
                       Step 2: Invite Opponent Captain
                     </h3>
-                    <p className="text-sm text-white/90">
+                    <p className="text-xs sm:text-sm text-white/90">
                       Invite an opponent to be the captain of the opposing team.
                       Once they accept, you can invite teammates
                     </p>
@@ -2076,16 +2076,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </div>
 
               {userTeam && (
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border border-blue-200 shadow-sm">
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-blue-200 shadow-sm">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                      <Users className="h-4 w-4 text-white" />
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-600 font-medium">
                         Your Team
                       </p>
-                      <p className="text-sm font-bold text-gray-900">
+                      <p className="text-sm font-bold text-gray-900 truncate">
                         {userTeam.name}
                       </p>
                     </div>
@@ -2093,28 +2093,28 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </div>
               )}
 
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-5 py-3 border-b border-gray-200">
-                  <h4 className="font-heading font-bold text-gray-900 flex items-center gap-2">
-                    <UserPlus className="h-5 w-5 text-green-600" />
-                    Available Opponents
+              <div className="bg-white rounded-lg sm:rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-3 sm:px-4 md:px-5 py-2 sm:py-3 border-b border-gray-200">
+                  <h4 className="font-heading font-bold text-sm sm:text-base text-gray-900 flex items-center gap-2">
+                    <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
+                    <span>Available Opponents</span>
                   </h4>
                 </div>
-                <div className="max-h-64 overflow-y-auto">
+                <div className="max-h-48 sm:max-h-64 overflow-y-auto">
                   {isLoading && (
-                    <div className="px-5 py-8 text-center">
-                      <div className="w-12 h-12 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-3"></div>
-                      <p className="text-sm text-gray-500 font-medium">
+                    <div className="px-4 sm:px-5 py-6 sm:py-8 text-center">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-2 sm:mb-3"></div>
+                      <p className="text-xs sm:text-sm text-gray-500 font-medium">
                         Loading online players...
                       </p>
                     </div>
                   )}
                   {isError && !isLoading && (
-                    <div className="px-5 py-8 text-center">
-                      <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <X className="h-8 w-8 text-red-500" />
+                    <div className="px-4 sm:px-5 py-6 sm:py-8 text-center">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3">
+                        <X className="h-6 w-6 sm:h-8 sm:w-8 text-red-500" />
                       </div>
-                      <p className="text-sm text-red-600 font-medium">
+                      <p className="text-xs sm:text-sm text-red-600 font-medium">
                         Failed to load online players
                       </p>
                     </div>
@@ -2122,11 +2122,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   {!isLoading &&
                     !isError &&
                     availableOpponents.length === 0 && (
-                      <div className="px-5 py-8 text-center">
-                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                          <Users className="h-8 w-8 text-gray-400" />
+                      <div className="px-4 sm:px-5 py-6 sm:py-8 text-center">
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3">
+                          <Users className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
                         </div>
-                        <p className="text-sm text-gray-500 font-medium">
+                        <p className="text-xs sm:text-sm text-gray-500 font-medium">
                           No available opponents online right now
                         </p>
                         <p className="text-xs text-gray-400 mt-1">
@@ -2158,17 +2158,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                         return (
                           <div
                             key={player.id}
-                            className="flex items-center justify-between px-5 py-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150"
+                            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 md:px-5 py-3 sm:py-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150"
                           >
-                            <div className="flex items-center gap-3 flex-1">
-                              <div className="relative">
-                                <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold">
+                            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 w-full sm:w-auto">
+                              <div className="relative flex-shrink-0">
+                                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-sm sm:text-base">
                                   {player.username.charAt(0).toUpperCase()}
                                 </div>
-                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                                <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-green-500 rounded-full border-2 border-white"></div>
                               </div>
-                              <div className="flex flex-col">
-                                <p className="font-semibold text-gray-900">
+                              <div className="flex flex-col min-w-0 flex-1">
+                                <p className="font-semibold text-sm sm:text-base text-gray-900 truncate">
                                   {player.username}
                                 </p>
                                 {pendingInvitation && (
@@ -2188,7 +2188,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                 !!pendingInvitation ||
                                 alreadyInvitedByMe
                               }
-                              className="text-xs font-bold px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                              className="w-full sm:w-auto text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                             >
                               {pendingInvitation
                                 ? "Invited"
@@ -2212,17 +2212,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Stage 3: Invite Teammates (only after opponent accepts) */}
           {currentStage === "invite-teammates" && (
-            <div className="mt-6 space-y-5">
-              <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-5 rounded-xl shadow-lg">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Users className="h-6 w-6 text-white" />
+            <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
+              <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                   </div>
-                  <div>
-                    <h3 className="font-heading font-bold text-xl text-white mb-2">
+                  <div className="min-w-0">
+                    <h3 className="font-heading font-bold text-lg sm:text-xl text-white mb-1 sm:mb-2">
                       Step 3: Invite Teammates
                     </h3>
-                    <p className="text-sm text-white/90">
+                    <p className="text-xs sm:text-sm text-white/90">
                       Great! Your opponent has accepted. Now invite teammates to
                       complete your team
                     </p>
@@ -2231,33 +2231,33 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </div>
 
               {userTeam && (
-                <div className="bg-neutral-50 p-3 rounded-lg mb-4">
-                  <p className="text-sm text-neutral-600">
+                <div className="bg-neutral-50 p-2.5 sm:p-3 rounded-lg mb-3 sm:mb-4">
+                  <p className="text-xs sm:text-sm text-neutral-600">
                     <span className="font-medium">Your Team:</span>{" "}
-                    {userTeam.name} ({userTeam.members.length}/3 members)
+                    <span className="truncate">{userTeam.name}</span> ({userTeam.members.length}/3 members)
                   </p>
                 </div>
               )}
 
               <div>
-                <h4 className="font-medium text-neutral-800 mb-3">
+                <h4 className="font-medium text-sm sm:text-base text-neutral-800 mb-2 sm:mb-3">
                   Available Players
                 </h4>
-                <div className="border rounded-lg bg-neutral-50 max-h-64 overflow-y-auto">
+                <div className="border rounded-lg bg-neutral-50 max-h-48 sm:max-h-64 overflow-y-auto">
                   {isLoading && (
-                    <div className="px-4 py-3 text-sm text-neutral-500">
+                    <div className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-neutral-500">
                       Loading online players...
                     </div>
                   )}
                   {isError && !isLoading && (
-                    <div className="px-4 py-3 text-sm text-red-500">
+                    <div className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-red-500">
                       Failed to load online players.
                     </div>
                   )}
                   {!isLoading &&
                     !isError &&
                     availableTeammates.length === 0 && (
-                      <div className="px-4 py-3 text-sm text-neutral-500">
+                      <div className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-neutral-500">
                         No available players to invite right now.
                       </div>
                     )}
@@ -2285,15 +2285,15 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                         return (
                           <div
                             key={player.id}
-                            className="flex items-center justify-between px-4 py-3 border-b last:border-b-0"
+                            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border-b last:border-b-0"
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                              <p className="font-medium text-neutral-900">
+                            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 w-full sm:w-auto">
+                              <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
+                              <p className="font-medium text-sm sm:text-base text-neutral-900 truncate">
                                 {player.username}
                               </p>
                               {pendingInvitation && (
-                                <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                                <span className="text-xs px-2 py-0.5 sm:py-1 rounded-full bg-yellow-100 text-yellow-700 flex-shrink-0">
                                   Invitation Sent
                                 </span>
                               )}
@@ -2309,7 +2309,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                 alreadyInvitedByMe ||
                                 (userTeam?.members.length || 0) >= 3
                               }
-                              className="text-xs font-semibold px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white"
+                              className="w-full sm:w-auto text-xs font-semibold px-3 py-1.5 sm:py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
                             >
                               {pendingInvitation
                                 ? "Invited"
@@ -2336,12 +2336,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             (inv: TeamInvitation) =>
               inv.status === "pending" && inv.inviteeId === user?.id
           ).length > 0 && (
-            <div className="mt-6 space-y-4">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border border-blue-200">
-                <h4 className="font-heading font-bold text-lg text-gray-900 mb-1 flex items-center gap-2">
-                  <Mail className="h-5 w-5 text-blue-600" />
-                  Choose Your Team
-                  <span className="ml-auto bg-blue-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+            <div className="mt-4 sm:mt-6 space-y-3 sm:space-y-4">
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-blue-200">
+                <h4 className="font-heading font-bold text-base sm:text-lg text-gray-900 mb-1 flex items-center gap-2 flex-wrap">
+                  <Mail className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+                  <span>Choose Your Team</span>
+                  <span className="ml-auto bg-blue-500 text-white text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full">
                     {
                       invitations.filter(
                         (inv: TeamInvitation) =>
@@ -2350,7 +2350,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     }
                   </span>
                 </h4>
-                <p className="text-sm text-gray-600">
+                <p className="text-xs sm:text-sm text-gray-600">
                   You have multiple team invitations. Choose which team you'd
                   like to join
                 </p>
@@ -2368,32 +2368,32 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   return (
                     <div
                       key={invitation.id}
-                      className="bg-white p-5 rounded-xl border-2 border-blue-200 shadow-sm hover:shadow-md transition-all duration-200"
+                      className="bg-white p-3 sm:p-4 md:p-5 rounded-lg sm:rounded-xl border-2 border-blue-200 shadow-sm hover:shadow-md transition-all duration-200"
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-3 flex-1">
-                          <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                        <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
                             {invitation.invitationType === "opponent" ? (
-                              <Crown className="h-6 w-6 text-white" />
+                              <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                             ) : (
-                              <Users className="h-6 w-6 text-white" />
+                              <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                             )}
                           </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <p className="font-bold text-gray-900">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-1 sm:mb-2">
+                              <p className="font-bold text-sm sm:text-base text-gray-900">
                                 {invitation.invitationType === "opponent"
                                   ? "Team Captain"
                                   : "Team Member"}{" "}
                                 Invitation
                               </p>
-                              <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                              <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0">
                                 {invitation.invitationType === "opponent"
                                   ? "Captain"
                                   : "Member"}
                               </span>
                             </div>
-                            <p className="text-sm text-gray-700 mb-2">
+                            <p className="text-xs sm:text-sm text-gray-700 mb-2">
                               <span className="font-semibold text-blue-600">
                                 {invitation.inviterUsername || "Someone"}
                               </span>{" "}
@@ -2402,14 +2402,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                 ? "opposing team captain"
                                 : "a teammate"}
                             </p>
-                            <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 inline-block">
+                            <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 inline-block">
                               {invitation.invitationType === "opponent"
                                 ? "👑 You'll lead your own team"
                                 : "🤝 You'll join their existing team"}
                             </p>
                           </div>
                         </div>
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto">
                           <Button
                             size="sm"
                             onClick={(e) =>
@@ -2420,7 +2420,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               )
                             }
                             disabled={pendingResponseId === invitation.id}
-                            className="text-xs font-bold px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg shadow-sm"
+                            className="flex-1 sm:flex-none text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg shadow-sm"
                           >
                             <Check className="h-3 w-3 mr-1" />
                             {pendingResponseId === invitation.id
@@ -2438,7 +2438,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               )
                             }
                             disabled={pendingResponseId === invitation.id}
-                            className="text-xs font-semibold border-2 border-gray-300 hover:border-red-400 hover:bg-red-50 hover:text-red-600"
+                            className="flex-1 sm:flex-none text-xs font-semibold border-2 border-gray-300 hover:border-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg"
                           >
                             <X className="h-3 w-3 mr-1" />
                             {pendingResponseId === invitation.id

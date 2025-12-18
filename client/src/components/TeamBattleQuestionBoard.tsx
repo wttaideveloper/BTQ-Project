@@ -71,6 +71,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   const hasReadQuestionRef = useRef(false);
   const lastQuestionIdRef = useRef<string>(question.id);
   const lastTimeRemainingRef = useRef<number>(timeRemaining);
+  const isTimerRunningRef = useRef(false);
 
   // Sync displayTime with timeRemaining prop when question changes or timeRemaining prop updates
   useEffect(() => {
@@ -78,10 +79,13 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
     const timeChanged = lastTimeRemainingRef.current !== timeRemaining;
 
     if (questionChanged) {
+      // Question changed - reset everything
       lastQuestionIdRef.current = question.id;
       lastTimeRemainingRef.current = timeRemaining;
       setDisplayTime(timeRemaining);
       hasReadQuestionRef.current = false;
+      isTimerRunningRef.current = false;
+      
       // Clear timer when question changes
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -91,6 +95,8 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       // If timeRemaining prop changed (server update), sync it
       lastTimeRemainingRef.current = timeRemaining;
       setDisplayTime(timeRemaining);
+      isTimerRunningRef.current = false;
+      
       // Restart timer with new time
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -193,17 +199,43 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
+      isTimerRunningRef.current = false;
     }
 
     // Stop timer if question is locked, paused, read-only, or time expired
-    if (displayTime <= 0 || isQuestionLocked || isPaused || isReadOnly) {
+    // Use timeRemaining as source of truth, but also check displayTime for current state
+    if (timeRemaining <= 0 || isQuestionLocked || isPaused || isReadOnly) {
+      isTimerRunningRef.current = false;
+      // Sync displayTime to match stopped state
+      if (timeRemaining <= 0) {
+        setDisplayTime(0);
+      }
       return;
     }
 
+    // Ensure displayTime is synced with timeRemaining before starting timer
+    // This handles cases where the sync effect hasn't run yet or there's a mismatch
+    // Only sync if the difference is significant (more than 1 second) to avoid unnecessary updates
+    if (Math.abs(displayTime - timeRemaining) > 1) {
+      setDisplayTime(timeRemaining);
+    }
+
     // Start countdown timer
+    isTimerRunningRef.current = true;
     timerRef.current = setInterval(() => {
       setDisplayTime((prev) => {
-        const newTime = prev - 1;
+        // Safety check: if timer was stopped externally, don't continue
+        if (!isTimerRunningRef.current) {
+          return prev;
+        }
+
+        // Additional safety: if paused, locked, or read-only, stop counting
+        if (isPaused || isQuestionLocked || isReadOnly) {
+          isTimerRunningRef.current = false;
+          return prev;
+        }
+
+        const newTime = Math.max(0, prev - 1);
 
         // Only play timer sounds in the last 5 seconds
         if (newTime <= 5 && newTime > 0) {
@@ -220,6 +252,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
 
         // Time expired
         if (newTime <= 0) {
+          isTimerRunningRef.current = false;
           if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
@@ -238,12 +271,13 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
     }, 1000);
 
     return () => {
+      isTimerRunningRef.current = false;
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [question.id, timeRemaining, isQuestionLocked, isPaused, isReadOnly]); // Restart timer when question or timeRemaining prop changes
+  }, [question.id, timeRemaining, isQuestionLocked, isPaused, isReadOnly]); // Restart when question, timeRemaining, or state changes
 
   // Cleanup effect to clear intervals and voice session on unmount
   useEffect(() => {

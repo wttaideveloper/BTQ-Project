@@ -33,6 +33,7 @@ import {
   toggleSound,
   toggleVoice,
 } from "@/lib/sounds";
+import { toggleBasicSound, initBasicSounds } from "@/lib/basic-sound";
 
 interface TeamMember {
   userId: number;
@@ -289,6 +290,7 @@ export default function TeamBattleGame() {
               questionNumber: data.questionNumber,
               totalQuestions: data.totalQuestions,
               // Server sends timeLimit in milliseconds, convert to seconds for display
+              // Always set timeRemaining to the full timeLimit when new question arrives
               timeRemaining: data.timeLimit ? Math.floor(data.timeLimit / 1000) : 15,
               timeLimit: data.timeLimit || 15000, // Store original milliseconds value
               isYourTurn: data.isYourTurn !== false, // Default to true if not specified
@@ -553,6 +555,7 @@ export default function TeamBattleGame() {
 
   useEffect(() => {
     initSounds();
+    initBasicSounds(); // Initialize basic sound system for timer sounds
   }, []);
 
   // Add timeout for waiting phase - if stuck for too long, redirect to setup
@@ -739,10 +742,11 @@ export default function TeamBattleGame() {
     // Server sends timeLimit in milliseconds, convert to seconds
     const serverTimeLimit = gameState.timeLimit || 15000;
     const timeLimit = Math.floor(serverTimeLimit / 1000); // Convert ms to seconds
-    const timeRemaining = Math.min(
-      gameState.timeRemaining ?? timeLimit,
-      timeLimit
-    );
+    // Use timeRemaining from state if available, otherwise use timeLimit
+    // This ensures we always pass a valid initial time to the child component
+    const timeRemaining = gameState.timeRemaining !== undefined 
+      ? Math.min(gameState.timeRemaining, timeLimit)
+      : timeLimit;
     const isYourTurn = gameState.isYourTurn !== false; // Default to true if not specified
 
     return (
@@ -1272,6 +1276,7 @@ export default function TeamBattleGame() {
                 const newState = !soundEnabled;
                 setSoundEnabled(newState);
                 toggleSound(newState);
+                toggleBasicSound(newState); // Also toggle basic sound system (timer sounds)
                 toast({
                   title: newState ? "Sound Enabled" : "Sound Disabled",
                   description: newState

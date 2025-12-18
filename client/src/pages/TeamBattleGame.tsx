@@ -81,6 +81,13 @@ interface GameState {
   incorrect?: number;
   isYourTurn?: boolean;
   answeringTeamName?: string;
+  // Disconnect winner info (when opponent disconnects, winner is determined by who remained, not score)
+  disconnectWinner?: {
+    winnerTeamId?: string;
+    winnerTeamName?: string;
+    isWinner: boolean;
+    reason?: string;
+  };
 }
 
 export default function TeamBattleGame() {
@@ -483,6 +490,13 @@ export default function TeamBattleGame() {
               incorrect: data.isWinner
                 ? data.finalScores?.[0]?.incorrectAnswers ?? 0
                 : data.finalScores?.[1]?.incorrectAnswers ?? 0,
+              // Store disconnect winner info (winner is determined by who remained, not score)
+              disconnectWinner: {
+                winnerTeamId: data.winnerTeamId,
+                winnerTeamName: data.winnerTeamName,
+                isWinner: data.isWinner,
+                reason: data.reason,
+              },
             }));
             setShowRoundFeedback(false);
             toast({
@@ -913,13 +927,31 @@ export default function TeamBattleGame() {
     const opponentTeam =
       opponentFromScores || gameState.opposingTeam || teams[1];
 
-    // Determine winner
+    // Get scores for display (always available)
     const yourScore = yourTeam?.score ?? 0;
     const opponentScore = opponentTeam?.score ?? 0;
-    const isDraw = yourScore === opponentScore;
-    const isWinner = yourScore > opponentScore;
-    const winnerTeam = isDraw ? null : (isWinner ? yourTeam : opponentTeam);
-    const isYourTeamWinner = isWinner && !isDraw;
+
+    // Determine winner
+    // If disconnect occurred, winner is determined by who remained (not by score)
+    // Otherwise, winner is determined by score
+    let isYourTeamWinner: boolean;
+    let winnerTeam: Team | null;
+    let isDraw: boolean;
+
+    if (gameState.disconnectWinner) {
+      // Disconnect scenario: winner is determined by who remained, not score
+      isYourTeamWinner = gameState.disconnectWinner.isWinner;
+      winnerTeam = teams.find(
+        (team) => team.id === gameState.disconnectWinner?.winnerTeamId
+      ) || (isYourTeamWinner ? yourTeam : opponentTeam);
+      isDraw = false; // No draws in disconnect scenarios
+    } else {
+      // Normal completion: winner determined by score
+      isDraw = yourScore === opponentScore;
+      const isWinner = yourScore > opponentScore;
+      winnerTeam = isDraw ? null : (isWinner ? yourTeam : opponentTeam);
+      isYourTeamWinner = isWinner && !isDraw;
+    }
 
     return (
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
@@ -961,6 +993,11 @@ export default function TeamBattleGame() {
                 <p className="text-white/80 text-base sm:text-lg font-semibold mb-1">
                   {winnerTeam?.name || (isYourTeamWinner ? 'Your Team' : 'Opponent Team')} Wins!
                 </p>
+                {gameState.disconnectWinner && (
+                  <p className="text-white/70 text-sm sm:text-base mb-1">
+                    {gameState.disconnectWinner.reason || 'Opponent team disconnected'}
+                  </p>
+                )}
                 <p className="text-white/60 text-sm sm:text-base">
                   Final Score: <span className="font-bold text-accent">{Math.max(yourScore, opponentScore)}</span> points
                 </p>

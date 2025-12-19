@@ -671,26 +671,26 @@ export default function TeamBattleGame() {
 
   const renderWaitingPhase = () => (
     <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6 w-full min-w-0 overflow-x-hidden">
-      <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-8 sm:py-10 min-w-0">
+      <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-6 sm:py-8 md:py-10 min-w-0">
         {/* Icon */}
-        <div className="flex justify-center mb-6">
-          <div className="h-20 w-20 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg">
-            <Clock className="h-10 w-10 text-white" />
+        <div className="flex justify-center mb-4 sm:mb-6">
+          <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg">
+            <Clock className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
           </div>
         </div>
 
         {/* Title */}
-        <h1 className="text-center text-3xl font-bold tracking-wide mb-4">
+        <h1 className="text-center text-2xl sm:text-3xl font-bold tracking-wide mb-3 sm:mb-4">
           Connecting to Game
         </h1>
 
         {/* Subtext */}
-        <p className="text-center text-white/70 text-base mb-8">
+        <p className="text-center text-white/70 text-sm sm:text-base mb-6 sm:mb-8 px-2">
           Please wait while we connect you to the battle...
         </p>
 
         {/* Loading Dot Animation */}
-        <div className="flex justify-center gap-2 mb-10">
+        <div className="flex justify-center gap-2 mb-8 sm:mb-10">
           <div className="h-3 w-3 rounded-full bg-blue-400 animate-bounce"></div>
           <div className="h-3 w-3 rounded-full bg-blue-500 animate-bounce delay-150"></div>
           <div className="h-3 w-3 rounded-full bg-blue-600 animate-bounce delay-300"></div>
@@ -707,7 +707,7 @@ export default function TeamBattleGame() {
               }
               setLocation("/");
             }}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 sm:px-6 md:px-8 py-3 text-sm sm:text-base font-semibold border-0 whitespace-nowrap w-full sm:w-auto"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border-0 whitespace-nowrap w-full sm:w-auto"
           >
             Exit to Home
           </Button>
@@ -773,16 +773,16 @@ export default function TeamBattleGame() {
         />
 
         {teamAnswer && !isYourTurn && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-            <Card className="max-w-sm w-full mx-4 bg-gradient-to-br from-secondary to-secondary-dark text-white border border-accent/60 shadow-2xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Check className="h-5 w-5 text-green-400" />
-                  Answer Locked
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 p-3 sm:p-4">
+            <Card className="max-w-sm w-full mx-auto bg-gradient-to-br from-secondary to-secondary-dark text-white border border-accent/60 shadow-2xl rounded-lg sm:rounded-xl">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-400 flex-shrink-0" />
+                  <span>Answer Locked</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-white/80">
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <p className="text-xs sm:text-sm text-white/80">
                   Your team's answer has been submitted. Waiting for time to expire...
                 </p>
               </CardContent>
@@ -958,51 +958,51 @@ export default function TeamBattleGame() {
     }
 
     return (
-      <div className="max-w-2xl mx-auto p-4 sm:p-6">
-        <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-8 sm:py-10">
+      <div className="max-w-2xl mx-auto p-3 sm:p-4 md:p-6">
+        <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-10">
           {/* Winner Announcement Section */}
-          <div className="text-center mb-8">
+          <div className="text-center mb-6 sm:mb-8">
             {isDraw ? (
               <>
-                <div className="flex justify-center mb-4">
-                  <div className="h-24 w-24 rounded-full bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600 flex items-center justify-center shadow-2xl animate-pulse-slow border-4 border-yellow-300">
-                    <Crown className="h-12 w-12 text-white" />
+                <div className="flex justify-center mb-3 sm:mb-4">
+                  <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600 flex items-center justify-center shadow-2xl animate-pulse-slow border-4 border-yellow-300">
+                    <Crown className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
                   </div>
                 </div>
-                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">
                   IT'S A DRAW!
                 </h1>
-                <p className="text-white/70 text-sm sm:text-base">
+                <p className="text-white/70 text-xs sm:text-sm md:text-base px-2">
                   Both teams performed equally well!
                 </p>
               </>
             ) : (
               <>
-                <div className="flex justify-center mb-4">
-                  <div className={`h-24 w-24 rounded-full ${
+                <div className="flex justify-center mb-3 sm:mb-4">
+                  <div className={`h-20 w-20 sm:h-24 sm:w-24 rounded-full ${
                     isYourTeamWinner 
                       ? 'bg-gradient-to-br from-accent via-accent-dark to-accent-light' 
                       : 'bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600'
                   } flex items-center justify-center shadow-2xl animate-pulse-slow border-4 ${
                     isYourTeamWinner ? 'border-accent-light' : 'border-yellow-300'
                   }`}>
-                    <Crown className={`h-12 w-12 ${
+                    <Crown className={`h-10 w-10 sm:h-12 sm:w-12 ${
                       isYourTeamWinner ? 'text-primary' : 'text-white'
                     }`} />
                   </div>
                 </div>
-                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-accent to-accent-light bg-clip-text text-transparent">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-accent to-accent-light bg-clip-text text-transparent">
                   {isYourTeamWinner ? 'VICTORY!' : 'GAME OVER!'}
                 </h1>
-                <p className="text-white/80 text-base sm:text-lg font-semibold mb-1">
+                <p className="text-white/80 text-sm sm:text-base md:text-lg font-semibold mb-1 px-2">
                   {winnerTeam?.name || (isYourTeamWinner ? 'Your Team' : 'Opponent Team')} Wins!
                 </p>
                 {gameState.disconnectWinner && (
-                  <p className="text-white/70 text-sm sm:text-base mb-1">
+                  <p className="text-white/70 text-xs sm:text-sm md:text-base mb-1 px-2">
                     {gameState.disconnectWinner.reason || 'Opponent team disconnected'}
                   </p>
                 )}
-                <p className="text-white/60 text-sm sm:text-base">
+                <p className="text-white/60 text-xs sm:text-sm md:text-base px-2">
                   Final Score: <span className="font-bold text-accent">{Math.max(yourScore, opponentScore)}</span> points
                 </p>
               </>
@@ -1010,7 +1010,7 @@ export default function TeamBattleGame() {
           </div>
 
           {/* Stats Box - both teams */}
-          <div className="bg-white/5 rounded-2xl p-4 sm:p-6 border border-white/10 mb-8">
+          <div className="bg-white/5 rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-white/10 mb-6 sm:mb-8">
             {yourTeam && (
               <div className="space-y-4">
                 {/* Your Team */}
@@ -1032,9 +1032,9 @@ export default function TeamBattleGame() {
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-3 sm:gap-4 text-center">
-                    <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
-                      <div className="text-2xl sm:text-3xl font-bold text-yellow-400">
+                  <div className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4 text-center">
+                    <div className="bg-black/40 rounded-lg sm:rounded-xl py-2 sm:py-3 md:py-4 border border-white/10">
+                      <div className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-400">
                         {yourTeam.score ?? 0}
                       </div>
                       <div className="text-xs sm:text-sm text-white/70 mt-1">
@@ -1042,15 +1042,15 @@ export default function TeamBattleGame() {
                       </div>
                     </div>
 
-                    <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
-                      <div className="text-2xl sm:text-3xl font-bold text-green-400">
+                    <div className="bg-black/40 rounded-lg sm:rounded-xl py-2 sm:py-3 md:py-4 border border-white/10">
+                      <div className="text-xl sm:text-2xl md:text-3xl font-bold text-green-400">
                         {yourTeam.correctAnswers ?? 0}
                       </div>
                       <div className="text-xs sm:text-sm text-white/70 mt-1">Correct</div>
                     </div>
 
-                    <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
-                      <div className="text-2xl sm:text-3xl font-bold text-red-400">
+                    <div className="bg-black/40 rounded-lg sm:rounded-xl py-2 sm:py-3 md:py-4 border border-white/10">
+                      <div className="text-xl sm:text-2xl md:text-3xl font-bold text-red-400">
                         {yourTeam.incorrectAnswers ?? 0}
                       </div>
                       <div className="text-xs sm:text-sm text-white/70 mt-1">Wrong</div>
@@ -1062,27 +1062,27 @@ export default function TeamBattleGame() {
                 {opponentTeam && (
                   <>
                     <div className="h-px bg-white/10" />
-                    <div className={`rounded-xl p-4 ${
+                    <div className={`rounded-lg sm:rounded-xl p-3 sm:p-4 ${
                       !isYourTeamWinner && !isDraw 
                         ? 'bg-gradient-to-r from-yellow-400/20 to-yellow-600/20 border-2 border-yellow-400/50' 
                         : 'bg-black/20 border border-white/10'
                     }`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
+                        <div className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                           {!isYourTeamWinner && !isDraw && (
-                            <Crown className="h-5 w-5 text-yellow-400" />
+                            <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 flex-shrink-0" />
                           )}
-                          {opponentTeam.name || "Opponent Team"}
+                          <span className="truncate">{opponentTeam.name || "Opponent Team"}</span>
                         </div>
                         {!isYourTeamWinner && !isDraw && (
-                          <span className="text-xs sm:text-sm bg-yellow-400 text-black px-2 py-1 rounded-full font-semibold">
+                          <span className="text-xs sm:text-sm bg-yellow-400 text-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-semibold flex-shrink-0 whitespace-nowrap">
                             WINNER
                           </span>
                         )}
                       </div>
-                      <div className="grid grid-cols-3 gap-3 sm:gap-4 text-center">
-                        <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
-                          <div className="text-2xl sm:text-3xl font-bold text-yellow-400">
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4 text-center">
+                        <div className="bg-black/40 rounded-lg sm:rounded-xl py-2 sm:py-3 md:py-4 border border-white/10">
+                          <div className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-400">
                             {opponentTeam.score ?? 0}
                           </div>
                           <div className="text-xs sm:text-sm text-white/70 mt-1">
@@ -1090,8 +1090,8 @@ export default function TeamBattleGame() {
                           </div>
                         </div>
 
-                        <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
-                          <div className="text-2xl sm:text-3xl font-bold text-green-400">
+                        <div className="bg-black/40 rounded-lg sm:rounded-xl py-2 sm:py-3 md:py-4 border border-white/10">
+                          <div className="text-xl sm:text-2xl md:text-3xl font-bold text-green-400">
                             {opponentTeam.correctAnswers ?? 0}
                           </div>
                           <div className="text-xs sm:text-sm text-white/70 mt-1">
@@ -1099,8 +1099,8 @@ export default function TeamBattleGame() {
                           </div>
                         </div>
 
-                        <div className="bg-black/40 rounded-xl py-3 sm:py-4 border border-white/10">
-                          <div className="text-2xl sm:text-3xl font-bold text-red-400">
+                        <div className="bg-black/40 rounded-lg sm:rounded-xl py-2 sm:py-3 md:py-4 border border-white/10">
+                          <div className="text-xl sm:text-2xl md:text-3xl font-bold text-red-400">
                             {opponentTeam.incorrectAnswers ?? 0}
                           </div>
                           <div className="text-xs sm:text-sm text-white/70 mt-1">
@@ -1116,10 +1116,10 @@ export default function TeamBattleGame() {
           </div>
 
           {/* Buttons */}
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex items-center justify-center gap-3 sm:gap-4">
             <Button
               onClick={() => setLocation("/")}
-              className="bg-gradient-to-r from-accent to-accent-dark text-primary px-6 sm:px-8 py-3 rounded-xl hover:from-accent-light hover:to-accent font-bold text-base sm:text-lg shadow-lg hover:shadow-xl transition-all duration-200"
+              className="bg-gradient-to-r from-accent to-accent-dark text-primary px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 rounded-lg sm:rounded-xl hover:from-accent-light hover:to-accent font-bold text-sm sm:text-base md:text-lg shadow-lg hover:shadow-xl transition-all duration-200 w-full sm:w-auto"
             >
               Return Home
             </Button>
@@ -1169,25 +1169,25 @@ export default function TeamBattleGame() {
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
         {/* Team Scores Header - Show during game */}
         {gameState.phase === "question" && gameState.playerTeam && gameState.opposingTeam && (
-          <div className="mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-2xl p-4 border border-white/10">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="mb-3 sm:mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               {/* Your Team */}
-              <div className={`flex-1 w-full sm:w-auto p-3 rounded-xl border-2 transition-all ${
+              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${
                 gameState.isYourTurn !== false 
                   ? 'bg-accent/20 border-accent shadow-lg shadow-accent/30' 
                   : 'bg-primary/10 border-primary/30'
               }`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs sm:text-sm text-white/70 mb-1">Your Team</div>
-                    <div className="text-lg sm:text-xl font-bold text-white">{gameState.playerTeam.name}</div>
+                <div className="flex items-center justify-between gap-2 sm:gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Your Team</div>
+                    <div className="text-base sm:text-lg md:text-xl font-bold text-white truncate">{gameState.playerTeam.name}</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs sm:text-sm text-white/70 mb-1">Score</div>
-                    <div className="text-2xl sm:text-3xl font-bold text-accent">{gameState.playerTeam.score || 0}</div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Score</div>
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-accent">{gameState.playerTeam.score || 0}</div>
                   </div>
                   {gameState.isYourTurn !== false && (
-                    <div className="px-3 py-1 bg-accent text-primary rounded-full text-xs font-bold animate-pulse">
+                    <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-accent text-primary rounded-full text-xs font-bold animate-pulse flex-shrink-0 whitespace-nowrap">
                       YOUR TURN
                     </div>
                   )}
@@ -1195,25 +1195,25 @@ export default function TeamBattleGame() {
               </div>
 
               {/* VS Separator */}
-              <div className="text-white/50 font-bold text-xl">VS</div>
+              <div className="text-white/50 font-bold text-lg sm:text-xl text-center flex-shrink-0">VS</div>
 
               {/* Opposing Team */}
-              <div className={`flex-1 w-full sm:w-auto p-3 rounded-xl border-2 transition-all ${
+              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${
                 gameState.isYourTurn === false 
                   ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/30' 
                   : 'bg-secondary/10 border-secondary/30'
               }`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs sm:text-sm text-white/70 mb-1">Opponent</div>
-                    <div className="text-lg sm:text-xl font-bold text-white">{gameState.opposingTeam.name}</div>
+                <div className="flex items-center justify-between gap-2 sm:gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Opponent</div>
+                    <div className="text-base sm:text-lg md:text-xl font-bold text-white truncate">{gameState.opposingTeam.name}</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs sm:text-sm text-white/70 mb-1">Score</div>
-                    <div className="text-2xl sm:text-3xl font-bold text-secondary">{gameState.opposingTeam.score || 0}</div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Score</div>
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-secondary">{gameState.opposingTeam.score || 0}</div>
                   </div>
                   {gameState.isYourTurn === false && (
-                    <div className="px-3 py-1 bg-yellow-500 text-black rounded-full text-xs font-bold animate-pulse">
+                    <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-yellow-500 text-black rounded-full text-xs font-bold animate-pulse flex-shrink-0 whitespace-nowrap">
                       THEIR TURN
                     </div>
                   )}
@@ -1223,11 +1223,11 @@ export default function TeamBattleGame() {
 
             {/* Question Progress */}
             {gameState.questionNumber && gameState.totalQuestions && (
-              <div className="mt-4 pt-4 border-t border-white/10">
-                <div className="flex items-center justify-center gap-2 text-sm text-white/80">
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/10">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm text-white/80 text-center">
                   <span>Question {gameState.questionNumber} of {gameState.totalQuestions}</span>
-                  <span className="text-white/50">•</span>
-                  <span>
+                  <span className="hidden sm:inline text-white/50">•</span>
+                  <span className="text-white/70">
                     {gameState.isYourTurn !== false 
                       ? `Your team answers this question`
                       : `${gameState.answeringTeamName || 'Opponent'} is answering`
@@ -1240,34 +1240,37 @@ export default function TeamBattleGame() {
         )}
 
         {/* Header with logo on left and controls on right */}
-        <header className="flex items-center justify-between mb-4 gap-4">
-          {/* Logo Section */}
-          <div className="flex items-center flex-shrink-0">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-primary">
-              Faith<span className="text-accent">IQ</span>
-            </h1>
-            <span className="ml-2 bg-accent text-primary px-2 py-1 rounded-md text-xs sm:text-sm font-semibold whitespace-nowrap">
-              Bible Trivia
-            </span>
-          </div>
+        <header className="mb-3 sm:mb-4">
+          {/* First Row: Logo and Pause Button */}
+          <div className="flex items-center justify-between gap-2 sm:gap-4 mb-2 sm:mb-0">
+            {/* Logo Section */}
+            <div className="flex items-center flex-shrink-0 min-w-0">
+              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-heading font-bold text-primary truncate">
+                Faith<span className="text-accent">IQ</span>
+              </h1>
+              <span className="ml-1 sm:ml-2 bg-accent text-primary px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md text-xs sm:text-sm font-semibold whitespace-nowrap flex-shrink-0">
+                Bible Trivia
+              </span>
+            </div>
 
-          {/* Controls Section */}
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
-            {/* Pause/Resume Button */}
+            {/* Pause/Resume Button - Always visible */}
             <Button
               variant="outline"
               size="icon"
               onClick={isPaused ? handleResume : handlePause}
-              className={`rounded-full transition-all duration-200 flex-shrink-0 ${
+              className={`rounded-full transition-all duration-200 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 ${
                 isPaused
                   ? "bg-green-500 text-white hover:bg-green-600 border-green-500"
                   : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300"
               }`}
               title={isPaused ? "Resume game" : "Pause game"}
             >
-              {isPaused ? <Play size={18} /> : <Pause size={18} />}
+              {isPaused ? <Play size={16} className="sm:w-[18px] sm:h-[18px]" /> : <Pause size={16} className="sm:w-[18px] sm:h-[18px]" />}
             </Button>
+          </div>
 
+          {/* Second Row: All Other Controls - Wraps on mobile */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {/* Sound Button */}
             <Button
               variant="outline"
@@ -1276,7 +1279,7 @@ export default function TeamBattleGame() {
                 const newState = !soundEnabled;
                 setSoundEnabled(newState);
                 toggleSound(newState);
-                toggleBasicSound(newState); // Also toggle basic sound system (timer sounds)
+                toggleBasicSound(newState);
                 toast({
                   title: newState ? "Sound Enabled" : "Sound Disabled",
                   description: newState
@@ -1285,10 +1288,10 @@ export default function TeamBattleGame() {
                   duration: 2000,
                 });
               }}
-              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 hidden sm:flex"
+              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
               title={soundEnabled ? "Disable sounds" : "Enable sounds"}
             >
-              {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+              {soundEnabled ? <Volume2 size={16} className="sm:w-[18px] sm:h-[18px]" /> : <VolumeX size={16} className="sm:w-[18px] sm:h-[18px]" />}
             </Button>
 
             {/* Voice Button */}
@@ -1309,14 +1312,14 @@ export default function TeamBattleGame() {
                   duration: 2000,
                 });
               }}
-              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 hidden sm:flex"
+              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
               title={
                 voiceEnabled
                   ? "Disable voice narration"
                   : "Enable voice narration"
               }
             >
-              {voiceEnabled ? <Mic size={18} /> : <MicOff size={18} />}
+              {voiceEnabled ? <Mic size={16} className="sm:w-[18px] sm:h-[18px]" /> : <MicOff size={16} className="sm:w-[18px] sm:h-[18px]" />}
             </Button>
 
             {/* Help Button */}
@@ -1331,10 +1334,10 @@ export default function TeamBattleGame() {
                   duration: 5000,
                 });
               }}
-              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 hidden sm:flex"
+              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
               title="How to play"
             >
-              <HelpCircle size={18} />
+              <HelpCircle size={16} className="sm:w-[18px] sm:h-[18px]" />
             </Button>
 
             {/* Leave Game Button */}
@@ -1356,9 +1359,9 @@ export default function TeamBattleGame() {
                 } catch (e) {}
                 setLocation("/");
               }}
-              className="flex-shrink-0 bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600/30 hover:border-red-500/50 px-2 py-2 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold transition-all duration-200 rounded-lg"
+              className="flex-shrink-0 bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600/30 hover:border-red-500/50 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition-all duration-200 rounded-lg"
             >
-              <X className="h-4 w-4 sm:mr-2" />
+              <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
               <span className="hidden sm:inline">Leave Game</span>
             </Button>
           </div>
@@ -1366,14 +1369,14 @@ export default function TeamBattleGame() {
       </div>
       {gameState.phase === "waiting" && renderWaitingPhase()}
       {gameState.phase === "playing" && (
-        <div className="max-w-xl mx-auto p-6">
-          <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
-            <div className="flex flex-col items-center justify-center space-y-6">
-              <div className="h-20 w-20 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg animate-pulse">
-                <Clock className="h-10 w-10 text-white" />
+        <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6">
+          <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-6 sm:py-8 md:py-10">
+            <div className="flex flex-col items-center justify-center space-y-4 sm:space-y-6">
+              <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg animate-pulse">
+                <Clock className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-center">Preparing Battle</h2>
-              <p className="text-white/70 text-center">
+              <h2 className="text-xl sm:text-2xl font-bold text-center px-2">Preparing Battle</h2>
+              <p className="text-white/70 text-center text-sm sm:text-base px-2">
                 Loading questions and setting up the game...
               </p>
               <div className="flex gap-2">
@@ -1414,26 +1417,26 @@ export default function TeamBattleGame() {
 
       {/* Pause Overlay */}
       {isPaused && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-8 max-w-md mx-4 text-center shadow-2xl border border-white/20">
-            <div className="mb-8">
-              <div className="w-20 h-20 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Pause size={40} className="text-accent" />
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white/10 backdrop-blur-sm rounded-2xl sm:rounded-3xl p-6 sm:p-8 max-w-md w-full mx-4 text-center shadow-2xl border border-white/20">
+            <div className="mb-6 sm:mb-8">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+                <Pause size={32} className="sm:w-10 sm:h-10 text-accent" />
               </div>
-              <h2 className="text-4xl font-bold text-white mb-3">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 sm:mb-3">
                 Game Paused
               </h2>
-              <p className="text-white/80 text-lg">
+              <p className="text-white/80 text-sm sm:text-base md:text-lg px-2">
                 Take a moment to breathe and prepare for the next question.
               </p>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <Button
                 onClick={handleResume}
-                className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 sm:py-4 text-base sm:text-lg rounded-xl min-w-0"
+                className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg rounded-lg sm:rounded-xl min-w-0"
               >
-                <Play size={20} className="mr-2 sm:mr-3 flex-shrink-0" />
+                <Play size={18} className="sm:w-5 sm:h-5 mr-2 flex-shrink-0" />
                 <span className="whitespace-nowrap">Resume Game</span>
               </Button>
 
@@ -1460,9 +1463,9 @@ export default function TeamBattleGame() {
                   }
                   setLocation("/");
                 }}
-                className="w-full border-red-500/30 bg-red-600/20 text-red-400 hover:bg-red-600/30 hover:border-red-500/50 py-3 sm:py-4 text-base sm:text-lg rounded-xl flex items-center gap-2 justify-center min-w-0"
+                className="w-full border-red-500/30 bg-red-600/20 text-red-400 hover:bg-red-600/30 hover:border-red-500/50 py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg rounded-lg sm:rounded-xl flex items-center gap-2 justify-center min-w-0"
               >
-                <X className="h-5 w-5 flex-shrink-0" />
+                <X className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
                 <span className="whitespace-nowrap">Leave Game</span>
               </Button>
             </div>

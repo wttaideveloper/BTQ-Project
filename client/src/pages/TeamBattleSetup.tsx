@@ -320,6 +320,17 @@ const TeamBattleSetup: React.FC = () => {
     const offJoinRequestUpdated = onEvent("join_request_updated", () => {
       debouncedRefetch();
     });
+    const offTeamBattleStarted = onEvent("team_battle_started", (data: any) => {
+      console.log("[TeamBattleSetup] Received team_battle_started event:", data);
+      toast({
+        title: "Battle Started!",
+        description: "Redirecting to game...",
+      });
+      // Navigate to game when WebSocket confirms battle started
+      if (data.gameSessionId || gameSessionId) {
+        setLocation(`/team-battle-game?session=${data.gameSessionId || gameSessionId}`);
+      }
+    });
 
     return () => {
       offTeamUpdated();
@@ -329,8 +340,9 @@ const TeamBattleSetup: React.FC = () => {
       offInvitationSent();
       offJoinRequestCreated();
       offJoinRequestUpdated();
+      offTeamBattleStarted();
     };
-  }, [user?.id, teams, debouncedRefetch, toast]);
+  }, [user?.id, teams, debouncedRefetch, toast, gameSessionId, setLocation]);
 
   // joinRequests provided by hook
 
@@ -505,9 +517,10 @@ const TeamBattleSetup: React.FC = () => {
     onSuccess: () => {
       toast({
         title: "Battle Starting!",
-        description: "The team battle is now beginning!",
+        description: "Waiting for game to initialize...",
       });
-      setLocation(`/team-battle-game?session=${gameSessionId}`);
+      // Don't navigate immediately - wait for WebSocket team_battle_started event
+      // The WebSocket listener will handle navigation when game is ready
     },
     onError: (error: any) => {
       toast({

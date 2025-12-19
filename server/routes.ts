@@ -517,8 +517,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[PATCH] Join request found:`, { id: jr.id, teamId: jr.team_id || jr.teamId, requesterId: jr.requester_id || jr.requesterId });
 
       const teamId = jr.team_id || jr.teamId;
-      const team = await getTeamFromBattle(teamId);
-      console.log(`[PATCH] Team found:`, team ? { id: team.id, name: team.name, captainId: team.captainId } : 'NULL');
+      if (!teamId) {
+        console.error(`[PATCH] Team ID is missing from join request ${id}`);
+        return res.status(400).json({ message: "Invalid join request: missing team ID" });
+      }
+
+      let team;
+      try {
+        team = await getTeamFromBattle(teamId);
+        console.log(`[PATCH] Team found:`, team ? { id: team.id, name: team.name, captainId: team.captainId } : 'NULL');
+      } catch (teamError: any) {
+        console.error(`[PATCH] Error getting team from battle:`, teamError);
+        console.error(`[PATCH] Team ID was: ${teamId}`);
+        console.error(`[PATCH] Stack trace:`, teamError?.stack);
+        return res.status(500).json({ 
+          message: "Failed to retrieve team information",
+          error: process.env.NODE_ENV === 'development' ? teamError.message : undefined
+        });
+      }
       
       const isLeader = team?.captainId === user.id;
       const isRequester = (jr.requester_id || jr.requesterId) === user.id;
@@ -538,71 +554,119 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (status === "accepted") {
         // add member to team battle (virtual team)
-        if (!team) return res.status(404).json({ message: "Team not found" });
+        if (!team) {
+          console.error(`[PATCH] Team not found for teamId: ${teamId}`);
+          return res.status(404).json({ message: "Team not found" });
+        }
         const members = team.teammates || [];
-        if (members.length >= 3) return res.status(400).json({ message: "Team full" });
+        if (members.length >= 3) {
+          console.log(`[PATCH] Team ${teamId} is already full (${members.length} members)`);
+          return res.status(400).json({ message: "Team full" });
+        }
         
         const requesterId = jr.requester_id || jr.requesterId;
         const requesterUsername = jr.requester_username || jr.requesterUsername;
         
+        if (!requesterId || !requesterUsername) {
+          console.error(`[PATCH] Missing requester info: requesterId=${requesterId}, requesterUsername=${requesterUsername}`);
+          return res.status(400).json({ message: "Invalid join request: missing requester information" });
+        }
+        
         // Check if user is already in any team for this game session
-        const allTeams = await database.getTeamsByGameSession(team.gameSessionId);
-        const userAlreadyInTeam = allTeams.find((t) =>
-          t.members.some((member) => member.userId === requesterId)
-        );
+        try {
+          const allTeams = await database.getTeamsByGameSession(team.gameSessionId);
+          const userAlreadyInTeam = allTeams.find((t) =>
+            t.members.some((member) => member.userId === requesterId)
+          );
 
-        if (userAlreadyInTeam) {
-          return res.status(400).json({ 
-            message: "You are already in a team for this game session. You cannot join multiple teams." 
+          if (userAlreadyInTeam) {
+            console.log(`[PATCH] User ${requesterId} is already in a team for this session`);
+            return res.status(400).json({ 
+              message: "You are already in a team for this game session. You cannot join multiple teams." 
+            });
+          }
+        } catch (checkError: any) {
+          console.error(`[PATCH] Error checking existing teams:`, checkError);
+          // Continue anyway - this is a safety check, not critical
+        }
+        
+        try {
+          await addMemberToTeamBattle(teamId, {
+            id: requesterId,
+            username: requesterUsername,
+          });
+          console.log(`[PATCH] Successfully added member ${requesterUsername} (${requesterId}) to team ${teamId}`);
+        } catch (addError: any) {
+          console.error(`[PATCH] Error adding member to team battle:`, addError);
+          console.error(`[PATCH] Team ID: ${teamId}, Member: ${requesterId} (${requesterUsername})`);
+          console.error(`[PATCH] Stack trace:`, addError?.stack);
+          return res.status(500).json({ 
+            message: "Failed to add member to team",
+            error: process.env.NODE_ENV === 'development' ? addError.message : undefined
           });
         }
         
-        await addMemberToTeamBattle(teamId, {
-          id: requesterId,
-          username: requesterUsername,
-        });
-        
         // 🔒 CRITICAL: Expire all other pending join requests and invitations for this user
         // This ensures a member can only join one team (the first one that accepts)
-        await expireAllPendingRequestsAndInvitationsForUser(requesterId);
+        try {
+          await expireAllPendingRequestsAndInvitationsForUser(requesterId);
+        } catch (expireError: any) {
+          console.error(`[PATCH] Error expiring other requests (non-critical):`, expireError);
+          // Continue - this is cleanup, not critical
+        }
         
         // auto-reject if full now
-        const updatedTeam = await getTeamFromBattle(teamId);
-        if (updatedTeam && (updatedTeam.teammates?.length || 0) >= 3) {
-          const pending = await database.getJoinRequestsByTeam(teamId);
-          await Promise.all(
-            pending
-              .filter((r: any) => r.status === "pending")
-              .map((r: any) => database.updateJoinRequestStatus(r.id, "rejected"))
-          );
+        try {
+          const updatedTeam = await getTeamFromBattle(teamId);
+          if (updatedTeam && (updatedTeam.teammates?.length || 0) >= 3) {
+            const pending = await database.getJoinRequestsByTeam(teamId);
+            await Promise.all(
+              pending
+                .filter((r: any) => r.status === "pending")
+                .map((r: any) => database.updateJoinRequestStatus(r.id, "rejected"))
+            );
+          }
+        } catch (rejectError: any) {
+          console.error(`[PATCH] Error auto-rejecting pending requests (non-critical):`, rejectError);
+          // Continue - this is cleanup
         }
       }
 
       // notify requester
-      const requesterId = jr.requester_id || jr.requesterId;
-      sendToUser(requesterId, {
-        type: "join_request_updated",
-        joinRequestId: id,
-        status,
-        teamId: teamId,
-        requesterId: requesterId,
-        teamName: team?.name,
-        gameSessionId: team?.gameSessionId,
-        message: status === "accepted" ? `You've been accepted to ${team?.name}!` : "Your join request was ${status}"
-      });
-      
-      // Also send teams_updated event to refresh the member's team list
-      if (status === "accepted" && team?.gameSessionId) {
+      try {
+        const requesterId = jr.requester_id || jr.requesterId;
         sendToUser(requesterId, {
-          type: "teams_updated",
-          gameSessionId: team.gameSessionId
+          type: "join_request_updated",
+          joinRequestId: id,
+          status,
+          teamId: teamId,
+          requesterId: requesterId,
+          teamName: team?.name,
+          gameSessionId: team?.gameSessionId,
+          message: status === "accepted" ? `You've been accepted to ${team?.name}!` : "Your join request was ${status}"
         });
+        
+        // Also send teams_updated event to refresh the member's team list
+        if (status === "accepted" && team?.gameSessionId) {
+          sendToUser(requesterId, {
+            type: "teams_updated",
+            gameSessionId: team.gameSessionId
+          });
+        }
+      } catch (notifyError: any) {
+        console.error(`[PATCH] Error sending WebSocket notification (non-critical):`, notifyError);
+        // Continue - notification failure shouldn't fail the request
       }
 
       res.json({ id, status });
-    } catch (error) {
-      console.error("Error updating join request:", error);
-      res.status(500).json({ message: "Failed to update join request" });
+    } catch (error: any) {
+      const requestId = req.params.id;
+      console.error(`[PATCH /api/team-join-requests/${requestId}] Error updating join request:`, error);
+      console.error(`[PATCH] Stack trace:`, error?.stack);
+      res.status(500).json({ 
+        message: "Failed to update join request",
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   });
 
@@ -3056,6 +3120,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Voice deletion error:", error);
       res.status(500).json({ message: "Failed to delete voice clone" });
+    }
+  });
+
+  // POST - Start team battle (triggers WebSocket handler)
+  app.post("/api/team-battle/start", ensureAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { gameSessionId } = req.body;
+
+      if (!gameSessionId) {
+        return res.status(400).json({ message: "gameSessionId is required" });
+      }
+
+      if (!user || !user.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      console.log(`[POST /api/team-battle/start] User ${user.id} (${user.username}) starting battle for session ${gameSessionId}`);
+
+      // Get teams from database to validate
+      const allTeams = await database.getTeamsByGameSession(gameSessionId);
+      const eligibleTeams = allTeams.filter(
+        (team: any) =>
+          team.members && team.members.length >= 1 &&
+          (team.status === "ready" || team.status === "forming")
+      );
+
+      if (eligibleTeams.length < 2) {
+        console.log(`[POST /api/team-battle/start] Not enough teams: ${eligibleTeams.length} eligible teams`);
+        return res.status(400).json({ 
+          message: "Need 2 teams with at least 1 member each to start battle" 
+        });
+      }
+
+      const userTeam = eligibleTeams.find(
+        (team: any) => team.captainId === user.id
+      );
+      
+      if (!userTeam) {
+        console.log(`[POST /api/team-battle/start] User ${user.id} is not a captain of any eligible team`);
+        return res.status(403).json({ 
+          message: "Only team captains can start battles" 
+        });
+      }
+
+      // Send WebSocket event to trigger the start_team_battle handler
+      // The handler will process the event and start the battle
+      // We send it to the captain who initiated the start
+      sendToUser(user.id, {
+        type: "start_team_battle",
+        gameSessionId: gameSessionId,
+        userId: user.id,
+      } as any);
+
+      console.log(`[POST /api/team-battle/start] ✅ Sent start_team_battle event to user ${user.id}`);
+
+      return res.json({ 
+        message: "Team battle start initiated",
+        gameSessionId 
+      });
+    } catch (error: any) {
+      console.error(`[POST /api/team-battle/start] Error:`, error);
+      console.error(`[POST] Stack trace:`, error?.stack);
+      res.status(500).json({ 
+        message: "Failed to start team battle",
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   });
 

@@ -669,9 +669,15 @@ const TeamBattleSetup: React.FC = () => {
   // Check if user is a captain
   const isTeamCaptain = userTeam?.captainId === user?.id;
 
-  // Check battle readiness
+  // Check battle readiness - supports 1v1, 1v2, 1v3, 2v2, 2v3, 3v3, etc.
+  // Both teams need at least 1 member (captain) to start
   const bothTeamsReady =
-    teams.length >= 2 && teams.every((team: Team) => team.members.length >= 3);
+    teams.length >= 2 && teams.every((team: Team) => team.members.length >= 1);
+  
+  // Get team sizes for display
+  const teamSizes = teams.length >= 2 
+    ? `${teams[0]?.members.length || 0}v${teams[1]?.members.length || 0}`
+    : null;
 
   // Get battle status details
   const getBattleStatus = () => {
@@ -999,10 +1005,10 @@ const TeamBattleSetup: React.FC = () => {
                       ⏳ Preparing for 3v3 Battle
                     </p>
                     <p className="text-sm text-yellow-600">
-                      {teams.length === 1
+                        {teams.length === 1
                         ? "Captain A created team, waiting for Captain B to accept invitation"
                         : teams.length >= 2
-                        ? "Battle Lobby Ready! Both captains can now invite team members"
+                        ? `Battle Lobby Ready! Both captains can now invite team members. Current: ${teamSizes || 'N/A'}`
                         : "Waiting for captains to create teams"}
                     </p>
                   </div>
@@ -2055,33 +2061,31 @@ const TeamBattleSetup: React.FC = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-green-800">
                     <Zap className="h-5 w-5" />
-                    3v3 Battle Ready!
+                    {teamSizes} Battle Ready!
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-green-700 mb-4">
-                    🎉 Perfect! Both captains have complete teams with 3 members
-                    each. The epic 3v3 battle can begin!
+                    🎉 Perfect! Both teams are ready. The epic {teamSizes} battle can begin!
                   </p>
                   <div className="bg-green-100 p-3 rounded-lg mb-4">
                     <h4 className="font-medium text-green-800 mb-2">
-                      3v3 Battle Requirements Met:
+                      Battle Requirements Met:
                     </h4>
                     <ul className="text-sm text-green-700 space-y-1">
                       <li>✅ Two captains found and teams created</li>
-                      <li>✅ Each team has exactly 3 members</li>
+                      <li>✅ Team A: {teams[0]?.members.length || 0} member(s)</li>
+                      <li>✅ Team B: {teams[1]?.members.length || 0} member(s)</li>
                       <li>✅ All members are ready for battle</li>
-                      <li>✅ Captain vs Captain 3v3 format ready</li>
                     </ul>
                   </div>
                   <div className="bg-blue-50 p-3 rounded-lg mb-4 border-l-4 border-blue-400">
                     <h4 className="font-medium text-blue-800 mb-1">
-                      Captain Battle Format:
+                      Battle Format:
                     </h4>
                     <p className="text-sm text-blue-700">
-                      <strong>Captain A:</strong> {teams[0]?.name} (3 players)
-                      vs <strong>Captain B:</strong> {teams[1]?.name} (3
-                      players)
+                      <strong>Team A ({teams[0]?.name}):</strong> {teams[0]?.members.length || 0} player(s)
+                      vs <strong>Team B ({teams[1]?.name}):</strong> {teams[1]?.members.length || 0} player(s)
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
                       Captain A:{" "}
@@ -2105,8 +2109,8 @@ const TeamBattleSetup: React.FC = () => {
                   >
                     <Gamepad2 className="mr-2 h-5 w-5" />
                     {startBattleMutation.isPending
-                      ? "Starting 3v3 Battle..."
-                      : "Start 3v3 Battle!"}
+                      ? `Starting ${teamSizes} Battle...`
+                      : `Start ${teamSizes} Battle!`}
                   </Button>
                 </CardContent>
               </Card>
@@ -2118,10 +2122,10 @@ const TeamBattleSetup: React.FC = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-gray-800">
                     <Target className="h-5 w-5" />
-                    3v3 Battle Requirements
+                    Battle Requirements
                   </CardTitle>
                   <div className="text-sm text-gray-600">
-                    Need 2 captains with teams of 3 members each for 3v3 battle
+                    Need 2 captains with at least 1 member each to start battle
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -2144,17 +2148,17 @@ const TeamBattleSetup: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <div
                         className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${
-                          teams.every((team: Team) => team.members.length >= 3)
+                          teams.every((team: Team) => team.members.length >= 1)
                             ? "bg-green-500 text-white"
                             : "bg-gray-300 text-gray-600"
                         }`}
                       >
-                        {teams.every((team: Team) => team.members.length >= 3)
+                        {teams.every((team: Team) => team.members.length >= 1)
                           ? "✓"
                           : "○"}
                       </div>
                       <span className="text-sm">
-                        Each team has exactly 3 members (3v3 format)
+                        Each team has at least 1 member (supports 1v1, 1v2, 1v3, 2v2, 2v3, 3v3, etc.)
                       </span>
                     </div>
                     {teams.length > 0 && (

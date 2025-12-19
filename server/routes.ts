@@ -3139,31 +3139,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[POST /api/team-battle/start] User ${user.id} (${user.username}) starting battle for session ${gameSessionId}`);
 
-      // Get teams from database to validate
-      const allTeams = await database.getTeamsByGameSession(gameSessionId);
-      const eligibleTeams = allTeams.filter(
-        (team: any) =>
-          team.members && team.members.length >= 1 &&
-          (team.status === "ready" || team.status === "forming")
-      );
-
-      if (eligibleTeams.length < 2) {
-        console.log(`[POST /api/team-battle/start] Not enough teams: ${eligibleTeams.length} eligible teams`);
+      // Get teams from database to validate - use team battles structure
+      // The teams are stored in team_battles table, not teams table
+      const battles = await database.getTeamBattlesByGameSession(gameSessionId);
+      
+      if (battles.length === 0) {
+        console.log(`[POST /api/team-battle/start] No battles found for session ${gameSessionId}`);
         return res.status(400).json({ 
-          message: "Need 2 teams with at least 1 member each to start battle" 
+          message: "No team battle found for this session. Please create teams first." 
         });
       }
 
-      const userTeam = eligibleTeams.find(
-        (team: any) => team.captainId === user.id
-      );
+      // Get the most recent forming battle (there should only be one per session)
+      const battle = battles.find(b => b.status === 'forming') || battles[0];
       
-      if (!userTeam) {
-        console.log(`[POST /api/team-battle/start] User ${user.id} is not a captain of any eligible team`);
+      if (!battle) {
+        console.log(`[POST /api/team-battle/start] No forming battle found`);
+        return res.status(400).json({ 
+          message: "No active battle found. Please create teams first." 
+        });
+      }
+
+      // Check if user is a captain
+      const isTeamACaptain = battle.teamACaptainId === user.id;
+      const isTeamBCaptain = battle.teamBCaptainId === user.id;
+      
+      if (!isTeamACaptain && !isTeamBCaptain) {
+        console.log(`[POST /api/team-battle/start] User ${user.id} is not a captain`);
         return res.status(403).json({ 
           message: "Only team captains can start battles" 
         });
       }
+
+      // Validate both teams exist and have at least 1 member
+      if (!battle.teamBCaptainId || !battle.teamBName) {
+        console.log(`[POST /api/team-battle/start] Team B not created yet`);
+        return res.status(400).json({ 
+          message: "Opposing team not created yet. Waiting for opponent captain to accept invitation." 
+        });
+      }
+
+      // Count team members (captain + teammates)
+      const teamASize = 1 + (battle.teamATeammates?.length || 0);
+      const teamBSize = 1 + (battle.teamBTeammates?.length || 0);
+
+      if (teamASize < 1 || teamBSize < 1) {
+        console.log(`[POST /api/team-battle/start] Teams too small: Team A: ${teamASize}, Team B: ${teamBSize}`);
+        return res.status(400).json({ 
+          message: `Both teams need at least 1 member. Current: Team A has ${teamASize}, Team B has ${teamBSize}` 
+        });
+      }
+
+      console.log(`[POST /api/team-battle/start] ✅ Validation passed: ${teamASize}v${teamBSize} battle ready`);
 
       // Send WebSocket event to trigger the start_team_battle handler
       // The handler will process the event and start the battle

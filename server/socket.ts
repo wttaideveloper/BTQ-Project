@@ -4181,9 +4181,76 @@ async function handleAcceptTeamInvitation(clientId: string, event: GameEvent) {
 
 async function handleStartTeamBattle(clientId: string, event: GameEvent) {
   const client = clients.get(clientId);
-  if (!client || !client.userId || !event.gameSessionId) return;
+  if (!client || !client.userId || !event.gameSessionId) {
+    console.log(`[handleStartTeamBattle] Missing client, userId, or gameSessionId`);
+    return;
+  }
 
   try {
+    console.log(`[handleStartTeamBattle] User ${client.userId} starting battle for session ${event.gameSessionId}`);
+    
+    // Get battles for this session
+    const battles = await database.getTeamBattlesByGameSession(event.gameSessionId);
+    
+    if (battles.length === 0) {
+      console.log(`[handleStartTeamBattle] No battles found for session ${event.gameSessionId}`);
+      sendToClient(clientId, {
+        type: "error",
+        message: "No team battle found for this session. Please create teams first.",
+      });
+      return;
+    }
+
+    // Get the most recent forming battle
+    const battle = battles.find(b => b.status === 'forming') || battles[0];
+    
+    if (!battle) {
+      console.log(`[handleStartTeamBattle] No forming battle found`);
+      sendToClient(clientId, {
+        type: "error",
+        message: "No active battle found. Please create teams first.",
+      });
+      return;
+    }
+
+    // Check if user is a captain
+    const isTeamACaptain = battle.teamACaptainId === client.userId;
+    const isTeamBCaptain = battle.teamBCaptainId === client.userId;
+    
+    if (!isTeamACaptain && !isTeamBCaptain) {
+      console.log(`[handleStartTeamBattle] User ${client.userId} is not a captain`);
+      sendToClient(clientId, {
+        type: "error",
+        message: "Only team captains can start battles",
+      });
+      return;
+    }
+
+    // Validate both teams exist and have at least 1 member
+    if (!battle.teamBCaptainId || !battle.teamBName) {
+      console.log(`[handleStartTeamBattle] Team B not created yet`);
+      sendToClient(clientId, {
+        type: "error",
+        message: "Opposing team not created yet. Waiting for opponent captain to accept invitation.",
+      });
+      return;
+    }
+
+    // Count team members (captain + teammates)
+    const teamASize = 1 + (battle.teamATeammates?.length || 0);
+    const teamBSize = 1 + (battle.teamBTeammates?.length || 0);
+
+    if (teamASize < 1 || teamBSize < 1) {
+      console.log(`[handleStartTeamBattle] Teams too small: Team A: ${teamASize}, Team B: ${teamBSize}`);
+      sendToClient(clientId, {
+        type: "error",
+        message: `Both teams need at least 1 member. Current: Team A has ${teamASize}, Team B has ${teamBSize}`,
+      });
+      return;
+    }
+
+    console.log(`[handleStartTeamBattle] ✅ Validation passed: ${teamASize}v${teamBSize} battle ready`);
+
     // Get all teams in the session (derived from team battles)
     const allTeams = await getTeamsForTeamBattleSession(event.gameSessionId);
     const eligibleTeams = allTeams.filter(
@@ -4193,6 +4260,7 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     );
 
     if (eligibleTeams.length < 2) {
+      console.log(`[handleStartTeamBattle] Not enough eligible teams: ${eligibleTeams.length}`);
       sendToClient(clientId, {
         type: "error",
         message: "Need 2 teams with at least 1 member each to start battle",
@@ -4200,20 +4268,8 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       return;
     }
 
-    // Use eligible teams instead of ready teams
+    // Use eligible teams
     const readyTeams = eligibleTeams;
-
-    // Check if user is a captain of one of the ready teams
-    const userTeam = readyTeams.find(
-      (team) => team.captainId === client.userId
-    );
-    if (!userTeam) {
-      sendToClient(clientId, {
-        type: "error",
-        message: "Only team captains can start battles",
-      });
-      return;
-    }
 
     const gameId = uuidv4();
 

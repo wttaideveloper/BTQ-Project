@@ -5365,10 +5365,27 @@ async function endTeamBattle(gameId: string, reason?: string) {
       }
     }
 
+    // CRITICAL FIX: Remove all team members from activeTeamMemberships cache
+    // This makes them available again for new battles
+    for (const team of gameSession.teams) {
+      if (team.members && Array.isArray(team.members)) {
+        for (const member of team.members) {
+          if (member.userId && typeof member.userId === 'number') {
+            activeTeamMemberships.delete(member.userId);
+            console.log(`[endTeamBattle] Removed user ${member.userId} (${member.username || 'unknown'}) from activeTeamMemberships`);
+          }
+        }
+      }
+    }
+
     // Clean up game session
     gameSessions.delete(gameId);
+
+    // CRITICAL FIX: Broadcast online status update so all clients see updated available opponents
+    await broadcastOnlineStatusUpdate();
+    console.log(`[endTeamBattle] Battle ended for gameId: ${gameId}, all participants marked as available`);
   } catch (error) {
-    // Silent error handling
+    console.error(`[endTeamBattle] Error ending battle:`, error);
 
     // Still send basic results even if history saving fails
     const gameClients = Array.from(clients.values()).filter(
@@ -5385,6 +5402,24 @@ async function endTeamBattle(gameId: string, reason?: string) {
       });
       client.gameId = undefined;
     }
+
+    // CRITICAL FIX: Even on error, try to clean up memberships and broadcast
+    try {
+      for (const team of gameSession.teams || []) {
+        if (team.members && Array.isArray(team.members)) {
+          for (const member of team.members) {
+            if (member.userId && typeof member.userId === 'number') {
+              activeTeamMemberships.delete(member.userId);
+              console.log(`[endTeamBattle] Error cleanup: Removed user ${member.userId} from activeTeamMemberships`);
+            }
+          }
+        }
+      }
+      await broadcastOnlineStatusUpdate();
+    } catch (cleanupError) {
+      console.error(`[endTeamBattle] Error during cleanup:`, cleanupError);
+    }
+
     gameSessions.delete(gameId);
   }
 }

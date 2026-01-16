@@ -873,8 +873,68 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
 
     if (userTeam) {
       // Restore user's team context
-      client.gameId = userTeam.gameSessionId;
       client.gameSessionId = userTeam.gameSessionId;
+      
+      // CRITICAL FIX: Check if there's an active battle session for this team
+      // If so, set gameId to the battle session ID, not just the gameSessionId
+      const activeBattleSession = Array.from(gameSessions.values()).find(
+        (session) =>
+          session.gameType === "team_battle" &&
+          session.teams &&
+          session.teams.some((t: any) => t.id === userTeam.id)
+      );
+      
+      if (activeBattleSession) {
+        // User is in an active battle - set gameId to battle session ID
+        client.gameId = activeBattleSession.id;
+        console.log(`[handleAuthenticate] User ${userId} reconnected during active battle, set gameId: ${activeBattleSession.id}`);
+        
+        // Send battle started event if battle is playing
+        if (activeBattleSession.status === "playing") {
+          sendToClient(clientId, {
+            type: "team_battle_started",
+            gameId: activeBattleSession.id,
+            gameSessionId: userTeam.gameSessionId,
+            teams: activeBattleSession.teams || [],
+            message: "Reconnected to active battle!",
+          });
+          
+          // If questions are loaded, send current question
+          if (activeBattleSession.questions && activeBattleSession.questions.length > 0) {
+            const currentIndex = activeBattleSession.currentQuestionIndex || 0;
+            const currentQuestion = activeBattleSession.questions[currentIndex];
+            if (currentQuestion) {
+              // Determine which team should answer
+              const questionNumber = currentIndex + 1;
+              const isTeamATurn = questionNumber % 2 === 1;
+              const answeringTeam = activeBattleSession.teams?.find((team: any) => {
+                if (team.teamSide) {
+                  return isTeamATurn ? team.teamSide === "A" : team.teamSide === "B";
+                }
+                return false;
+              }) || (isTeamATurn ? activeBattleSession.teams?.[0] : activeBattleSession.teams?.[1]);
+              
+              const playerTeam = activeBattleSession.teams?.find((t: any) => t.id === userTeam.id);
+              const isYourTurn = playerTeam && playerTeam.id === answeringTeam?.id;
+              
+              sendToClient(clientId, {
+                type: "team_battle_question",
+                gameId: activeBattleSession.id,
+                question: currentQuestion,
+                questionNumber: questionNumber,
+                totalQuestions: activeBattleSession.questions.length,
+                teamId: userTeam.id,
+                timeLimit: 15000,
+                isYourTurn: isYourTurn || false,
+                answeringTeamName: answeringTeam?.name,
+              });
+            }
+          }
+        }
+      } else {
+        // No active battle - just set gameSessionId
+        client.gameId = userTeam.gameSessionId;
+      }
       
       // Cancel any pending disconnects for this user with this gameSessionId (they reconnected)
       for (const [pendingClientId, pending] of pendingDisconnects.entries()) {
@@ -3441,9 +3501,29 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
       participantIds.add(id);
     }
 
-    // Broadcast current ready status to all participants
+    // CRITICAL FIX: Broadcast current ready status to all participants
+    // Use sendToUser to ensure all connections for each user get the update
     for (const userId of Array.from(participantIds)) {
       sendToUser(userId, {
+        type: "team_ready_status",
+        teamBattleId: battle.id,
+        gameSessionId: battle.gameSessionId,
+        teamAReady: current.teamAReady,
+        teamBReady: current.teamBReady,
+      });
+    }
+    
+    // ADDITIONAL FIX: Also send to all clients in the game session to ensure synchronization
+    // This handles cases where userConnections might not be fully updated
+    const sessionClients = Array.from(clients.values()).filter((c) => {
+      if (!c.userId) return false;
+      return participantIds.has(c.userId);
+    });
+    
+    for (const sessionClient of sessionClients) {
+      // Only send if not already sent via sendToUser (avoid duplicates)
+      // But ensure we catch any clients that might have missed the sendToUser call
+      sendToClient(sessionClient.id, {
         type: "team_ready_status",
         teamBattleId: battle.id,
         gameSessionId: battle.gameSessionId,
@@ -3457,8 +3537,23 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
     // is handled separately.
     if (bothReady && !wasBothReady) {
       const countdownSeconds = 5;
+      // CRITICAL FIX: Send countdown to all participants via sendToUser
       for (const userId of Array.from(participantIds)) {
         sendToUser(userId, {
+          type: "team_battle_countdown",
+          gameSessionId: battle.gameSessionId,
+          seconds: countdownSeconds,
+        });
+      }
+      
+      // ADDITIONAL FIX: Also send to all clients in the game session
+      const sessionClients = Array.from(clients.values()).filter((c) => {
+        if (!c.userId) return false;
+        return participantIds.has(c.userId);
+      });
+      
+      for (const sessionClient of sessionClients) {
+        sendToClient(sessionClient.id, {
           type: "team_battle_countdown",
           gameSessionId: battle.gameSessionId,
           seconds: countdownSeconds,
@@ -4303,10 +4398,12 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     });
 
     // Update all team members' client gameId and gameSessionId and notify battle start
+    // CRITICAL FIX: Get all clients for all players, including those that may connect later
     const gameClients = Array.from(clients.values()).filter((c) =>
       allPlayers.some((player) => player.userId === c.userId)
     );
 
+    // Set gameId for all currently connected clients
     for (const gameClient of gameClients) {
       gameClient.gameId = gameId;
       gameClient.gameSessionId = event.gameSessionId;
@@ -4319,15 +4416,43 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       });
     }
 
+    // CRITICAL FIX: Also ensure all user connections (including future ones) are associated with this gameId
+    // This ensures clients connecting after game start will get the gameId when they authenticate
+    for (const player of allPlayers) {
+      const userConnectionsList = userConnections.get(player.userId) || [];
+      for (const connectionId of userConnectionsList) {
+        const client = clients.get(connectionId);
+        if (client) {
+          // Set gameId for this connection if not already set
+          if (client.gameId !== gameId) {
+            client.gameId = gameId;
+            client.gameSessionId = event.gameSessionId;
+            // Send to any newly connected clients that weren't in gameClients
+            if (!gameClients.find(c => c.id === connectionId)) {
+              console.log(`[handleStartTeamBattle] Sending team_battle_started to late-connecting client ${connectionId} for user ${player.userId}`);
+              sendToClient(connectionId, {
+                type: "team_battle_started",
+                gameId: gameId,
+                gameSessionId: event.gameSessionId,
+                teams: readyTeams,
+                message: "Team battle has begun!",
+              });
+            }
+          }
+        }
+      }
+    }
+
     // Update team statuses to playing
     for (const team of readyTeams) {
       team.status = "playing";
     }
 
-    // Start delivering questions
+    // Start delivering questions after ensuring all clients are notified
+    // Use a longer delay to ensure all clients have received team_battle_started
     setTimeout(() => {
       startTeamBattleQuestions(gameId);
-    }, 2000);
+    }, 3000); // Increased from 2000 to 3000 to give more time for clients to connect
   } catch (error) {
     // Silent error handling
     sendToClient(clientId, {
@@ -4531,10 +4656,36 @@ async function startTeamBattleQuestions(gameId: string) {
     }
 
     // Send first question to the appropriate team (Team A for question 1)
-    // Add a small delay to ensure all clients are ready
+    // CRITICAL FIX: Double-check questions are loaded before sending
+    // Add a small delay to ensure all clients are ready and have received team_battle_started
     setTimeout(() => {
-      sendTeamBattleQuestion(gameId);
-    }, 500);
+      const session = gameSessions.get(gameId);
+      if (session && session.questions && session.questions.length > 0) {
+        console.log(`[startTeamBattleQuestions] Questions loaded (${session.questions.length}), sending first question for gameId: ${gameId}`);
+        sendTeamBattleQuestion(gameId);
+      } else {
+        console.error(`[startTeamBattleQuestions] Questions not loaded for gameId: ${gameId}, retrying...`);
+        // Retry after another delay
+        setTimeout(() => {
+          const retrySession = gameSessions.get(gameId);
+          if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
+            console.log(`[startTeamBattleQuestions] Questions loaded on retry (${retrySession.questions.length}), sending first question for gameId: ${gameId}`);
+            sendTeamBattleQuestion(gameId);
+          } else {
+            // Still no questions - notify all clients and end battle gracefully
+            console.error(`[startTeamBattleQuestions] Questions still not loaded after retry for gameId: ${gameId}`);
+            const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+            for (const client of gameClients) {
+              sendToClient(client.id, {
+                type: "error",
+                message: "Failed to load questions. Please try starting a new battle.",
+              });
+            }
+            endTeamBattle(gameId, "Failed to load questions");
+          }
+        }, 2000);
+      }
+    }, 1000); // Increased from 500 to 1000 to ensure all clients are ready
   } catch (error) {
     console.error(`[TeamBattle] Error loading questions for gameId: ${gameId}:`, error);
     // Fixed: Notify clients and gracefully end battle if questions cannot be loaded
@@ -4576,17 +4727,40 @@ function sendTeamBattleQuestion(gameId: string) {
   if (!gameSession.questions || gameSession.questions.length === 0) {
     console.warn(`[TeamBattle] Questions array is empty for gameId: ${gameId}. Waiting for questions to be loaded...`);
     // Don't end battle - questions might still be loading
-    // Retry after a delay
-    setTimeout(() => {
-      const retrySession = gameSessions.get(gameId);
-      if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
-        console.log(`[TeamBattle] Questions loaded, retrying sendTeamBattleQuestion for gameId: ${gameId}`);
-        sendTeamBattleQuestion(gameId);
-      } else {
-        console.error(`[TeamBattle] Questions still not loaded after retry for gameId: ${gameId}`);
+    // Retry after a delay with exponential backoff
+    let retryCount = (gameSession as any).questionRetryCount || 0;
+    if (retryCount < 5) { // Max 5 retries
+      (gameSession as any).questionRetryCount = retryCount + 1;
+      setTimeout(() => {
+        const retrySession = gameSessions.get(gameId);
+        if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
+          console.log(`[TeamBattle] Questions loaded after ${retryCount + 1} retries, sending question for gameId: ${gameId}`);
+          (retrySession as any).questionRetryCount = 0; // Reset retry count
+          sendTeamBattleQuestion(gameId);
+        } else {
+          console.warn(`[TeamBattle] Questions still not loaded after ${retryCount + 1} retries for gameId: ${gameId}`);
+          // Continue retrying
+          sendTeamBattleQuestion(gameId);
+        }
+      }, 1000 * (retryCount + 1)); // Exponential backoff: 1s, 2s, 3s, 4s, 5s
+    } else {
+      // Too many retries - notify clients and end battle
+      console.error(`[TeamBattle] Questions failed to load after ${retryCount} retries for gameId: ${gameId}`);
+      const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+      for (const client of gameClients) {
+        sendToClient(client.id, {
+          type: "error",
+          message: "Failed to load questions after multiple attempts. The battle cannot continue.",
+        });
       }
-    }, 1000);
+      endTeamBattle(gameId, "Questions failed to load after retries");
+    }
     return;
+  }
+  
+  // Reset retry count if questions are loaded
+  if ((gameSession as any).questionRetryCount) {
+    (gameSession as any).questionRetryCount = 0;
   }
   
   const currentQuestion = gameSession.questions[currentIndex];
@@ -4597,6 +4771,18 @@ function sendTeamBattleQuestion(gameId: string) {
       // Legitimately out of questions - only end if we have questions and have gone through them all
       console.log(`[TeamBattle] All questions completed for gameId: ${gameId}. Index: ${currentIndex}, Total: ${gameSession.questions.length}`);
       endTeamBattle(gameId);
+    } else if (gameSession.questions.length === 0) {
+      // Questions not loaded yet - wait and retry
+      console.warn(`[TeamBattle] Questions not loaded yet for gameId: ${gameId} at index ${currentIndex}. Waiting...`);
+      setTimeout(() => {
+        const retrySession = gameSessions.get(gameId);
+        if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
+          console.log(`[TeamBattle] Questions loaded, retrying sendTeamBattleQuestion for gameId: ${gameId}`);
+          sendTeamBattleQuestion(gameId);
+        } else {
+          console.error(`[TeamBattle] Questions still not loaded after retry for gameId: ${gameId}`);
+        }
+      }, 1000);
     } else {
       // Question missing at index - this might be a temporary issue, don't end battle
       console.warn(`[TeamBattle] Question missing at index ${currentIndex} for gameId: ${gameId}. Total questions: ${gameSession.questions.length}. Waiting...`);
@@ -4663,13 +4849,36 @@ function sendTeamBattleQuestion(gameId: string) {
     return;
   }
 
-  // Send question info to both teams, but indicate whose turn it is
-  const gameClients = Array.from(clients.values()).filter(
-    (c) => c.gameId === gameId
-  );
+  // CRITICAL FIX: Send question info to both teams, but indicate whose turn it is
+  // Filter clients by gameId AND verify they're actually in the game session
+  const gameClients = Array.from(clients.values()).filter((c) => {
+    if (c.gameId !== gameId) return false;
+    // Double-check: verify this client's userId is in the players list
+    if (!c.userId) return false;
+    return gameSession.players.some((p) => p.userId === c.userId);
+  });
+  
+  // ADDITIONAL FIX: Also send to clients that might have userId in players but gameId not set yet
+  // This handles race conditions where client connects but gameId isn't set yet
+  const playersByUserId = new Map(gameSession.players.map(p => [p.userId, p]));
+  const additionalClients = Array.from(clients.values()).filter((c) => {
+    if (!c.userId) return false;
+    if (c.gameId === gameId) return false; // Already included above
+    // If this client's userId is in players but gameId isn't set, set it and include them
+    if (playersByUserId.has(c.userId)) {
+      console.log(`[sendTeamBattleQuestion] Client ${c.id} has userId ${c.userId} in game but gameId not set. Setting gameId now.`);
+      c.gameId = gameId;
+      c.gameSessionId = gameSession.teams?.[0]?.gameSessionId || "";
+      return true;
+    }
+    return false;
+  });
+  
+  // Combine both sets of clients
+  const allGameClients = [...gameClients, ...additionalClients];
 
     // Ensure we send question to ALL clients in the game
-    for (const client of gameClients) {
+    for (const client of allGameClients) {
       const player = gameSession.players.find((p) => p.userId === client.userId);
       if (!player) {
         console.warn(`[TeamBattle] Player not found for client ${client.id} in gameId: ${gameId}`);
@@ -4731,7 +4940,7 @@ function sendTeamBattleQuestion(gameId: string) {
       }
     }
     
-    console.log(`[TeamBattle] Sent question ${questionNumber} to ${gameClients.length} clients. Answering team: ${answeringTeam.name}`);
+    console.log(`[TeamBattle] Sent question ${questionNumber} to ${allGameClients.length} clients (${gameClients.length} with gameId set, ${additionalClients.length} additional). Answering team: ${answeringTeam.name}`);
 
   gameSession.questionTimeout = setTimeout(() => {
     processTeamBattleAnswers(gameId);
@@ -4852,12 +5061,30 @@ async function processTeamBattleAnswers(gameId: string) {
     }
   }
 
-  // Send results to all players (both teams see the results)
-  const gameClients = Array.from(clients.values()).filter(
-    (c) => c.gameId === gameId
-  );
+  // CRITICAL FIX: Send results to all players (both teams see the results)
+  // Filter by gameId AND verify they're in the players list
+  const gameClients = Array.from(clients.values()).filter((c) => {
+    if (c.gameId !== gameId) return false;
+    if (!c.userId) return false;
+    return gameSession.players.some((p) => p.userId === c.userId);
+  });
   
-  for (const client of gameClients) {
+  // Also include clients with userId in players but gameId not set
+  const playersByUserId = new Map(gameSession.players.map(p => [p.userId, p]));
+  const additionalClients = Array.from(clients.values()).filter((c) => {
+    if (!c.userId) return false;
+    if (c.gameId === gameId) return false;
+    if (playersByUserId.has(c.userId)) {
+      c.gameId = gameId;
+      c.gameSessionId = gameSession.teams?.[0]?.gameSessionId || "";
+      return true;
+    }
+    return false;
+  });
+  
+  const allGameClients = [...gameClients, ...additionalClients];
+  
+  for (const client of allGameClients) {
     const player = gameSession.players.find((p) => p.userId === client.userId);
     const playerTeam = player ? gameSession.teams.find((t) => t.id === player.teamId) : null;
     const wasPlayerTeamTurn = playerTeam && playerTeam.id === answeringTeam?.id;
@@ -5524,6 +5751,66 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
         gamePhase = "finished";
       }
 
+      // CRITICAL FIX: If battle is playing but questions aren't loaded yet, send team_battle_started
+      // instead of trying to send a question that doesn't exist
+      if (battleSession.status === "playing" && (!battleSession.questions || battleSession.questions.length === 0)) {
+        console.log(`[handleGetGameState] Battle is playing but questions not loaded yet for gameId: ${battleSession.id}`);
+        sendToClient(clientId, {
+          type: "team_battle_started",
+          gameId: battleSession.id,
+          gameSessionId: event.gameSessionId,
+          teams: battleSession.teams || sessionTeams,
+          message: "Team battle has begun! Loading questions...",
+        });
+        // Also send game state update
+        sendToClient(clientId, {
+          type: "game_state_update",
+          gameState: {
+            phase: "playing",
+            teams: battleSession.teams || sessionTeams,
+          },
+          playerTeam: userTeam,
+          opposingTeam: opposingTeam,
+        });
+        // CRITICAL: Don't return yet - wait a bit and check again for questions
+        // This handles the case where questions are loading asynchronously
+        setTimeout(() => {
+          const retrySession = gameSessions.get(battleSession.id);
+          if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
+            // Questions loaded - send current question
+            const currentIndex = retrySession.currentQuestionIndex || 0;
+            const currentQuestion = retrySession.questions[currentIndex];
+            if (currentQuestion) {
+              const questionNumber = currentIndex + 1;
+              const isTeamATurn = questionNumber % 2 === 1;
+              const answeringTeam = retrySession.teams?.find((team: any) => {
+                if (team.teamSide) {
+                  return isTeamATurn ? team.teamSide === "A" : team.teamSide === "B";
+                }
+                return false;
+              }) || (isTeamATurn ? retrySession.teams?.[0] : retrySession.teams?.[1]);
+              
+              const opposingTeam = retrySession.teams?.find((team: any) => team.id !== answeringTeam?.id);
+              const isYourTurn = userTeam && userTeam.id === answeringTeam?.id;
+              
+              sendToClient(clientId, {
+                type: "team_battle_question",
+                gameId: retrySession.id,
+                question: currentQuestion,
+                questionNumber: questionNumber,
+                totalQuestions: retrySession.questions.length,
+                teamId: userTeam.id,
+                timeLimit: 15000,
+                isYourTurn: isYourTurn || false,
+                answeringTeamName: answeringTeam?.name,
+                opposingTeamName: opposingTeam?.name,
+              });
+            }
+          }
+        }, 2000); // Wait 2 seconds for questions to load
+        return; // Don't try to send question yet
+      }
+
       // Send complete game state update
       sendToClient(clientId, {
         type: "game_state_update",
@@ -5543,15 +5830,31 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
         const currentQuestion = battleSession.questions[currentIndex];
 
         if (currentQuestion && battleSession.status === "playing") {
+          // Determine which team should answer this question
+          const questionNumber = currentIndex + 1;
+          const isTeamATurn = questionNumber % 2 === 1;
+          const answeringTeam = battleSession.teams?.find((team: any) => {
+            if (team.teamSide) {
+              return isTeamATurn ? team.teamSide === "A" : team.teamSide === "B";
+            }
+            return false;
+          }) || (isTeamATurn ? battleSession.teams?.[0] : battleSession.teams?.[1]);
+          
+          const opposingTeam = battleSession.teams?.find((team: any) => team.id !== answeringTeam?.id);
+          const isYourTurn = userTeam && userTeam.id === answeringTeam?.id;
+          
           // Send current question if battle is active
           sendToClient(clientId, {
             type: "team_battle_question",
             gameId: battleSession.id,
             question: currentQuestion,
-            questionNumber: currentIndex + 1,
+            questionNumber: questionNumber,
             totalQuestions: battleSession.questions.length,
             teamId: userTeam.id,
-            timeLimit: 15000, // Fixed: Changed from 30000 to 15000 to match frontend expectation
+            timeLimit: 15000,
+            isYourTurn: isYourTurn || false,
+            answeringTeamName: answeringTeam?.name,
+            opposingTeamName: opposingTeam?.name,
           });
         }
       }

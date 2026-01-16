@@ -10,8 +10,6 @@ import {
   Crown,
   Check,
   X,
-  Pause,
-  Play,
   Volume2,
   VolumeX,
   Mic,
@@ -119,10 +117,6 @@ export default function TeamBattleGame() {
     isVoiceEnabled()
   );
 
-  // Pause functionality
-  const [isPaused, setIsPaused] = useState(false);
-  const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
-  const [totalPauseTime, setTotalPauseTime] = useState(0);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -642,31 +636,25 @@ export default function TeamBattleGame() {
     return gameState.playerTeam?.captainId === user?.id;
   };
 
-  const handlePause = () => {
-    if (!isPaused) {
-      setIsPaused(true);
-      setPauseStartTime(Date.now());
-      stopSpeaking();
-      toast({
-        title: "Game Paused",
-        description: "The game has been paused.",
-        duration: 2000,
+  const handleExitGame = () => {
+    // Inform server we are leaving, close socket, and navigate home
+    try {
+      sendGameEvent({
+        type: "player_leaving_team_battle",
+        gameSessionId:
+          gameState?.playerTeam?.gameSessionId || gameSessionId,
+        userId: user.id,
+        username: user.username,
       });
+    } catch (e) {
+      // Silent error handling
     }
-  };
-
-  const handleResume = () => {
-    if (isPaused && pauseStartTime) {
-      const pauseDuration = Date.now() - pauseStartTime;
-      setTotalPauseTime((prev) => prev + pauseDuration);
-      setIsPaused(false);
-      setPauseStartTime(null);
-      toast({
-        title: "Game Resumed",
-        description: "The game has been resumed.",
-        duration: 2000,
-      });
+    try {
+      closeGameSocket();
+    } catch (e) {
+      // Silent error handling
     }
+    setLocation("/");
   };
 
   const renderWaitingPhase = () => (
@@ -766,7 +754,7 @@ export default function TeamBattleGame() {
           suggestions={suggestions}
           onMemberSelect={handleMemberSelect}
           onCaptainSubmit={handleCaptainSubmit}
-          isPaused={isPaused}
+          isPaused={false}
           isReadOnly={!isYourTurn}
           answeringTeamName={gameState.answeringTeamName}
           selectedAnswerId={selectedAnswer}
@@ -1241,7 +1229,7 @@ export default function TeamBattleGame() {
 
         {/* Header with logo on left and controls on right */}
         <header className="mb-3 sm:mb-4">
-          {/* First Row: Logo and Pause Button */}
+          {/* First Row: Logo and Exit Game Button */}
           <div className="flex items-center justify-between gap-2 sm:gap-4 mb-2 sm:mb-0">
             {/* Logo Section */}
             <div className="flex items-center flex-shrink-0 min-w-0">
@@ -1253,19 +1241,15 @@ export default function TeamBattleGame() {
               </span>
             </div>
 
-            {/* Pause/Resume Button - Always visible */}
+            {/* Exit Game Button - Always visible */}
             <Button
               variant="outline"
               size="icon"
-              onClick={isPaused ? handleResume : handlePause}
-              className={`rounded-full transition-all duration-200 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 ${
-                isPaused
-                  ? "bg-green-500 text-white hover:bg-green-600 border-green-500"
-                  : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300"
-              }`}
-              title={isPaused ? "Resume game" : "Pause game"}
+              onClick={handleExitGame}
+              className="rounded-full transition-all duration-200 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/30 hover:border-red-500/50"
+              title="Exit game"
             >
-              {isPaused ? <Play size={16} className="sm:w-[18px] sm:h-[18px]" /> : <Pause size={16} className="sm:w-[18px] sm:h-[18px]" />}
+              <X size={16} className="sm:w-[18px] sm:h-[18px]" />
             </Button>
           </div>
 
@@ -1415,63 +1399,6 @@ export default function TeamBattleGame() {
         />
       )}
 
-      {/* Pause Overlay */}
-      {isPaused && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white/10 backdrop-blur-sm rounded-2xl sm:rounded-3xl p-6 sm:p-8 max-w-md w-full mx-4 text-center shadow-2xl border border-white/20">
-            <div className="mb-6 sm:mb-8">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
-                <Pause size={32} className="sm:w-10 sm:h-10 text-accent" />
-              </div>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 sm:mb-3">
-                Game Paused
-              </h2>
-              <p className="text-white/80 text-sm sm:text-base md:text-lg px-2">
-                Take a moment to breathe and prepare for the next question.
-              </p>
-            </div>
-
-            <div className="space-y-3 sm:space-y-4">
-              <Button
-                onClick={handleResume}
-                className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg rounded-lg sm:rounded-xl min-w-0"
-              >
-                <Play size={18} className="sm:w-5 sm:h-5 mr-2 flex-shrink-0" />
-                <span className="whitespace-nowrap">Resume Game</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsPaused(false);
-                  // Inform server we are leaving, close socket, and navigate home
-                  try {
-                    sendGameEvent({
-                      type: "player_leaving_team_battle",
-                      gameSessionId:
-                        gameState?.playerTeam?.gameSessionId || gameSessionId,
-                      userId: user.id,
-                      username: user.username,
-                    });
-                  } catch (e) {
-                    // Silent error handling
-                  }
-                  try {
-                    closeGameSocket();
-                  } catch (e) {
-                    // Silent error handling
-                  }
-                  setLocation("/");
-                }}
-                className="w-full border-red-500/30 bg-red-600/20 text-red-400 hover:bg-red-600/30 hover:border-red-500/50 py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg rounded-lg sm:rounded-xl flex items-center gap-2 justify-center min-w-0"
-              >
-                <X className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
-                <span className="whitespace-nowrap">Leave Game</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

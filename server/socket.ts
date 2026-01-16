@@ -4722,39 +4722,57 @@ async function startTeamBattleQuestions(gameId: string) {
 
     console.log(`[TeamBattle] Using ${filteredQuestions.length} questions for battle (will ensure 10 total)`);
 
-    // Ensure we always have exactly 10 questions by reusing/shuffling if needed
+    // CRITICAL: Ensure we always have exactly 10 UNIQUE questions
     // Use filteredQuestions (after history filtering) as the base
     let finalQuestions = [...filteredQuestions];
+    const usedQuestionIds = new Set<string>();
+    
+    // First, add all unique questions from filteredQuestions
+    const uniqueFiltered: any[] = [];
+    for (const q of filteredQuestions) {
+      if (q && q.id && !usedQuestionIds.has(q.id)) {
+        uniqueFiltered.push(q);
+        usedQuestionIds.add(q.id);
+      }
+    }
+    finalQuestions = uniqueFiltered;
+    
+    // If we don't have enough unique questions, try to get more from database
     if (finalQuestions.length < 10) {
-      console.warn(`[TeamBattle] Only ${finalQuestions.length} valid questions available (requested 10) for gameId: ${gameId}. Reusing questions to reach 10.`);
+      console.warn(`[TeamBattle] Only ${finalQuestions.length} unique questions available (requested 10) for gameId: ${gameId}. Attempting to fetch more...`);
       
-      // Create a shuffled pool of questions to reuse
-      const shuffledPool = [...finalQuestions];
-      // Shuffle the pool using Fisher-Yates algorithm with gameId as seed
-      let seed = 0;
-      for (let i = 0; i < gameId.length; i++) {
-        seed += gameId.charCodeAt(i);
+      try {
+        // Try to get additional questions, excluding the ones we already have
+        const additionalNeeded = 10 - finalQuestions.length;
+        const additionalQuestions = await database.getRandomQuestionsWithHistory({
+          count: additionalNeeded * 2, // Get more than needed to account for duplicates
+          userId: primaryUserId,
+          excludeRecentHours: 0,
+        });
+        
+        // Add unique questions from additional fetch
+        for (const q of additionalQuestions) {
+          if (q && q.id && !usedQuestionIds.has(q.id) && finalQuestions.length < 10) {
+            // Validate question has required fields
+            if (q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0) {
+              finalQuestions.push(q);
+              usedQuestionIds.add(q.id);
+            }
+          }
+        }
+        
+        console.log(`[TeamBattle] After additional fetch: ${finalQuestions.length} unique questions`);
+      } catch (error) {
+        console.error(`[TeamBattle] Failed to fetch additional questions:`, error);
       }
-      for (let i = shuffledPool.length - 1; i > 0; i--) {
-        const j = Math.floor((seed + i) % (i + 1));
-        [shuffledPool[i], shuffledPool[j]] = [shuffledPool[j], shuffledPool[i]];
-      }
-      
-      // Fill up to 10 questions by reusing from the shuffled pool
-      while (finalQuestions.length < 10) {
-        const index = finalQuestions.length % shuffledPool.length;
-        finalQuestions.push(shuffledPool[index]);
-      }
-      
-      // Final shuffle to randomize the order of all 10 questions
-      for (let i = finalQuestions.length - 1; i > 0; i--) {
-        const j = Math.floor((seed + Date.now() + i) % (i + 1));
-        [finalQuestions[i], finalQuestions[j]] = [finalQuestions[j], finalQuestions[i]];
-      }
-      
-      console.log(`[TeamBattle] Expanded to ${finalQuestions.length} questions for gameId: ${gameId}`);
+    }
+    
+    // If we still don't have 10 unique questions, we'll use what we have
+    // (This should rarely happen if database has enough questions)
+    if (finalQuestions.length < 10) {
+      console.warn(`[TeamBattle] Only ${finalQuestions.length} unique questions available after all attempts. Using available questions.`);
     } else if (finalQuestions.length > 10) {
-      // If we have more than 10, take only 10 and shuffle them
+      // If we have more than 10, take only 10 unique ones and shuffle them
       // Shuffle using gameId as seed for consistent randomization per game
       let seed = 0;
       for (let i = 0; i < gameId.length; i++) {
@@ -4766,7 +4784,7 @@ async function startTeamBattleQuestions(gameId: string) {
       }
       finalQuestions = finalQuestions.slice(0, 10);
     } else {
-      // Exactly 10 questions - just shuffle them for variety
+      // Exactly 10 unique questions - just shuffle them for variety
       let seed = 0;
       for (let i = 0; i < gameId.length; i++) {
         seed += gameId.charCodeAt(i);
@@ -4776,6 +4794,19 @@ async function startTeamBattleQuestions(gameId: string) {
         [finalQuestions[i], finalQuestions[j]] = [finalQuestions[j], finalQuestions[i]];
       }
     }
+    
+    // CRITICAL: Final validation - ensure all questions are unique
+    const finalQuestionIds = new Set<string>();
+    const validatedQuestions: any[] = [];
+    for (const q of finalQuestions) {
+      if (q && q.id && !finalQuestionIds.has(q.id)) {
+        validatedQuestions.push(q);
+        finalQuestionIds.add(q.id);
+      }
+    }
+    finalQuestions = validatedQuestions;
+    
+    console.log(`[TeamBattle] Final: ${finalQuestions.length} unique questions for gameId: ${gameId}`);
 
     gameSession.questions = finalQuestions;
     gameSession.currentQuestionIndex = 0;

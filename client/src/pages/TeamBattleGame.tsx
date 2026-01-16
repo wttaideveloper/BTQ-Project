@@ -353,6 +353,8 @@ export default function TeamBattleGame() {
             // and wait for the timer to expire (no need to wait for opponent)
             setTeamAnswer(data.finalAnswer.answerId);
             setHasSubmitted(true);
+            // Keep selectedAnswer highlighted to show what was finalized
+            // It will be cleared when the next question arrives
             // Don't set waitingForResults - in alternating format, 
             // we just wait for the timer, not for the other team
             break;

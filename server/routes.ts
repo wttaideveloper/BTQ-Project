@@ -3217,6 +3217,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // CRITICAL: API endpoint to get battle phase (server-authoritative state)
+  // GET /api/team-battle/phase?gameSessionId=xxx
+  // This is the single source of truth for whether a battle has started
+  app.get("/api/team-battle/phase", ensureAuthenticated, async (req, res) => {
+    try {
+      const { gameSessionId } = req.query;
+      if (!gameSessionId || typeof gameSessionId !== "string") {
+        return res.status(400).json({ message: "gameSessionId is required" });
+      }
+
+      const battles = await database.getTeamBattlesByGameSession(gameSessionId);
+      if (battles.length === 0) {
+        return res.json({ phase: null, status: null });
+      }
+
+      // Get the most recent battle
+      const battle = battles.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0];
+
+      // Map status to phase
+      // "forming" → LOBBY
+      // "ready" → COUNTDOWN
+      // "playing" → IN_GAME
+      // "finished" → FINISHED
+      const phaseMap: Record<string, string> = {
+        forming: "LOBBY",
+        ready: "COUNTDOWN",
+        playing: "IN_GAME",
+        finished: "FINISHED",
+      };
+
+      const phase = phaseMap[battle.status] || battle.status;
+      
+      // CRITICAL: Also return participant list for authorization
+      // Get teams to determine who can enter the battle
+      const teams = await convertTeamBattleToTeams(battle);
+      const participantIds = new Set<number>();
+      for (const team of teams) {
+        if (team.captainId) participantIds.add(team.captainId);
+        for (const member of team.members || []) {
+          if (member.userId) participantIds.add(member.userId);
+        }
+      }
+      
+      return res.json({
+        phase,
+        status: battle.status,
+        gameSessionId: battle.gameSessionId,
+        battleId: battle.id,
+        participantIds: Array.from(participantIds), // For client-side authorization
+        teamsCount: teams.length,
+      });
+    } catch (error) {
+      console.error("[GET /api/team-battle/phase] Error:", error);
+      return res.status(500).json({ message: "Failed to get battle phase" });
+    }
+  });
+
   console.log("✅ All routes registered successfully");
   return httpServer;
 }

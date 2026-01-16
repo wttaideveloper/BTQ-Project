@@ -321,14 +321,27 @@ const TeamBattleSetup: React.FC = () => {
       debouncedRefetch();
     });
     const offTeamBattleStarted = onEvent("team_battle_started", (data: any) => {
-      console.log("[TeamBattleSetup] Received team_battle_started event:", data);
-      toast({
-        title: "Battle Started!",
-        description: "Redirecting to game...",
-      });
-      // Navigate to game when WebSocket confirms battle started
-      if (data.gameSessionId || gameSessionId) {
-        setLocation(`/team-battle-game?session=${data.gameSessionId || gameSessionId}`);
+      console.log("[TeamBattleSetup Page] Received team_battle_started event:", data);
+      
+      // CRITICAL: Only navigate if this session matches the current page session
+      // This prevents navigation when user is on a different page/session
+      const targetSessionId = data.gameSessionId || gameSessionId;
+      
+      // Verify the session matches before navigating
+      if (targetSessionId && (targetSessionId === gameSessionId || !gameSessionId)) {
+        toast({
+          title: "Battle Started!",
+          description: "Redirecting to game...",
+          duration: 2000,
+        });
+        // CRITICAL FIX #5: Standardize URL parameter to use 'session'
+        // Navigate to game when WebSocket confirms battle started
+        setLocation(`/team-battle-game?session=${targetSessionId}`);
+      } else {
+        console.log("[TeamBattleSetup Page] Ignoring team_battle_started for different session:", {
+          received: targetSessionId,
+          current: gameSessionId,
+        });
       }
     });
 
@@ -655,6 +668,74 @@ const TeamBattleSetup: React.FC = () => {
     team.members.some((member: TeamMember) => member.userId === user?.id)
   );
 
+  // CRITICAL: Check battle phase on page load - server-authoritative navigation
+  // This ensures clients always check server state, not just events
+  useEffect(() => {
+    if (!user || !gameSessionId) return;
+
+    let isChecking = false;
+    let checkInterval: NodeJS.Timeout | null = null;
+
+    const checkBattlePhase = async () => {
+      if (isChecking) return;
+      isChecking = true;
+
+      try {
+        const res = await apiRequest(
+          "GET",
+          `/api/team-battle/phase?gameSessionId=${gameSessionId}`
+        );
+        const phaseData = await res.json();
+
+        // CRITICAL: If phase is IN_GAME, force navigation immediately
+        // This overrides all event-based navigation and ensures consistency
+        // BUT: Only navigate if user is a registered participant
+        if (phaseData.phase === "IN_GAME" || phaseData.status === "playing") {
+          // CRITICAL: Authorization check - verify user is a registered participant
+          if (phaseData.participantIds && Array.isArray(phaseData.participantIds)) {
+            const isParticipant = phaseData.participantIds.includes(user.id);
+            if (!isParticipant) {
+              console.log(
+                `[TeamBattleSetup Page] User ${user.id} is not a registered participant. Teams: ${phaseData.teamsCount}, Participants: ${phaseData.participantIds.length}`
+              );
+              // Don't navigate - user is not authorized
+              if (checkInterval) clearInterval(checkInterval);
+              return;
+            }
+          } else if (phaseData.teamsCount !== 2) {
+            // If participantIds not provided, check teams count as fallback
+            console.log(
+              `[TeamBattleSetup Page] Invalid teams count: ${phaseData.teamsCount}, not navigating`
+            );
+            if (checkInterval) clearInterval(checkInterval);
+            return;
+          }
+
+          console.log(
+            `[TeamBattleSetup Page] Server phase is IN_GAME, user is authorized, forcing navigation to game`
+          );
+          setLocation(`/team-battle-game?session=${gameSessionId}`);
+          if (checkInterval) clearInterval(checkInterval);
+          return;
+        }
+      } catch (error) {
+        console.error("[TeamBattleSetup Page] Failed to check battle phase:", error);
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    // Check immediately when gameSessionId is available
+    checkBattlePhase();
+
+    // Poll every 2 seconds as fallback (in case events are missed)
+    checkInterval = setInterval(checkBattlePhase, 2000);
+
+    return () => {
+      if (checkInterval) clearInterval(checkInterval);
+    };
+  }, [user, gameSessionId, setLocation]);
+
   // If user already belongs to a team, ensure we use that team's session ID
   useEffect(() => {
     if (
@@ -723,35 +804,9 @@ const TeamBattleSetup: React.FC = () => {
     }
   };
 
-  // ===== Debug UI state =====
-  const [showDebug, setShowDebug] = useState<boolean>(false);
-  const debugMyCaptainTeams = useMemo(() => {
-    return teams
-      .filter((t: Team) => t.captainId === user?.id)
-      .map((t: Team) => t.id);
-  }, [teams, user?.id]);
-
   // Note: Backend already filters join requests for active teams where user is captain
   // Frontend just uses the data directly without additional filtering
   const validJoinRequests = joinRequests;
-
-  const debugPendingForMyTeams = useMemo(() => {
-    const ids = new Set(debugMyCaptainTeams);
-    return (validJoinRequests || []).filter(
-      (jr: any) => jr.status === "pending" && ids.has(jr.teamId)
-    );
-  }, [validJoinRequests, debugMyCaptainTeams]); // Floating debug toggle for easy access
-  const DebugToggle = () => (
-    <div className="fixed bottom-4 right-4 z-50">
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={() => setShowDebug((v) => !v)}
-      >
-        {showDebug ? "Hide Debug" : "Show Debug"}
-      </Button>
-    </div>
-  );
 
   const battleStatus = getBattleStatus() || {
     status: "no-teams",
@@ -763,7 +818,6 @@ const TeamBattleSetup: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
-        <DebugToggle />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -794,25 +848,6 @@ const TeamBattleSetup: React.FC = () => {
             </p>
           </div>
         </div>
-
-        {/* Debug Info */}
-        <Alert className="border-blue-200 bg-blue-50">
-          <AlertDescription className="text-blue-800">
-            <strong>Debug Info:</strong>
-            <br />• Online Users: {onlineUsers.length}
-            <br />• Teams: {teams.length}
-            <br />• Invitations: {invitations.length}
-            <br />• Join Requests: {validJoinRequests.length} (total:{" "}
-            {joinRequests.length}, filtered:{" "}
-            {joinRequests.length - validJoinRequests.length})
-            <br />• User ID: {user?.id}
-            <br />• Session ID: {gameSessionId}
-            <br />
-            <Button onClick={debouncedRefetch} size="sm" className="mt-2">
-              Force Refresh Data
-            </Button>
-          </AlertDescription>
-        </Alert>
 
         {/* Battle Status */}
         <Alert
@@ -864,14 +899,6 @@ const TeamBattleSetup: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {debugPendingForMyTeams.length > 0 && (
-                <Alert className="mb-3 border-yellow-400 bg-yellow-50">
-                  <AlertDescription className="text-yellow-800">
-                    You have {debugPendingForMyTeams.length} pending member
-                    request(s) awaiting action.
-                  </AlertDescription>
-                </Alert>
-              )}
               {validJoinRequests.filter(
                 (jr: TeamJoinRequest) => jr.status === "pending"
               ).length === 0 ? (
@@ -1017,82 +1044,6 @@ const TeamBattleSetup: React.FC = () => {
             </CardContent>
           </Card>
         )}
-
-        {/* Debug Panel */}
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Debug: Join Requests Visibility</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowDebug(!showDebug)}
-              >
-                {showDebug ? "Hide" : "Show"}
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          {showDebug && (
-            <CardContent>
-              <div className="grid md:grid-cols-2 gap-4 text-sm">
-                <div className="space-y-2">
-                  <div className="font-semibold">User</div>
-                  <pre className="bg-gray-100 p-2 rounded overflow-auto">
-                    {JSON.stringify(
-                      { id: user?.id, username: user?.username, isTeamCaptain },
-                      null,
-                      2
-                    )}
-                  </pre>
-                  <div className="font-semibold">Teams (IDs)</div>
-                  <pre className="bg-gray-100 p-2 rounded overflow-auto">
-                    {JSON.stringify(
-                      teams.map((t: any) => ({
-                        id: t.id,
-                        name: t.name,
-                        captainId: t.captainId,
-                      })),
-                      null,
-                      2
-                    )}
-                  </pre>
-                </div>
-                <div className="space-y-2">
-                  <div className="font-semibold">
-                    Join Requests (raw - {joinRequests.length})
-                  </div>
-                  <pre className="bg-gray-100 p-2 rounded overflow-auto max-h-40">
-                    {JSON.stringify(joinRequests, null, 2)}
-                  </pre>
-                  <div className="font-semibold">
-                    Join Requests (filtered - {validJoinRequests.length})
-                  </div>
-                  <pre className="bg-green-100 p-2 rounded overflow-auto max-h-40">
-                    {JSON.stringify(validJoinRequests, null, 2)}
-                  </pre>
-                  <div className="font-semibold">
-                    Pending For My Teams ({debugPendingForMyTeams.length})
-                  </div>
-                  <pre className="bg-yellow-100 p-2 rounded overflow-auto max-h-40">
-                    {JSON.stringify(debugPendingForMyTeams, null, 2)}
-                  </pre>
-                </div>
-              </div>
-              <div className="mt-2 flex gap-2">
-                <Button size="sm" onClick={() => debouncedRefetch()}>
-                  Refetch Join Requests
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => debouncedRefetch()}
-                >
-                  Refetch Teams
-                </Button>
-              </div>
-            </CardContent>
-          )}
-        </Card>
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Left Column - Team Management */}

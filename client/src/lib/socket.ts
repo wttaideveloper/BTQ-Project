@@ -155,12 +155,23 @@ export function setupGameSocket(userId?: number): WebSocket {
       // Log all messages for debugging
       console.log('[WS Client] Message received:', data.type, data);
       
+      // CRITICAL FIX #7: Ensure event listeners are properly registered
+      // Auto-register event type if it doesn't exist (prevents missing events)
+      if (!eventListeners[data.type]) {
+        eventListeners[data.type] = [];
+        console.log(`[WS Client] Auto-registered event type: ${data.type}`);
+      }
+      
       // Notify listeners for this event type
       const listeners = eventListeners[data.type] || [];
       console.log(`[WS Client] Found ${listeners.length} listener(s) for ${data.type}`);
       listeners.forEach(callback => {
-        console.log(`[WS Client] Calling listener for ${data.type}`);
-        callback(data);
+        try {
+          console.log(`[WS Client] Calling listener for ${data.type}`);
+          callback(data);
+        } catch (error) {
+          console.error(`[WS Client] Error in listener for ${data.type}:`, error);
+        }
       });
       
     } catch (error) {
@@ -317,10 +328,27 @@ export function onError(callback: (error: any) => void) {
 }
 
 // Team & Battle events: register common types used by server
+// CRITICAL FIX #7: Pre-register ALL team battle event types to prevent missing events
 // Pre-register keys to enable subscriptions before first message
-['team_updated', 'team_created', 'teams_updated', 'team_invitation_received', 'invitation_sent',
- 'opponent_accepted_invitation', 'join_request_created', 'join_request_updated',
- 'team_battle_ready', 'team_battle_cancelled'].forEach((key) => {
+[
+  'team_updated', 
+  'team_created', 
+  'teams_updated', 
+  'team_invitation_received', 
+  'invitation_sent',
+  'opponent_accepted_invitation', 
+  'join_request_created', 
+  'join_request_updated',
+  'team_battle_ready', 
+  'team_battle_cancelled',
+  'team_battle_started',      // CRITICAL: Pre-register navigation trigger
+  'team_battle_countdown',    // CRITICAL: Pre-register countdown
+  'team_ready_status',        // CRITICAL: Pre-register ready status
+  'team_state_restored',      // CRITICAL: Pre-register state restoration
+  'game_state_restored',      // CRITICAL: Pre-register game state
+  'game_state_update',        // CRITICAL: Pre-register game updates
+  'no_active_game',           // CRITICAL: Pre-register error state
+].forEach((key) => {
   if (!eventListeners[key]) eventListeners[key] = [];
 });
 

@@ -121,6 +121,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setReadyStatus(null);
       setCountdown(null);
       setIsReady(false);
+      // CRITICAL FIX #1: Reset hasNavigatedToGame when modal closes
+      setHasNavigatedToGame(false);
       // Clear UI state
       setCurrentStage("enter");
       setTeamName("");
@@ -136,6 +138,84 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
     }
   }, [open, queryClient]);
+
+  // CRITICAL: Check battle phase on modal open - server-authoritative navigation
+  // This ensures clients always check server state, not just events
+  useEffect(() => {
+    if (!open || !gameSessionId || !user || hasNavigatedToGame) return;
+
+    let isChecking = false;
+    let checkInterval: NodeJS.Timeout | null = null;
+
+    const checkBattlePhase = async () => {
+      if (isChecking) return;
+      isChecking = true;
+
+      try {
+        const res = await apiRequest(
+          "GET",
+          `/api/team-battle/phase?gameSessionId=${gameSessionId}`
+        );
+        const phaseData = await res.json();
+
+        // CRITICAL: If phase is IN_GAME, force navigation immediately
+        // This overrides all event-based navigation and ensures consistency
+        // BUT: Only navigate if user is a registered participant
+        if (phaseData.phase === "IN_GAME" || phaseData.status === "playing") {
+          // CRITICAL: Authorization check - verify user is a registered participant
+          if (phaseData.participantIds && Array.isArray(phaseData.participantIds)) {
+            const isParticipant = phaseData.participantIds.includes(user.id);
+            if (!isParticipant) {
+              console.log(
+                `[TeamBattleSetup] User ${user.id} is not a registered participant. Teams: ${phaseData.teamsCount}, Participants: ${phaseData.participantIds.length}`
+              );
+              // Don't navigate - user is not authorized
+              if (checkInterval) clearInterval(checkInterval);
+              return;
+            }
+          } else if (phaseData.teamsCount !== 2) {
+            // If participantIds not provided, check teams count as fallback
+            console.log(
+              `[TeamBattleSetup] Invalid teams count: ${phaseData.teamsCount}, not navigating`
+            );
+            if (checkInterval) clearInterval(checkInterval);
+            return;
+          }
+
+          console.log(
+            `[TeamBattleSetup] Server phase is IN_GAME, user is authorized, forcing navigation to game`
+          );
+          setHasNavigatedToGame(true);
+          setCountdown(null); // Clear countdown
+          onClose();
+          setLocation(`/team-battle-game?session=${gameSessionId}`);
+          if (checkInterval) clearInterval(checkInterval);
+          return;
+        }
+
+        // If phase is COUNTDOWN, ensure countdown is set
+        if (phaseData.phase === "COUNTDOWN" || phaseData.status === "ready") {
+          if (countdown === null) {
+            setCountdown(5); // Set initial countdown
+          }
+        }
+      } catch (error) {
+        console.error("[TeamBattleSetup] Failed to check battle phase:", error);
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    // Check immediately on open
+    checkBattlePhase();
+
+    // Poll every 2 seconds as fallback (in case events are missed)
+    checkInterval = setInterval(checkBattlePhase, 2000);
+
+    return () => {
+      if (checkInterval) clearInterval(checkInterval);
+    };
+  }, [open, gameSessionId, user, hasNavigatedToGame, countdown, onClose, setLocation]);
 
   // WebSocket setup for real-time updates (shared socket)
   useEffect(() => {
@@ -325,7 +405,36 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             if (wsSessionId && wsSessionId !== gameSessionId) {
               setGameSessionId(wsSessionId);
             }
+            // CRITICAL FIX: Reset countdown - this will clear any existing timer and start fresh
+            // This ensures countdown stays in sync with server
             setCountdown(seconds);
+            break;
+          }
+
+          // CRITICAL FIX #2: Add team_battle_started handler in modal component
+          case "team_battle_started": {
+            console.log("[TeamBattleSetup Modal] Received team_battle_started event:", data);
+            const targetSessionId = data.gameSessionId || wsSessionId || gameSessionId;
+            
+            // CRITICAL: Only navigate if modal is open, we have a valid session, and haven't navigated yet
+            // Note: teams query is defined later, so we'll check it in the navigation effect instead
+            if (open && targetSessionId && !hasNavigatedToGame) {
+              console.log("[TeamBattleSetup Modal] Received team_battle_started, will navigate via effect");
+              // CRITICAL: Set flag immediately to prevent double navigation
+              setHasNavigatedToGame(true);
+              // Clear countdown to prevent countdown-based navigation
+              setCountdown(null);
+              toast({
+                title: "Battle Started!",
+                description: "Redirecting to game...",
+                duration: 2000,
+              });
+              onClose();
+              // CRITICAL FIX #5: Standardize URL parameter to use 'session'
+              setLocation(`/team-battle-game?session=${targetSessionId}`);
+            } else if (!open) {
+              console.log("[TeamBattleSetup Modal] Received team_battle_started but modal is closed, ignoring");
+            }
             break;
           }
 
@@ -433,23 +542,29 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     return () => {
       socket.removeEventListener("message", handleMessage);
     };
-  }, [user, queryClient, toast, gameSessionId]);
+  }, [user, open, queryClient, toast, gameSessionId, hasNavigatedToGame, onClose, setLocation]);
 
   // Local countdown timer when both teams are ready
+  // CRITICAL FIX: Clear any existing timer when countdown changes to prevent multiple timers
   useEffect(() => {
     if (countdown === null || countdown <= 0) return;
 
-    const timer = setInterval(() => {
+    // Clear any existing timer first
+    let timer: NodeJS.Timeout | null = null;
+
+    timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev === null || prev <= 1) {
-          clearInterval(timer);
+          if (timer) clearInterval(timer);
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [countdown]);
 
   // Get teams for this game session with refetch capability
@@ -621,23 +736,35 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // Check if opponent has accepted (2 teams exist)
   const opponentAccepted = teams.length >= 2;
 
-  // When countdown finishes, move everyone into the team battle game screen
+  // CRITICAL FIX #3 & #4: Navigation with multiple fallback mechanisms
+  // Navigate when countdown reaches 0 OR when team_battle_started is received
   useEffect(() => {
-    // Navigate when countdown reaches 0
-    // Check if user is in ANY team (captain or member)
+    // Don't navigate if already navigated or no session ID
+    if (hasNavigatedToGame || !gameSessionId) return;
+
+    // FALLBACK #1: Navigate when countdown reaches 0
+    // CRITICAL FIX #4: Make navigation independent of teams query - use user ID as fallback
     const isInAnyTeam = teams?.some((team: Team) =>
       team.members.some((member: TeamMember) => member.userId === user?.id)
-    );
+    ) ?? true; // Default to true if teams query hasn't loaded yet
 
-    if (
-      countdown === 0 &&
-      !hasNavigatedToGame &&
-      gameSessionId &&
-      isInAnyTeam
-    ) {
+    if (countdown === 0 && isInAnyTeam) {
+      console.log("[TeamBattleSetup] Countdown reached 0, navigating to game");
+      // CRITICAL: Set flag immediately to prevent double navigation
       setHasNavigatedToGame(true);
+      // Clear countdown to prevent re-triggering
+      setCountdown(null);
       onClose();
-      setLocation(`/team-battle-game?gameSessionId=${gameSessionId}`);
+      // CRITICAL FIX #5: Standardize URL parameter to use 'session'
+      setLocation(`/team-battle-game?session=${gameSessionId}`);
+      return;
+    }
+
+    // FALLBACK #2: If countdown is null but we have a session, check if game might have started
+    // This handles cases where countdown event was missed
+    if (countdown === null && gameSessionId && isInAnyTeam) {
+      // Don't auto-navigate here - wait for team_battle_started event
+      // But we could add a timeout fallback if needed
     }
   }, [
     countdown,

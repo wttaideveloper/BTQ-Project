@@ -642,9 +642,9 @@ export default function TeamBattleGame() {
       sendGameEvent({
         type: "player_leaving_team_battle",
         gameSessionId:
-          gameState?.playerTeam?.gameSessionId || gameSessionId,
-        userId: user.id,
-        username: user.username,
+          gameState?.playerTeam?.gameSessionId || gameSessionId || undefined,
+        userId: user?.id,
+        username: user?.username,
       });
     } catch (e) {
       // Silent error handling
@@ -1333,9 +1333,9 @@ export default function TeamBattleGame() {
                   sendGameEvent({
                     type: "player_leaving_team_battle",
                     gameSessionId:
-                      gameState?.playerTeam?.gameSessionId || gameSessionId,
-                    userId: user.id,
-                    username: user.username,
+                      gameState?.playerTeam?.gameSessionId || gameSessionId || undefined,
+                    userId: user?.id,
+                    username: user?.username,
                   });
                 } catch (e) {}
                 try {

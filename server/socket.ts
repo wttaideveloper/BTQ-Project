@@ -875,8 +875,34 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
       // Restore user's team context
       client.gameSessionId = userTeam.gameSessionId;
       
-      // CRITICAL FIX: Check if there's an active battle session for this team
-      // If so, set gameId to the battle session ID, not just the gameSessionId
+      // CRITICAL: Check database battle phase FIRST (server-authoritative)
+      // This works even if server was restarted and gameSessions is empty
+      try {
+        const battles = await database.getTeamBattlesByGameSession(userTeam.gameSessionId);
+        if (battles.length > 0) {
+          const battle = battles.sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )[0];
+          
+          // If battle status is "playing" (IN_GAME), send team_battle_started event
+          // This ensures client navigates even if in-memory gameSessions is empty
+          if (battle.status === "playing") {
+            console.log(`[handleAuthenticate] Database shows battle ${battle.id} is playing, sending team_battle_started`);
+            sendToClient(clientId, {
+              type: "team_battle_started",
+              gameId: battle.id, // Use battle ID as gameId
+              gameSessionId: userTeam.gameSessionId,
+              teams: [], // Will be populated by get_game_state if needed
+              message: "Reconnected to active battle!",
+            });
+            client.gameId = battle.id;
+          }
+        }
+      } catch (error) {
+        console.error(`[handleAuthenticate] Failed to check database battle phase:`, error);
+      }
+      
+      // ALSO check in-memory gameSessions (for faster response if available)
       const activeBattleSession = Array.from(gameSessions.values()).find(
         (session) =>
           session.gameType === "team_battle" &&
@@ -932,8 +958,10 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
           }
         }
       } else {
-        // No active battle - just set gameSessionId
-        client.gameId = userTeam.gameSessionId;
+        // No active battle in memory - gameId already set from database check above if battle is playing
+        if (!client.gameId) {
+          client.gameId = userTeam.gameSessionId;
+        }
       }
       
       // Cancel any pending disconnects for this user with this gameSessionId (they reconnected)
@@ -3132,6 +3160,21 @@ async function handleTeamOptionSelected(clientId: string, event: GameEvent) {
       );
       if (!sessionTeam) return;
 
+      // CRITICAL: Check if this question has already been finalized
+      // If so, reject the selection and notify the user
+      const existingFinalAnswers = sessionTeam.finalAnswers || [];
+      const questionAlreadyFinalized = existingFinalAnswers.some(
+        (fa: any) => fa.questionId === event.questionId
+      );
+
+      if (questionAlreadyFinalized) {
+        sendToClient(clientId, {
+          type: "error",
+          message: "This question has already been finalized by your team",
+        });
+        return;
+      }
+
       const teamMemberConnections = sessionTeam.members
         .map((member: any) => userConnections.get(member.userId))
         .filter(present)
@@ -3533,9 +3576,19 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
     }
 
     // When both sides become ready (transition from not-both-ready -> both-ready),
-    // broadcast a simple countdown event. For now this only drives UI; gameplay start
-    // is handled separately.
+    // update battle status to "ready" (COUNTDOWN phase) and broadcast countdown event
     if (bothReady && !wasBothReady) {
+      // CRITICAL: Update battle status to "ready" (COUNTDOWN phase) in database
+      // This makes the server the authoritative source of truth
+      try {
+        await database.updateTeamBattle(battle.id, {
+          status: "ready", // COUNTDOWN phase
+        });
+        console.log(`[handleTeamBattleReady] Battle ${battle.id} status updated to "ready" (COUNTDOWN phase)`);
+      } catch (error) {
+        console.error(`[handleTeamBattleReady] Failed to update battle status:`, error);
+      }
+      
       const countdownSeconds = 5;
       // CRITICAL FIX: Send countdown to all participants via sendToUser
       for (const userId of Array.from(participantIds)) {
@@ -3559,6 +3612,10 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
           seconds: countdownSeconds,
         });
       }
+      
+      // CRITICAL FIX: After countdown, handleStartTeamBattle will send team_battle_started
+      // So we don't need to send it here - that would cause duplicate events
+      // The handleStartTeamBattle function already sends team_battle_started to all clients
 
       // After the shared countdown completes, automatically start the team battle
       // using the existing start_team_battle flow so questions are delivered.
@@ -4344,10 +4401,46 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       return;
     }
 
-    console.log(`[handleStartTeamBattle] ✅ Validation passed: ${teamASize}v${teamBSize} battle ready`);
+    console.log(`[handleStartTeamBattle] ✅ Basic validation passed: ${teamASize}v${teamBSize} battle ready`);
 
-    // Get all teams in the session (derived from team battles)
+    // CRITICAL: Get all teams in the session (derived from team battles) and validate COMPREHENSIVELY
+    // This ensures teams are properly registered before phase advancement
     const allTeams = await getTeamsForTeamBattleSession(event.gameSessionId);
+    
+    // CRITICAL VALIDATION #1: Exactly 2 teams must exist
+    if (allTeams.length !== 2) {
+      console.log(`[handleStartTeamBattle] ❌ Invalid team count: ${allTeams.length} (expected 2)`);
+      sendToClient(clientId, {
+        type: "error",
+        message: `Invalid team configuration: Found ${allTeams.length} teams. Need exactly 2 teams to start battle.`,
+      });
+      return;
+    }
+
+    // CRITICAL VALIDATION #2: Each team must have a captain
+    for (const team of allTeams) {
+      if (!team.captainId) {
+        console.log(`[handleStartTeamBattle] ❌ Team ${team.id} missing captain`);
+        sendToClient(clientId, {
+          type: "error",
+          message: `Team ${team.name} is missing a captain. Cannot start battle.`,
+        });
+        return;
+      }
+      
+      // Verify captain is in members list
+      const captainInMembers = team.members.some((m: any) => m.userId === team.captainId && m.role === "captain");
+      if (!captainInMembers) {
+        console.log(`[handleStartTeamBattle] ❌ Team ${team.id} captain ${team.captainId} not in members list`);
+        sendToClient(clientId, {
+          type: "error",
+          message: `Team ${team.name} captain is not properly registered. Cannot start battle.`,
+        });
+        return;
+      }
+    }
+
+    // CRITICAL VALIDATION #3: Each team must have at least 1 member (captain counts)
     const eligibleTeams = allTeams.filter(
       (team) =>
         team.members.length >= 1 &&
@@ -4355,13 +4448,54 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     );
 
     if (eligibleTeams.length < 2) {
-      console.log(`[handleStartTeamBattle] Not enough eligible teams: ${eligibleTeams.length}`);
+      console.log(`[handleStartTeamBattle] ❌ Not enough eligible teams: ${eligibleTeams.length}`);
       sendToClient(clientId, {
         type: "error",
         message: "Need 2 teams with at least 1 member each to start battle",
       });
       return;
     }
+
+    // CRITICAL VALIDATION #4: Verify all members are properly registered
+    // Collect all participant user IDs (captains + members)
+    const participantIds = new Set<number>();
+    for (const team of eligibleTeams) {
+      if (!team.captainId || typeof team.captainId !== 'number') {
+        console.log(`[handleStartTeamBattle] ❌ Team ${team.id} has no valid captain`);
+        sendToClient(clientId, {
+          type: "error",
+          message: `Team ${team.name} has no valid captain. Cannot start battle.`,
+        });
+        return;
+      }
+      participantIds.add(team.captainId);
+      
+      for (const member of team.members) {
+        const memberUserId = member.userId;
+        if (memberUserId && typeof memberUserId === 'number') {
+          participantIds.add(memberUserId);
+        } else {
+          console.log(`[handleStartTeamBattle] ❌ Invalid member in team ${team.id}:`, member);
+          sendToClient(clientId, {
+            type: "error",
+            message: `Team ${team.name} has invalid member data. Cannot start battle.`,
+          });
+          return;
+        }
+      }
+    }
+
+    // CRITICAL VALIDATION #5: Verify we have participants from both teams
+    if (participantIds.size < 2) {
+      console.log(`[handleStartTeamBattle] ❌ Insufficient participants: ${participantIds.size}`);
+      sendToClient(clientId, {
+        type: "error",
+        message: "Need at least 2 participants (one from each team) to start battle",
+      });
+      return;
+    }
+
+    console.log(`[handleStartTeamBattle] ✅ All validations passed: ${eligibleTeams.length} teams, ${participantIds.size} participants`);
 
     // Use eligible teams
     const readyTeams = eligibleTeams;
@@ -4386,6 +4520,23 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       }
     }
 
+    // CRITICAL: Only update battle status to "playing" (IN_GAME phase) AFTER all validations pass
+    // This ensures teams are complete before phase advancement
+    try {
+      await database.updateTeamBattle(battle.id, {
+        status: "playing", // IN_GAME phase
+        startedAt: new Date(),
+      });
+      console.log(`[handleStartTeamBattle] ✅ Battle ${battle.id} status updated to "playing" (IN_GAME phase) with ${readyTeams.length} teams and ${allPlayers.length} players`);
+    } catch (error) {
+      console.error(`[handleStartTeamBattle] ❌ Failed to update battle status:`, error);
+      sendToClient(clientId, {
+        type: "error",
+        message: "Failed to start battle. Please try again.",
+      });
+      return;
+    }
+
     // Create team battle game session
     gameSessions.set(gameId, {
       id: gameId,
@@ -4403,7 +4554,37 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       allPlayers.some((player) => player.userId === c.userId)
     );
 
-    // Set gameId for all currently connected clients
+    // CRITICAL FIX: Use sendToUser to ensure ALL user connections (including multiple tabs) receive the event
+    // This is more reliable than sendToClient for individual connections
+    for (const player of allPlayers) {
+      // CRITICAL: Skip if player.userId is undefined (should not happen after validation, but safety check)
+      if (!player.userId || typeof player.userId !== 'number') {
+        console.warn(`[handleStartTeamBattle] Skipping player with invalid userId:`, player);
+        continue;
+      }
+
+      // Set gameId for all connections of this user
+      const userConnectionsList = userConnections.get(player.userId) || [];
+      for (const connectionId of userConnectionsList) {
+        const client = clients.get(connectionId);
+        if (client) {
+          client.gameId = gameId;
+          client.gameSessionId = event.gameSessionId;
+        }
+      }
+      
+      // Send to ALL connections for this user (handles multiple tabs)
+      sendToUser(player.userId, {
+        type: "team_battle_started",
+        gameId: gameId,
+        gameSessionId: event.gameSessionId,
+        teams: readyTeams,
+        message: "Team battle has begun!",
+      });
+    }
+    
+    // ADDITIONAL FIX: Also send directly to currently connected clients as backup
+    // This ensures immediate delivery even if userConnections is not fully updated
     for (const gameClient of gameClients) {
       gameClient.gameId = gameId;
       gameClient.gameSessionId = event.gameSessionId;
@@ -4414,33 +4595,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
         teams: readyTeams,
         message: "Team battle has begun!",
       });
-    }
-
-    // CRITICAL FIX: Also ensure all user connections (including future ones) are associated with this gameId
-    // This ensures clients connecting after game start will get the gameId when they authenticate
-    for (const player of allPlayers) {
-      const userConnectionsList = userConnections.get(player.userId) || [];
-      for (const connectionId of userConnectionsList) {
-        const client = clients.get(connectionId);
-        if (client) {
-          // Set gameId for this connection if not already set
-          if (client.gameId !== gameId) {
-            client.gameId = gameId;
-            client.gameSessionId = event.gameSessionId;
-            // Send to any newly connected clients that weren't in gameClients
-            if (!gameClients.find(c => c.id === connectionId)) {
-              console.log(`[handleStartTeamBattle] Sending team_battle_started to late-connecting client ${connectionId} for user ${player.userId}`);
-              sendToClient(connectionId, {
-                type: "team_battle_started",
-                gameId: gameId,
-                gameSessionId: event.gameSessionId,
-                teams: readyTeams,
-                message: "Team battle has begun!",
-              });
-            }
-          }
-        }
-      }
     }
 
     // Update team statuses to playing
@@ -4956,6 +5110,16 @@ async function processTeamBattleAnswers(gameId: string) {
     gameSession.questionTimeout = undefined;
   }
 
+  // CRITICAL: Prevent duplicate processing of the same question
+  // If we're already processing this question, return early
+  if ((gameSession as any).isProcessingAnswers) {
+    console.log(`[TeamBattle] Already processing answers for gameId: ${gameId}, skipping duplicate call`);
+    return;
+  }
+  
+  // Mark that we're processing answers
+  (gameSession as any).isProcessingAnswers = true;
+
   const currentIndex = gameSession.currentQuestionIndex ?? 0;
   const currentQuestion = gameSession.questions[currentIndex];
 
@@ -4965,6 +5129,7 @@ async function processTeamBattleAnswers(gameId: string) {
   // initialized correctly.
   if (!currentQuestion || !Array.isArray((currentQuestion as any).answers)) {
     // Fixed: Notify clients about the error and end the battle gracefully
+    (gameSession as any).isProcessingAnswers = false; // Reset flag
     try {
       const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
       for (const client of gameClients) {
@@ -5110,24 +5275,28 @@ async function processTeamBattleAnswers(gameId: string) {
   }
 
   // Move to next question or end battle
-  gameSession.currentQuestionIndex =
-    (gameSession.currentQuestionIndex || 0) + 1;
+  // CRITICAL: Increment index AFTER processing current question to prevent repeats
+  const nextIndex = (gameSession.currentQuestionIndex || 0) + 1;
+  gameSession.currentQuestionIndex = nextIndex;
 
   // CRITICAL: Only check if battle is complete if we have questions loaded
   // If questions array is empty, don't end battle - questions might still be loading
   if (!gameSession.questions || gameSession.questions.length === 0) {
     console.warn(`[TeamBattle] Questions array is empty in processTeamBattleAnswers for gameId: ${gameId}. Waiting for questions...`);
     // Don't end battle - questions might still be loading
+    (gameSession as any).isProcessingAnswers = false; // Reset flag
     return;
   }
 
-  if (gameSession.currentQuestionIndex >= gameSession.questions.length) {
+  if (nextIndex >= gameSession.questions.length) {
     // Battle completed - give teams a moment to see final results
-    console.log(`[TeamBattle] All questions completed for gameId: ${gameId}. Index: ${gameSession.currentQuestionIndex}, Total: ${gameSession.questions.length}`);
+    console.log(`[TeamBattle] All questions completed for gameId: ${gameId}. Index: ${nextIndex}, Total: ${gameSession.questions.length}`);
+    (gameSession as any).isProcessingAnswers = false; // Reset flag
     setTimeout(() => endTeamBattle(gameId), 2000);
   } else {
     // Next question - send after a brief delay to show results
-    console.log(`[TeamBattle] Moving to question ${gameSession.currentQuestionIndex + 1} for gameId: ${gameId}`);
+    console.log(`[TeamBattle] Moving to question ${nextIndex + 1} (index ${nextIndex}) for gameId: ${gameId}`);
+    (gameSession as any).isProcessingAnswers = false; // Reset flag before sending next question
     setTimeout(() => {
       sendTeamBattleQuestion(gameId);
     }, 2000); // 2 seconds to show results before next question (reduced from 3)

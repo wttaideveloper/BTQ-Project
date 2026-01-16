@@ -1376,13 +1376,14 @@ async function createAsyncGameSession(
 ) {
   try {
     // Create a game session in storage with random questions for the challenge
-    // Use history-aware selection to exclude recent questions
+    // Use history-aware selection to exclude ALL previously answered questions
     const questions = await database.getRandomQuestionsWithHistory({
       category: category !== "All" ? category : undefined,
       difficulty: difficulty !== "All" ? difficulty : undefined,
       count: 10, // Standard 10 questions for challenges
       userId: creatorId || undefined,
-      excludeRecentHours: creatorId ? 48 : 0, // Exclude recent questions if user is logged in
+      // Don't pass excludeRecentHours - will exclude ALL answered questions automatically
+      // If all questions are answered, they'll be reused with word shuffling
     });
 
     const now = new Date();

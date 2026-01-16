@@ -66,11 +66,31 @@ const Game: React.FC = () => {
   const playerCount = parseInt(params.get("playerCount") || "1");
 
   // Generate a stable game session ID
+  // Only restore from sessionStorage if there's an active game in progress
   const [gameId, setGameId] = useState(() => {
-    const existingId =
-      params.get("gameId") || sessionStorage.getItem("currentGameId");
-    if (existingId) return existingId;
+    // First check URL parameter (for direct links)
+    const urlGameId = params.get("gameId");
+    if (urlGameId) return urlGameId;
 
+    // Check if there's a saved game state that indicates an active game
+    const storedGameId = sessionStorage.getItem("currentGameId");
+    if (storedGameId) {
+      const gameStateKey = `gameState_${storedGameId}`;
+      const savedState = sessionStorage.getItem(gameStateKey);
+      if (savedState) {
+        try {
+          const state = JSON.parse(savedState);
+          // Only restore if game is not ended and has progress
+          if (!state.gameEnded && (state.currentQuestionIndex > 0 || state.score > 0)) {
+            return storedGameId;
+          }
+        } catch (e) {
+          // Invalid state, generate new
+        }
+      }
+    }
+
+    // Generate new game ID for fresh game
     const newId =
       gameMode === "multi"
         ? `local-multi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -193,27 +213,44 @@ const Game: React.FC = () => {
     error,
   } = useQuery({
     queryKey: ["/api/game/questions", category, difficulty, gameId],
-    queryFn: () =>
-      getGameQuestions(
-        category,
-        // Ensure enough questions for 2-player games by broadening difficulty if needed
-        gameType === "question" && gameMode === "multi" && playerCount === 2
-          ? "All"
-          : difficulty,
-        // Adjust question count for multiplayer fairness (e.g., 3 players → 12 questions)
-        gameType === "question"
-          ? gameMode === "multi" && playerCount === 3
-            ? 12
-            : 10
-          : 20,
-        gameId
-      ),
-    staleTime: Infinity, // Cache questions for the entire game session
+    queryFn: async () => {
+      console.log("🔄 Fetching questions with params:", { category, difficulty, gameId });
+      try {
+        const result = await getGameQuestions(
+          category,
+          // Ensure enough questions for 2-player games by broadening difficulty if needed
+          gameType === "question" && gameMode === "multi" && playerCount === 2
+            ? "All"
+            : difficulty,
+          // Adjust question count for multiplayer fairness (e.g., 3 players → 12 questions)
+          gameType === "question"
+            ? gameMode === "multi" && playerCount === 3
+              ? 12
+              : 10
+            : 20,
+          gameId
+        );
+        console.log("✅ Questions fetched successfully:", result?.length || 0, "questions");
+        return result;
+      } catch (err) {
+        console.error("❌ Error in queryFn:", err);
+        throw err;
+      }
+    },
+    staleTime: 0, // Always consider data stale to allow refetching (changed from Infinity to fix loading issue)
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes after component unmounts
-    refetchOnMount: false,
+    refetchOnMount: "always", // Always refetch on mount to ensure fresh data
     refetchOnWindowFocus: false,
-    retry: 1, // Retry once on failure
-    enabled: !!gameId,
+    retry: 2, // Retry twice on failure
+    enabled: !!gameId, // Only fetch when gameId is available
+    onError: (error) => {
+      console.error("❌ Error fetching questions:", error);
+      toast({
+        title: "Error Loading Questions",
+        description: error instanceof Error ? error.message : "Failed to load questions. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   // Calculate reward progress with the new thresholds
@@ -325,6 +362,27 @@ const Game: React.FC = () => {
   useEffect(() => {
     initSounds();
 
+    // Clear React Query cache for questions when starting a fresh game
+    // This ensures new questions are fetched instead of using cached ones
+    const gameStateKey = `gameState_${gameId}`;
+    const savedState = sessionStorage.getItem(gameStateKey);
+    const isFreshGame = !savedState || (() => {
+      try {
+        const state = JSON.parse(savedState);
+        return state.gameEnded || (state.currentQuestionIndex === 0 && state.score === 0);
+      } catch {
+        return true;
+      }
+    })();
+
+    if (isFreshGame && gameId) {
+      // Invalidate queries to force fresh fetch - this will trigger a refetch
+      queryClient.invalidateQueries({
+        queryKey: ["/api/game/questions", category, difficulty, gameId],
+      });
+      console.log("🔄 Invalidated question cache for fresh game with gameId:", gameId);
+    }
+
     // Log game configuration for debugging
     console.log("🎮 Game Configuration:", {
       gameMode,
@@ -334,6 +392,7 @@ const Game: React.FC = () => {
       playerCount,
       playerNames,
       gameId,
+      isFreshGame,
     });
 
     // Initialize voice service and get voice status
@@ -549,6 +608,11 @@ const Game: React.FC = () => {
       );
       voiceService.stopAllAudio(false);
       stopSpeaking();
+
+      // Clear gameId from sessionStorage when game ends
+      // This ensures next game will get fresh questions
+      sessionStorage.removeItem("currentGameId");
+      console.log("🧹 Cleared gameId from sessionStorage after game ended");
 
       // Clear all question read flags from session storage
       sessionStorage.removeItem("questionRead");

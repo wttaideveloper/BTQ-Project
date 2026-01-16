@@ -476,18 +476,49 @@ class PostgreSQLDatabase implements IDatabase {
         filters
       );
 
-      // Step 1: Get user's recent question history if userId provided
       let excludeQuestionIds: string[] = [];
-      if (filters.userId && filters.excludeRecentHours && filters.excludeRecentHours > 0) {
+      let shouldApplyWordShuffling = false;
+
+      // Step 1: Check if user has answered all available questions
+      if (filters.userId) {
+        const allAnswered = await this.hasAnsweredAllQuestions(
+          filters.userId,
+          filters.category,
+          filters.difficulty
+        );
+
+        if (allAnswered) {
+          // User has answered all questions - use all questions but apply word shuffling
+          console.log(
+            `🔄 User ${filters.userId} has answered all questions. ` +
+            `Will reuse all questions with word shuffling.`
+          );
+          shouldApplyWordShuffling = true;
+          // Don't exclude any questions - we'll use all of them
+        } else {
+          // Get ALL answered questions (not just recent ones) to exclude them
+          const allAnsweredHistory = await this.getUserQuestionHistory(
+            filters.userId
+          );
+          excludeQuestionIds = Array.from(
+            new Set(allAnsweredHistory.map(h => h.questionId))
+          );
+          console.log(
+            `📚 Excluding ${excludeQuestionIds.length} previously answered questions for user ${filters.userId}`
+          );
+        }
+      } else if (filters.excludeRecentHours && filters.excludeRecentHours > 0 && filters.userId) {
+        // For backward compatibility, use time-based exclusion (only if userId is provided)
         const recentHistory = await this.getUserQuestionHistory(
           filters.userId,
           filters.excludeRecentHours
         );
         excludeQuestionIds = recentHistory.map(h => h.questionId);
         console.log(
-          `📚 Excluding ${excludeQuestionIds.length} recently seen questions for user ${filters.userId}`
+          `📚 Excluding ${excludeQuestionIds.length} recently seen questions (last ${filters.excludeRecentHours} hours)`
         );
       }
+      // If no userId, no exclusion (anonymous users get random questions)
 
       // Step 2: Use enhanced random selection with user-specific seeding
       const selectedQuestions = await this.enhancedRandomSelection({
@@ -512,9 +543,18 @@ class PostgreSQLDatabase implements IDatabase {
         throw new Error("No valid questions available");
       }
 
-      // Step 4: Shuffle questions and answers with user-specific entropy
+      // Step 4: Apply word shuffling if all questions were answered
+      let questionsToProcess = validSelectedQuestions;
+      if (shouldApplyWordShuffling) {
+        console.log(`🔄 Applying word shuffling to all questions`);
+        questionsToProcess = validSelectedQuestions.map((q, index) =>
+          this.applyWordShuffling(q, (filters.userId || 0) + index * 1000)
+        );
+      }
+
+      // Step 5: Shuffle questions and answers with user-specific entropy
       const shuffledQuestions = this.shuffleQuestionsAndAnswers(
-        validSelectedQuestions,
+        questionsToProcess,
         filters.userId
       );
 
@@ -523,19 +563,21 @@ class PostgreSQLDatabase implements IDatabase {
         throw new Error("Failed to shuffle questions");
       }
 
-      // Step 5: Additional randomization pass to ensure uniqueness
+      // Step 6: Additional randomization pass to ensure uniqueness
+      // Use timestamp in seed to ensure different questions each time
+      const timestampSeed = Date.now();
       const finalQuestions = this.cryptoSecureShuffle(
         shuffledQuestions,
-        this.generateUserSpecificSeed(filters.userId)
+        this.generateUserSpecificSeed(filters.userId) + timestampSeed
       ).filter((q) => q && q.id && q.text); // Final safety filter
 
-      // Step 6: Track question history if user provided
-      if (filters.userId && finalQuestions.length > 0) {
-        await this.trackSelectedQuestions(filters.userId, finalQuestions);
-      }
+      // Note: We do NOT track questions here when they're selected
+      // Questions are only tracked when actually ANSWERED via /api/question-analytics/track
+      // This ensures that if a user exits without completing the game, they can see different questions on restart
 
       console.log(
-        `✅ Selected ${finalQuestions.length} unique questions with enhanced randomization`
+        `✅ Selected ${finalQuestions.length} unique questions with enhanced randomization` +
+        (shouldApplyWordShuffling ? " (with word shuffling applied)" : "")
       );
       return finalQuestions;
     } catch (error) {
@@ -2519,8 +2561,20 @@ class PostgreSQLDatabase implements IDatabase {
   }
 
   // User question history methods
-  async getUserQuestionHistory(userId: number, hoursBack: number = 48): Promise<UserQuestionHistory[]> {
+  async getUserQuestionHistory(userId: number, hoursBack?: number): Promise<UserQuestionHistory[]> {
     try {
+      // If hoursBack is undefined or null, return ALL answered questions
+      // If hoursBack is 0 or negative, also return ALL answered questions
+      if (hoursBack === undefined || hoursBack === null || hoursBack <= 0) {
+        const result = await db
+          .select()
+          .from(userQuestionHistory)
+          .where(eq(userQuestionHistory.userId, userId))
+          .orderBy(desc(userQuestionHistory.createdAt));
+        return result as UserQuestionHistory[];
+      }
+      
+      // Otherwise, filter by time period
       const cutoffTime = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
       const result = await db
         .select()
@@ -2565,6 +2619,110 @@ class PostgreSQLDatabase implements IDatabase {
       console.log(`Cleaned up question history older than ${hoursBack} hours`);
     } catch (error) {
       console.error("Error cleaning up old question history:", error);
+    }
+  }
+
+  /**
+   * Check if user has answered all available questions matching the filters
+   */
+  async hasAnsweredAllQuestions(
+    userId: number,
+    category?: string,
+    difficulty?: string
+  ): Promise<boolean> {
+    try {
+      // Get all unique questions user has answered
+      const allAnsweredHistory = await this.getUserQuestionHistory(userId);
+      const answeredQuestionIds = new Set(
+        allAnsweredHistory.map(h => h.questionId)
+      );
+
+      // Get all available questions matching filters
+      const allQuestions = await this.getQuestions({
+        category,
+        difficulty,
+      });
+
+      // Filter questions based on category and difficulty
+      let filteredQuestions = allQuestions;
+      if (category && category !== "All Categories") {
+        filteredQuestions = filteredQuestions.filter(
+          q => q.category === category
+        );
+      }
+      if (difficulty && difficulty !== "All") {
+        filteredQuestions = filteredQuestions.filter(
+          q => q.difficulty === difficulty
+        );
+      }
+
+      // Check if all filtered questions have been answered
+      const allAnswered = filteredQuestions.every(
+        q => answeredQuestionIds.has(q.id)
+      );
+
+      console.log(
+        `📊 User ${userId} has answered ${answeredQuestionIds.size} questions. ` +
+        `Available questions: ${filteredQuestions.length}. ` +
+        `All answered: ${allAnswered}`
+      );
+
+      return allAnswered && filteredQuestions.length > 0;
+    } catch (error) {
+      console.error("Error checking if all questions answered:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Shuffle words within a text string while preserving punctuation
+   */
+  private shuffleWordsInText(text: string, seed?: number): string {
+    if (!text || text.trim().length === 0) {
+      return text;
+    }
+
+    // Split text into words (using space as delimiter, preserving punctuation with words)
+    const words = text.split(/\s+/).filter(word => word.length > 0);
+
+    if (words.length <= 1) {
+      return text; // Don't shuffle if 1 or fewer words
+    }
+
+    // Use seeded shuffle for words
+    const shuffledWords = this.seededShuffle([...words], seed || 0);
+
+    // Join words back with spaces
+    return shuffledWords.join(" ");
+  }
+
+  /**
+   * Apply word shuffling to question text and answer text
+   */
+  private applyWordShuffling(question: Question, seed?: number): Question {
+    try {
+      const questionSeed = seed || (question.id.charCodeAt(0) || 0);
+      
+      // Shuffle words in question text
+      const shuffledText = this.shuffleWordsInText(question.text, questionSeed);
+      
+      // Shuffle words in each answer text
+      const shuffledAnswers = question.answers.map((answer, index) => ({
+        ...answer,
+        text: this.shuffleWordsInText(
+          answer.text,
+          questionSeed + (index + 1) * 1000
+        ),
+      }));
+
+      return {
+        ...question,
+        text: shuffledText,
+        answers: shuffledAnswers,
+      };
+    } catch (error) {
+      console.error(`Error applying word shuffling to question ${question.id}:`, error);
+      return question; // Return original if shuffling fails
     }
   }
 

@@ -23,6 +23,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Crown, Users, UserPlus, Check, X, Mail, Clock } from "lucide-react";
 import TeamDisplay from "./TeamDisplay";
+import ClockCountdown from "./ui/ClockCountdown";
 import { setupGameSocket, sendGameEvent, onEvent } from "@/lib/socket";
 
 export interface TeamBattleSetupProps {
@@ -1887,19 +1888,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             </div>
           </div>
 
-          {/* Countdown overlay when both captains are ready */}
+          {/* Enhanced Clock Countdown overlay when both captains are ready */}
           {countdown !== null && countdown > 0 && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
-              <div className="bg-white rounded-xl sm:rounded-2xl px-6 sm:px-8 md:px-10 py-6 sm:py-7 md:py-8 shadow-2xl border border-neutral-200 text-center max-w-sm w-full mx-4">
-                <p className="text-xs sm:text-sm font-medium text-neutral-500 mb-2">
-                  Both teams are ready
-                </p>
-                <h2 className="text-4xl sm:text-5xl font-bold text-primary mb-2 sm:mb-3">
-                  {countdown}
-                </h2>
-                <p className="text-sm sm:text-base text-neutral-600">Game starting soon...</p>
-              </div>
-            </div>
+            <ClockCountdown
+              countdown={countdown}
+              message="Both teams are ready"
+              subMessage="Game starting soon..."
+            />
           )}
 
           {/* Landing: Enter Team Battle */}
@@ -1983,7 +1978,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-5 border border-gray-200 shadow-sm">
                 <Label
                   htmlFor="teamName"
-                  className="text-xs sm:text-sm font-semibold text-gray-700 mb-2 block flex items-center gap-2"
+                  className="text-xs sm:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"
                 >
                   <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 flex-shrink-0" />
                   Team Name

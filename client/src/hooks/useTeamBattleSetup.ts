@@ -263,6 +263,7 @@ export function useTeamBattleSetup(gameSessionId?: string) {
     joinRequests,
     // helpers
     debouncedRefetch,
+    refetchOnlineUsers, // CRITICAL FIX: Export refetch function for manual refresh
     // mutations
     createTeamMutation,
     sendInvitationMutation,

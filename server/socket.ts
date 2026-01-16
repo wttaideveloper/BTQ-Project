@@ -362,6 +362,17 @@ const userConnections: Map<number, string[]> = new Map();
 // Store active team memberships for quick availability checking
 const activeTeamMemberships: Map<number, string> = new Map(); // userId -> teamId
 
+// Export function to check if a user is in an active team
+export function isUserInActiveTeam(userId: number): boolean {
+  return activeTeamMemberships.has(userId);
+}
+
+// Export function to get available user IDs (online and not in active teams)
+export function getAvailableUserIds(): number[] {
+  const onlineUserIds = getOnlineUserIds();
+  return onlineUserIds.filter(userId => !activeTeamMemberships.has(userId));
+}
+
 // Track pending disconnects with grace period (to handle page reload dialogs)
 interface PendingDisconnect {
   userId: number;

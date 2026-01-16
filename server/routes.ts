@@ -1623,28 +1623,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get online users for team invitations
   app.get("/api/users/online", ensureAuthenticated, async (req, res) => {
   try {
+    // CRITICAL FIX: Use getAvailableUserIds() which filters out users in active teams
+    // This ensures consistency with WebSocket broadcastOnlineStatusUpdate()
     const onlineUserIds = getOnlineUserIds();
+    
+    // Filter out users who are in active teams (same logic as broadcastOnlineStatusUpdate)
+    const { isUserInActiveTeam } = await import("./socket");
+    const availableUserIds = onlineUserIds.filter(
+      (userId: number) => !isUserInActiveTeam(userId)
+    );
+    
     // Filter out current user
-    const filteredUserIds = onlineUserIds.filter(
-      (userId) => userId !== req.user?.id
+    const filteredUserIds = availableUserIds.filter(
+      (userId: number) => userId !== req.user?.id
     );
 
     // Fetch user details from database
-    const userPromises = filteredUserIds.map(userId => 
+    const userPromises = filteredUserIds.map((userId: number) => 
       database.getUser(userId).then(user => {
         if (!user) return null;
         // Return only necessary fields, excluding sensitive data
         return {
           id: user.id,
           username: user.username,
-          email: user.email
-          // Add any other non-sensitive fields you need
+          email: user.email,
+          isOnline: true, // All users from getOnlineUserIds are online
         };
       })
     );
 
     const userDetails = (await Promise.all(userPromises)).filter(Boolean);
-    console.log(userDetails, 'onlineUsers');
+    console.log(`[GET /api/users/online] Returning ${userDetails.length} available users (filtered by activeTeamMemberships)`);
     res.json(userDetails);
   } catch (err) {
     console.error("Failed to fetch online users:", err);

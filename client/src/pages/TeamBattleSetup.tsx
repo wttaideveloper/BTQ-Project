@@ -32,6 +32,7 @@ import {
   ArrowLeft,
   Target,
   LogOut,
+  RefreshCw,
 } from "lucide-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -135,9 +136,21 @@ const TeamBattleSetup: React.FC = () => {
     onlineUsers = [],
     joinRequests = [],
     debouncedRefetch,
+    refetchOnlineUsers,
   } = useTeamBattleSetup(gameSessionId);
   
   const queryClient = useQueryClient();
+
+  // CRITICAL FIX #2: Force refresh online users when entering team battle
+  // This ensures fresh data when user starts a new battle
+  useEffect(() => {
+    if (user?.id && gameSessionId) {
+      // Clear cache and force refetch online users when entering team battle
+      queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+      refetchOnlineUsers();
+      console.log("[TeamBattleSetup Page] Force refreshed online users on entry");
+    }
+  }, [user?.id, gameSessionId, queryClient, refetchOnlineUsers]);
 
   // Generate or restore a game session ID - force new ID only when none exists
   useEffect(() => {
@@ -1732,9 +1745,27 @@ const TeamBattleSetup: React.FC = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <h4 className="font-medium text-gray-900">
-                      Online Players
-                    </h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-gray-900">
+                        Online Players
+                      </h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+                          refetchOnlineUsers();
+                          toast({
+                            title: "Refreshing...",
+                            description: "Updating available players list",
+                          });
+                        }}
+                        className="h-7 w-7 p-0 hover:bg-blue-100"
+                        title="Refresh Players"
+                      >
+                        <RefreshCw className="h-4 w-4 text-blue-600" />
+                      </Button>
+                    </div>
                     {onlineUsers.filter(
                       (onlineUser: User) =>
                         onlineUser.id !== user?.id &&

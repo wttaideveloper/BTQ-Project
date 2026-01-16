@@ -21,7 +21,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { Crown, Users, UserPlus, Check, X, Mail, Clock } from "lucide-react";
+import { Crown, Users, UserPlus, Check, X, Mail, Clock, RefreshCw } from "lucide-react";
 import TeamDisplay from "./TeamDisplay";
 import ClockCountdown from "./ui/ClockCountdown";
 import { setupGameSocket, sendGameEvent, onEvent } from "@/lib/socket";
@@ -915,6 +915,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     data: onlineUsers,
     isLoading,
     isError,
+    refetch: refetchOnlineUsers,
   } = useQuery<OnlineUser[]>({
     queryKey: ["/api/users/online"],
     queryFn: async () => {
@@ -923,7 +924,19 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     },
     enabled: open,
     refetchInterval: 3000,
+    staleTime: 5000, // CRITICAL FIX: Reduced from default to 5000 for faster updates
   });
+
+  // CRITICAL FIX #2: Force refresh online users when modal opens
+  // This ensures fresh data when user enters team battle
+  useEffect(() => {
+    if (open && user?.id) {
+      // Clear cache and force refetch online users when modal opens
+      queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+      refetchOnlineUsers();
+      console.log("[TeamBattleSetup Modal] Force refreshed online users on open");
+    }
+  }, [open, user?.id, queryClient, refetchOnlineUsers]);
 
   // Get user's team invitations
   const { data: invitations = [] } = useQuery<TeamInvitation[]>({
@@ -1693,9 +1706,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-black/80 via-primary-dark/80 to-secondary-dark/80 backdrop-blur-sm flex items-center justify-center z-50 py-2 sm:py-4 md:py-6 px-2 sm:px-4">
-      <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-3xl mx-auto my-auto max-h-[98vh] sm:max-h-[95vh] overflow-hidden border border-white/20">
+      <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-3xl mx-auto my-auto max-h-[98vh] sm:max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden border border-white/20">
         {/* Header Section */}
-        <div className="bg-gradient-to-r from-primary via-primary-dark to-secondary p-3 sm:p-4 md:p-6 relative overflow-hidden">
+        <div className="bg-gradient-to-r from-primary via-primary-dark to-secondary p-3 sm:p-4 md:p-6 relative overflow-hidden flex-shrink-0">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
           <div className="relative z-10 flex justify-between items-center gap-2">
             <Button
@@ -1728,7 +1741,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="overflow-y-auto max-h-[calc(98vh-140px)] sm:max-h-[calc(95vh-180px)] p-3 sm:p-4 md:p-6 bg-white/95">
+        <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-4 md:p-6 bg-white/95 pb-6 sm:pb-8 md:pb-10">
           {/* Game Configuration Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border border-blue-200/50 shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -2227,10 +2240,28 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
               <div className="bg-white rounded-lg sm:rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-3 sm:px-4 md:px-5 py-2 sm:py-3 border-b border-gray-200">
-                  <h4 className="font-heading font-bold text-sm sm:text-base text-gray-900 flex items-center gap-2">
-                    <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
-                    <span>Available Opponents</span>
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-heading font-bold text-sm sm:text-base text-gray-900 flex items-center gap-2">
+                      <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
+                      <span>Available Opponents</span>
+                    </h4>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+                        refetchOnlineUsers();
+                        toast({
+                          title: "Refreshing...",
+                          description: "Updating available opponents list",
+                        });
+                      }}
+                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-green-100"
+                      title="Refresh Opponents"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-600" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="max-h-48 sm:max-h-64 overflow-y-auto">
                   {isLoading && (
@@ -2590,7 +2621,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
       {/* Team Name Dialog for Opponent Invitations */}
       <Dialog open={showTeamNameDialog} onOpenChange={setShowTeamNameDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Crown className="h-5 w-5 text-yellow-500" />
@@ -2628,7 +2659,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </ul>
             </div>
           </div>
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -2636,6 +2667,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 setPendingInvitationId(null);
                 setNewTeamName("");
               }}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -2644,7 +2676,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               disabled={
                 !newTeamName.trim() || respondToInvitationMutation.isPending
               }
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
             >
               {respondToInvitationMutation.isPending
                 ? "Creating Team..."
@@ -2659,7 +2691,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         open={showBackConfirmation}
         onOpenChange={setShowBackConfirmation}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <X className="h-5 w-5 text-red-500" />
@@ -2682,17 +2714,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </ul>
             </div>
           </div>
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2">
             <Button
               variant="outline"
               onClick={() => setShowBackConfirmation(false)}
+              className="w-full sm:w-auto"
             >
               Stay in Setup
             </Button>
             <Button
               onClick={handleConfirmBack}
               disabled={leaveTeamMutation.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto"
             >
               {leaveTeamMutation.isPending ? "Leaving..." : "Yes, Leave Team"}
             </Button>
@@ -2705,7 +2738,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         open={showOpponentDisconnectedDialog}
         onOpenChange={setShowOpponentDisconnectedDialog}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <X className="h-5 w-5 text-red-500" />
@@ -2733,10 +2766,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </ul>
             </div>
           </div>
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2">
             <Button
               variant="outline"
               onClick={() => setShowOpponentDisconnectedDialog(false)}
+              className="w-full sm:w-auto"
             >
               Continue Waiting
             </Button>
@@ -2748,7 +2782,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 setShowOpponentDisconnectedDialog(false);
               }}
               disabled={leaveTeamMutation.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto"
             >
               {leaveTeamMutation.isPending ? "Leaving..." : "Leave Team"}
             </Button>

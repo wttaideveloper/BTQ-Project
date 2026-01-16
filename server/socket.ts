@@ -5399,11 +5399,13 @@ async function endTeamBattle(gameId: string, reason?: string) {
 
     // CRITICAL FIX: Remove all team members from activeTeamMemberships cache
     // This makes them available again for new battles
+    const removedUserIds: number[] = [];
     for (const team of gameSession.teams) {
       if (team.members && Array.isArray(team.members)) {
         for (const member of team.members) {
           if (member.userId && typeof member.userId === 'number') {
             activeTeamMemberships.delete(member.userId);
+            removedUserIds.push(member.userId);
             console.log(`[endTeamBattle] Removed user ${member.userId} (${member.username || 'unknown'}) from activeTeamMemberships`);
           }
         }
@@ -5414,8 +5416,26 @@ async function endTeamBattle(gameId: string, reason?: string) {
     gameSessions.delete(gameId);
 
     // CRITICAL FIX: Broadcast online status update so all clients see updated available opponents
-    await broadcastOnlineStatusUpdate();
-    console.log(`[endTeamBattle] Battle ended for gameId: ${gameId}, all participants marked as available`);
+    // Use a small delay to ensure all cleanup is complete before broadcasting
+    // This ensures consistency, especially in hosted environments
+    setTimeout(async () => {
+      try {
+        await broadcastOnlineStatusUpdate();
+        console.log(`[endTeamBattle] ✅ Broadcasted online status update after removing ${removedUserIds.length} users from activeTeamMemberships`);
+      } catch (error) {
+        console.error(`[endTeamBattle] Error broadcasting online status update:`, error);
+        // Retry once after a short delay
+        setTimeout(async () => {
+          try {
+            await broadcastOnlineStatusUpdate();
+            console.log(`[endTeamBattle] ✅ Retry: Broadcasted online status update`);
+          } catch (retryError) {
+            console.error(`[endTeamBattle] Retry failed:`, retryError);
+          }
+        }, 500);
+      }
+    }, 100); // Small delay to ensure all cleanup is complete
+    console.log(`[endTeamBattle] Battle ended for gameId: ${gameId}, ${removedUserIds.length} participants marked as available`);
   } catch (error) {
     console.error(`[endTeamBattle] Error ending battle:`, error);
 
@@ -5436,18 +5456,36 @@ async function endTeamBattle(gameId: string, reason?: string) {
     }
 
     // CRITICAL FIX: Even on error, try to clean up memberships and broadcast
+    const removedUserIdsOnError: number[] = [];
     try {
       for (const team of gameSession.teams || []) {
         if (team.members && Array.isArray(team.members)) {
           for (const member of team.members) {
             if (member.userId && typeof member.userId === 'number') {
               activeTeamMemberships.delete(member.userId);
+              removedUserIdsOnError.push(member.userId);
               console.log(`[endTeamBattle] Error cleanup: Removed user ${member.userId} from activeTeamMemberships`);
             }
           }
         }
       }
-      await broadcastOnlineStatusUpdate();
+      // Broadcast with retry on error
+      setTimeout(async () => {
+        try {
+          await broadcastOnlineStatusUpdate();
+          console.log(`[endTeamBattle] ✅ Error path: Broadcasted online status update for ${removedUserIdsOnError.length} users`);
+        } catch (cleanupError) {
+          console.error(`[endTeamBattle] Error broadcasting in cleanup:`, cleanupError);
+          // Final retry
+          setTimeout(async () => {
+            try {
+              await broadcastOnlineStatusUpdate();
+            } catch (finalError) {
+              console.error(`[endTeamBattle] Final retry failed:`, finalError);
+            }
+          }, 500);
+        }
+      }, 100);
     } catch (cleanupError) {
       console.error(`[endTeamBattle] Error during cleanup:`, cleanupError);
     }

@@ -532,6 +532,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             onClose();
             break;
           }
+
+          case "online_users_updated": {
+            // CRITICAL FIX: Immediately invalidate online users cache when battle ends
+            // This ensures opponents appear as available immediately after battle ends
+            console.log("[TeamBattleSetup Modal] Received online_users_updated event, invalidating cache");
+            queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+            // Also force immediate refetch
+            queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+            break;
+          }
         }
       } catch (error) {
         // Silent error handling

@@ -136,6 +136,8 @@ const TeamBattleSetup: React.FC = () => {
     joinRequests = [],
     debouncedRefetch,
   } = useTeamBattleSetup(gameSessionId);
+  
+  const queryClient = useQueryClient();
 
   // Generate or restore a game session ID - force new ID only when none exists
   useEffect(() => {
@@ -345,6 +347,14 @@ const TeamBattleSetup: React.FC = () => {
       }
     });
 
+    // CRITICAL FIX: Listen for online_users_updated to immediately refresh available opponents
+    const offOnlineUsersUpdated = onEvent("online_users_updated", () => {
+      console.log("[TeamBattleSetup Page] Received online_users_updated event, invalidating cache");
+      // Immediately invalidate and refetch online users list
+      queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+      queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+    });
+
     return () => {
       offTeamUpdated();
       offTeamCreated();
@@ -354,8 +364,9 @@ const TeamBattleSetup: React.FC = () => {
       offJoinRequestCreated();
       offJoinRequestUpdated();
       offTeamBattleStarted();
+      offOnlineUsersUpdated();
     };
-  }, [user?.id, teams, debouncedRefetch, toast, gameSessionId, setLocation]);
+  }, [user?.id, teams, debouncedRefetch, toast, gameSessionId, setLocation, queryClient]);
 
   // joinRequests provided by hook
 

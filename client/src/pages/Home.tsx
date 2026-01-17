@@ -742,28 +742,58 @@ const Home: React.FC = () => {
                         setIsLoadingTeamBattle(true);
                         
                         try {
-                          // CRITICAL: Clear all team battle related cache before opening
-                          // This ensures fresh start every time user enters team battle
-                          console.log("[Home] Enter Team Battle clicked - clearing cache");
+                          // ========================================================================
+                          // STEP 1: Clear all team battle related cache (client-side)
+                          // ========================================================================
+                          console.log("[Home] 🧹 Enter Team Battle clicked - starting cleanup");
+                          console.log("[Home] Step 1: Clearing client-side cache");
+                          
                           queryClient.removeQueries({ queryKey: ["/api/teams"] });
                           queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
                           queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
                           queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
                           queryClient.removeQueries({ queryKey: ["/api/users/online"] });
                           
-                          // Optional: Clean up server-side stale data
+                          console.log("[Home] ✅ Step 1: Client-side cache cleared");
+                          
+                          // ========================================================================
+                          // STEP 2: Clean up server-side stale data (CRITICAL)
+                          // ========================================================================
+                          console.log("[Home] Step 2: Starting server-side cleanup");
+                          
                           try {
-                            await apiRequest("POST", "/api/team-battle/cleanup");
-                            console.log("[Home] Server-side cleanup completed");
+                            const response = await apiRequest("POST", "/api/team-battle/cleanup");
+                            const result = await response.json();
+                            
+                            if (result.success) {
+                              console.log("[Home] ✅ Step 2: Server-side cleanup completed", result.stats);
+                            } else {
+                              console.warn("[Home] ⚠️ Step 2: Server-side cleanup completed with warnings", result);
+                            }
                           } catch (err) {
                             // Non-critical, continue anyway
-                            console.log("[Home] Cleanup request failed (non-critical):", err);
+                            console.error("[Home] ⚠️ Step 2: Cleanup request failed (non-critical, continuing):", err);
                           }
                           
-                          // Also invalidate to force refetch
+                          // ========================================================================
+                          // STEP 3: Invalidate queries to force fresh refetch when modal opens
+                          // ========================================================================
+                          console.log("[Home] Step 3: Invalidating queries for fresh data");
+                          
                           queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
                           
+                          console.log("[Home] ✅ Step 3: Queries invalidated");
+                          
+                          // ========================================================================
+                          // STEP 4: Open modal after cleanup is complete
+                          // ========================================================================
+                          console.log("[Home] ✅ All cleanup complete - opening Team Battle modal");
+                          setShowTeamBattleSetup(true);
+                          
+                        } catch (error) {
+                          // If anything fails, still open modal (non-blocking)
+                          console.error("[Home] ⚠️ Error during cleanup (opening modal anyway):", error);
                           setShowTeamBattleSetup(true);
                         } finally {
                           // Reset loading state after a short delay to ensure smooth transition

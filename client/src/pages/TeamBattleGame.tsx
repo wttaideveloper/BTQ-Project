@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { setupGameSocket, sendGameEvent, closeGameSocket } from "@/lib/socket";
+import { apiRequest } from "@/lib/queryClient";
 import TeamBattleQuestionBoard, {
   SuggestionsByAnswerId,
 } from "@/components/TeamBattleQuestionBoard";
@@ -651,11 +652,11 @@ export default function TeamBattleGame() {
     return gameState.playerTeam?.captainId === user?.id;
   };
 
-  const handleExitGame = () => {
+  const handleExitGame = async () => {
     // Mark that user is explicitly exiting - prevent automatic redirects
     isExitingRef.current = true;
     
-    // Inform server we are leaving, close socket, and navigate home
+    // Inform server we are leaving
     try {
       sendGameEvent({
         type: "player_leaving_team_battle",
@@ -667,11 +668,22 @@ export default function TeamBattleGame() {
     } catch (e) {
       // Silent error handling
     }
+    
+    // CRITICAL: Clean up server-side team battle data
+    try {
+      await apiRequest("POST", "/api/team-battle/cleanup");
+      console.log("[TeamBattleGame] Server-side cleanup completed on exit");
+    } catch (err) {
+      // Non-critical, continue anyway
+      console.log("[TeamBattleGame] Cleanup request failed (non-critical):", err);
+    }
+    
     try {
       closeGameSocket();
     } catch (e) {
       // Silent error handling
     }
+    
     // Navigate to home immediately
     setLocation("/");
   };
@@ -706,7 +718,19 @@ export default function TeamBattleGame() {
         {/* Exit button - more prominent */}
         <div className="flex justify-center">
           <Button
-            onClick={() => {
+            onClick={async () => {
+              // Mark that user is explicitly exiting
+              isExitingRef.current = true;
+              
+              // CRITICAL: Clean up server-side team battle data
+              try {
+                await apiRequest("POST", "/api/team-battle/cleanup");
+                console.log("[TeamBattleGame] Server-side cleanup completed on exit (waiting phase)");
+              } catch (err) {
+                // Non-critical, continue anyway
+                console.log("[TeamBattleGame] Cleanup request failed (non-critical):", err);
+              }
+              
               try {
                 closeGameSocket();
               } catch (e) {
@@ -1347,7 +1371,7 @@ export default function TeamBattleGame() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
+              onClick={async () => {
                 // Mark that user is explicitly exiting
                 isExitingRef.current = true;
                 
@@ -1360,6 +1384,16 @@ export default function TeamBattleGame() {
                     username: user?.username,
                   });
                 } catch (e) {}
+                
+                // CRITICAL: Clean up server-side team battle data
+                try {
+                  await apiRequest("POST", "/api/team-battle/cleanup");
+                  console.log("[TeamBattleGame] Server-side cleanup completed on leave");
+                } catch (err) {
+                  // Non-critical, continue anyway
+                  console.log("[TeamBattleGame] Cleanup request failed (non-critical):", err);
+                }
+                
                 try {
                   closeGameSocket();
                 } catch (e) {}

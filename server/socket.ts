@@ -159,7 +159,7 @@ const gameSessions: Map<
 > = new Map();
 
 // In-memory ready state for team battles (per battle, per side)
-const teamBattleReadyState: Map<
+export const teamBattleReadyState: Map<
   string,
   {
     teamAReady: boolean;
@@ -5905,8 +5905,42 @@ async function declareTeamBattleWinner(
       }
     }
 
+    // CRITICAL FIX: Remove all team members from activeTeamMemberships cache
+    // This makes them available again for new battles
+    const removedUserIds: number[] = [];
+    for (const team of gameSession.teams) {
+      if (team.members && Array.isArray(team.members)) {
+        for (const member of team.members) {
+          if (member.userId && typeof member.userId === 'number') {
+            activeTeamMemberships.delete(member.userId);
+            removedUserIds.push(member.userId);
+            console.log(`[declareTeamBattleWinner] Removed user ${member.userId} (${member.username || 'unknown'}) from activeTeamMemberships`);
+          }
+        }
+      }
+    }
+
     // Clean up game session
     gameSessions.delete(gameId);
+
+    // CRITICAL FIX: Broadcast online status update so all clients see updated available opponents
+    setTimeout(async () => {
+      try {
+        await broadcastOnlineStatusUpdate();
+        console.log(`[declareTeamBattleWinner] ✅ Broadcasted online status update after removing ${removedUserIds.length} users from activeTeamMemberships`);
+      } catch (error) {
+        console.error(`[declareTeamBattleWinner] Error broadcasting online status update:`, error);
+        // Retry once after a short delay
+        setTimeout(async () => {
+          try {
+            await broadcastOnlineStatusUpdate();
+            console.log(`[declareTeamBattleWinner] ✅ Retry: Broadcasted online status update`);
+          } catch (retryError) {
+            console.error(`[declareTeamBattleWinner] Retry failed:`, retryError);
+          }
+        }, 500);
+      }
+    }, 300);
   } catch (error) {
     // Silent error handling
 
@@ -5924,6 +5958,33 @@ async function declareTeamBattleWinner(
         timestamp: new Date(),
       });
       client.gameId = undefined;
+    }
+
+    // CRITICAL FIX: Even on error, try to clean up memberships and broadcast
+    const removedUserIdsOnError: number[] = [];
+    try {
+      for (const team of gameSession.teams || []) {
+        if (team.members && Array.isArray(team.members)) {
+          for (const member of team.members) {
+            if (member.userId && typeof member.userId === 'number') {
+              activeTeamMemberships.delete(member.userId);
+              removedUserIdsOnError.push(member.userId);
+              console.log(`[declareTeamBattleWinner] Error cleanup: Removed user ${member.userId} from activeTeamMemberships`);
+            }
+          }
+        }
+      }
+      // Broadcast with retry on error
+      setTimeout(async () => {
+        try {
+          await broadcastOnlineStatusUpdate();
+          console.log(`[declareTeamBattleWinner] ✅ Error path: Broadcasted online status update for ${removedUserIdsOnError.length} users`);
+        } catch (cleanupError) {
+          console.error(`[declareTeamBattleWinner] Error broadcasting in cleanup:`, cleanupError);
+        }
+      }, 100);
+    } catch (cleanupError) {
+      console.error(`[declareTeamBattleWinner] Error during cleanup:`, cleanupError);
     }
 
     gameSessions.delete(gameId);
@@ -6388,6 +6449,13 @@ async function handlePlayerLeavingTeamBattle(clientId: string, event: GameEvent)
           c.ws.readyState === WebSocket.CLOSING
       );
 
+    // CRITICAL FIX: Remove leaving player from activeTeamMemberships
+    // This makes them available again for new battles
+    if (activeTeamMemberships.has(userId)) {
+      activeTeamMemberships.delete(userId);
+      console.log(`[handlePlayerLeavingTeamBattle] Removed user ${userId} (${username || 'unknown'}) from activeTeamMemberships`);
+    }
+
     if (allTeamMembersOffline) {
       // Entire team left intentionally - declare winner
       const opposingTeam = gameSession.teams.find(
@@ -6395,11 +6463,29 @@ async function handlePlayerLeavingTeamBattle(clientId: string, event: GameEvent)
       );
 
       if (opposingTeam) {
+        // Remove all leaving team members from activeTeamMemberships
+        for (const member of leavingTeam.members) {
+          if (member.userId && typeof member.userId === 'number') {
+            activeTeamMemberships.delete(member.userId);
+            console.log(`[handlePlayerLeavingTeamBattle] Removed team member ${member.userId} (${member.username || 'unknown'}) from activeTeamMemberships`);
+          }
+        }
+        
         await declareTeamBattleWinner(
           gameSessionId,
           opposingTeam,
           `Opponent team (${leavingTeam.name}) has left the battle`
         );
+        
+        // Broadcast online status update after cleanup
+        setTimeout(async () => {
+          try {
+            await broadcastOnlineStatusUpdate();
+            console.log(`[handlePlayerLeavingTeamBattle] ✅ Broadcasted online status update after team left`);
+          } catch (broadcastError) {
+            console.error(`[handlePlayerLeavingTeamBattle] Error broadcasting update:`, broadcastError);
+          }
+        }, 300);
       }
     } else {
       // Only one player left - notify opposing team
@@ -6420,9 +6506,20 @@ async function handlePlayerLeavingTeamBattle(clientId: string, event: GameEvent)
           leavingMember?.username || username || "Unknown Player",
           leavingTeam.name
         );
+        
+        // Broadcast online status update after cleanup
+        setTimeout(async () => {
+          try {
+            await broadcastOnlineStatusUpdate();
+            console.log(`[handlePlayerLeavingTeamBattle] ✅ Broadcasted online status update after player left`);
+          } catch (broadcastError) {
+            console.error(`[handlePlayerLeavingTeamBattle] Error broadcasting update:`, broadcastError);
+          }
+        }, 300);
       }
     }
   } catch (error) {
     // Silent error handling
+    console.error(`[handlePlayerLeavingTeamBattle] Error:`, error);
   }
 }

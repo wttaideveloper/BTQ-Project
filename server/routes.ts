@@ -1948,7 +1948,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[Cleanup] 🧹 Starting comprehensive cleanup for user ${userId}`);
       
       // Import socket functions
-      const { activeTeamMemberships, broadcastOnlineStatusUpdate } = await import("./socket");
+      const { activeTeamMemberships, broadcastOnlineStatusUpdate, teamBattleReadyState } = await import("./socket");
       
       let changesMade = false;
       const cleanupStats = {
@@ -2003,6 +2003,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           activeTeamMemberships.delete(battle.teamBCaptainId);
           changesMade = true;
           console.log(`[Cleanup] ✅ Removed Team B captain ${battle.teamBCaptainId} from activeTeamMemberships`);
+        }
+        
+        // CRITICAL FIX: Clear ready state from memory for this battle
+        if (teamBattleReadyState.has(battle.id)) {
+          teamBattleReadyState.delete(battle.id);
+          changesMade = true;
+          console.log(`[Cleanup] ✅ Cleared ready state from memory for battle ${battle.id}`);
         }
         
         // Delete the battle

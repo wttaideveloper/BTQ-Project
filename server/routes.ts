@@ -1932,7 +1932,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Cleanup endpoint - removes user from activeTeamMemberships and cleans up old teams
+  // ============================================================================
+  // PHASE 2: SERVER-SIDE CLEANUP ENDPOINT
+  // ============================================================================
+  // This endpoint performs comprehensive cleanup when Team Battle modal opens.
+  // It's idempotent (safe to call multiple times) and synchronous (awaited).
+  // ============================================================================
   app.post("/api/team-battle/cleanup", ensureAuthenticated, async (req, res) => {
     try {
       if (!req.user) {
@@ -1940,59 +1945,183 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = req.user.id;
+      console.log(`[Cleanup] 🧹 Starting comprehensive cleanup for user ${userId}`);
       
       // Import socket functions
       const { activeTeamMemberships, broadcastOnlineStatusUpdate } = await import("./socket");
       
-      // Remove user from activeTeamMemberships if they're in it
+      let changesMade = false;
+      const cleanupStats = {
+        removedFromActiveTeam: false,
+        removedOldTeams: 0,
+        removedTeammates: 0,
+        expiredInvitations: 0,
+        expiredJoinRequests: 0,
+      };
+      
+      // ========================================================================
+      // STEP 1: Remove user from activeTeamMemberships
+      // ========================================================================
       const wasInTeam = activeTeamMemberships.has(userId);
       if (wasInTeam) {
         activeTeamMemberships.delete(userId);
-        console.log(`[Cleanup] Removed user ${userId} from activeTeamMemberships`);
+        cleanupStats.removedFromActiveTeam = true;
+        changesMade = true;
+        console.log(`[Cleanup] ✅ Removed user ${userId} from activeTeamMemberships`);
       }
       
-      // Clean up any old "forming" teams created by this user
+      // ========================================================================
+      // STEP 2: Delete all old "forming" teams created by this user
+      // ========================================================================
       const existingBattles = await database.getTeamBattlesByUser(userId, 'forming');
-      let removedTeammates = 0;
+      cleanupStats.removedOldTeams = existingBattles.length;
       
       for (const battle of existingBattles) {
-        console.log(`[Cleanup] Removing old forming team for user ${userId}: battle ${battle.id}`);
-        await database.deleteTeamBattle(battle.id);
+        console.log(`[Cleanup] 🗑️ Removing old forming team for user ${userId}: battle ${battle.id}`);
         
-        // Also remove any teammates from activeTeamMemberships
+        // Remove all teammates from activeTeamMemberships
         const allTeammateIds = [
           ...(battle.teamATeammates || []),
           ...(battle.teamBTeammates || [])
         ];
         for (const teammateId of allTeammateIds) {
-          activeTeamMemberships.delete(teammateId);
-          removedTeammates++;
+          if (activeTeamMemberships.has(teammateId)) {
+            activeTeamMemberships.delete(teammateId);
+            cleanupStats.removedTeammates++;
+            changesMade = true;
+            console.log(`[Cleanup] ✅ Removed teammate ${teammateId} from activeTeamMemberships`);
+          }
         }
         
-        // Remove captains too
-        if (battle.teamACaptainId) {
+        // Remove captains from activeTeamMemberships
+        if (battle.teamACaptainId && activeTeamMemberships.has(battle.teamACaptainId)) {
           activeTeamMemberships.delete(battle.teamACaptainId);
+          changesMade = true;
+          console.log(`[Cleanup] ✅ Removed Team A captain ${battle.teamACaptainId} from activeTeamMemberships`);
         }
-        if (battle.teamBCaptainId) {
+        if (battle.teamBCaptainId && activeTeamMemberships.has(battle.teamBCaptainId)) {
           activeTeamMemberships.delete(battle.teamBCaptainId);
+          changesMade = true;
+          console.log(`[Cleanup] ✅ Removed Team B captain ${battle.teamBCaptainId} from activeTeamMemberships`);
         }
+        
+        // Delete the battle
+        await database.deleteTeamBattle(battle.id);
+        changesMade = true;
       }
       
-      // Broadcast update if we made changes
-      if (wasInTeam || existingBattles.length > 0) {
-        await broadcastOnlineStatusUpdate();
-        console.log(`[Cleanup] Broadcasted online status update after cleanup`);
+      if (existingBattles.length > 0) {
+        console.log(`[Cleanup] ✅ Deleted ${existingBattles.length} old forming team(s)`);
       }
+      
+      // ========================================================================
+      // STEP 3: Cancel/expire all pending invitations (inviter AND invitee)
+      // ========================================================================
+      try {
+        // Get all pending invitations where user is either inviter or invitee
+        const allPendingInvitations = await database.getAllTeamInvitationsByUser(userId, "pending");
+        
+        for (const invitation of allPendingInvitations) {
+          // Update invitation status to expired
+          await database.updateTeamInvitation(invitation.id, {
+            status: "expired",
+          });
+          
+          cleanupStats.expiredInvitations++;
+          changesMade = true;
+          
+          // Notify the other party (inviter if user is invitee, invitee if user is inviter)
+          const otherUserId = invitation.inviterId === userId 
+            ? invitation.inviteeId 
+            : invitation.inviterId;
+          
+          sendToUser(otherUserId, {
+            type: "invitation_expired",
+            invitation: invitation,
+            message: "This invitation has expired because the other party started a new team battle.",
+          });
+          
+          console.log(`[Cleanup] ✅ Expired invitation ${invitation.id} (user ${userId} was ${invitation.inviterId === userId ? 'inviter' : 'invitee'})`);
+        }
+        
+        if (allPendingInvitations.length > 0) {
+          console.log(`[Cleanup] ✅ Expired ${allPendingInvitations.length} pending invitation(s)`);
+        }
+      } catch (invitationError) {
+        console.error(`[Cleanup] ⚠️ Error expiring invitations (non-critical):`, invitationError);
+        // Continue - invitation cleanup failure shouldn't fail the whole cleanup
+      }
+      
+      // ========================================================================
+      // STEP 4: Cancel/expire all pending join requests (requester)
+      // ========================================================================
+      try {
+        // Get all pending join requests where user is the requester
+        const pendingJoinRequests = await database.getJoinRequestsByUser(userId);
+        const pendingRequests = pendingJoinRequests.filter(
+          (jr: any) => jr.status === "pending"
+        );
+        
+        for (const jr of pendingRequests) {
+          // Update join request status to expired
+          await database.updateJoinRequestStatus(jr.id, "expired");
+          
+          cleanupStats.expiredJoinRequests++;
+          changesMade = true;
+          
+          // Notify the user that their request expired
+          sendToUser(userId, {
+            type: "join_request_updated",
+            joinRequestId: jr.id,
+            status: "expired",
+            teamId: jr.team_id || jr.teamId,
+            requesterId: userId,
+            message: "This join request has expired because you started a new team battle.",
+          });
+          
+          console.log(`[Cleanup] ✅ Expired join request ${jr.id} for user ${userId}`);
+        }
+        
+        if (pendingRequests.length > 0) {
+          console.log(`[Cleanup] ✅ Expired ${pendingRequests.length} pending join request(s)`);
+        }
+      } catch (joinRequestError) {
+        console.error(`[Cleanup] ⚠️ Error expiring join requests (non-critical):`, joinRequestError);
+        // Continue - join request cleanup failure shouldn't fail the whole cleanup
+      }
+      
+      // ========================================================================
+      // STEP 5: Broadcast online status update (if any changes were made)
+      // ========================================================================
+      if (changesMade) {
+        try {
+          await broadcastOnlineStatusUpdate();
+          console.log(`[Cleanup] ✅ Broadcasted online status update after cleanup`);
+        } catch (broadcastError) {
+          console.error(`[Cleanup] ⚠️ Error broadcasting update (non-critical):`, broadcastError);
+          // Continue - broadcast failure shouldn't fail the cleanup response
+        }
+      } else {
+        console.log(`[Cleanup] ℹ️ No changes made - skipping broadcast`);
+      }
+      
+      // ========================================================================
+      // Return cleanup results
+      // ========================================================================
+      console.log(`[Cleanup] ✅ Cleanup completed for user ${userId}:`, cleanupStats);
       
       res.json({ 
         message: "Cleanup completed",
-        removedFromActiveTeam: wasInTeam,
-        removedOldTeams: existingBattles.length,
-        removedTeammates: removedTeammates
+        success: true,
+        stats: cleanupStats
       });
     } catch (err) {
-      console.error("Failed to cleanup team battle data:", err);
-      res.status(500).json({ message: "Failed to cleanup team battle data" });
+      console.error("[Cleanup] ❌ Failed to cleanup team battle data:", err);
+      res.status(500).json({ 
+        message: "Failed to cleanup team battle data",
+        success: false,
+        error: process.env.NODE_ENV === 'development' ? String(err) : undefined
+      });
     }
   });
 

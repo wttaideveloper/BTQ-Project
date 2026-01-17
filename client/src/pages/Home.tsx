@@ -39,6 +39,7 @@ import {
   Bell,
   HelpCircle,
   ChevronDown,
+  Loader2,
 } from "lucide-react";
 import GameSetup, { GameConfig } from "@/components/GameSetup";
 import TeamBattleSetup from "@/components/TeamBattleSetup";
@@ -59,6 +60,7 @@ const Home: React.FC = () => {
   const [showWelcomeTutorial, setShowWelcomeTutorial] = useState(false);
   const [showFAQ, setShowFAQ] = useState(false);
   const [titleEffect, setTitleEffect] = useState(false);
+  const [isLoadingTeamBattle, setIsLoadingTeamBattle] = useState(false);
   const { user, logoutMutation } = useAuth();
   const queryClient = useQueryClient();
 
@@ -736,33 +738,56 @@ const Home: React.FC = () => {
                     </div>
                     <Button
                       onClick={async () => {
-                        // CRITICAL: Clear all team battle related cache before opening
-                        // This ensures fresh start every time user enters team battle
-                        console.log("[Home] Enter Team Battle clicked - clearing cache");
-                        queryClient.removeQueries({ queryKey: ["/api/teams"] });
-                        queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
-                        queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
-                        queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
-                        queryClient.removeQueries({ queryKey: ["/api/users/online"] });
+                        // Set loading state
+                        setIsLoadingTeamBattle(true);
                         
-                        // Optional: Clean up server-side stale data
                         try {
-                          await apiRequest("POST", "/api/team-battle/cleanup");
-                          console.log("[Home] Server-side cleanup completed");
-                        } catch (err) {
-                          // Non-critical, continue anyway
-                          console.log("[Home] Cleanup request failed (non-critical):", err);
+                          // CRITICAL: Clear all team battle related cache before opening
+                          // This ensures fresh start every time user enters team battle
+                          console.log("[Home] Enter Team Battle clicked - clearing cache");
+                          queryClient.removeQueries({ queryKey: ["/api/teams"] });
+                          queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
+                          queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
+                          queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
+                          queryClient.removeQueries({ queryKey: ["/api/users/online"] });
+                          
+                          // Optional: Clean up server-side stale data
+                          try {
+                            await apiRequest("POST", "/api/team-battle/cleanup");
+                            console.log("[Home] Server-side cleanup completed");
+                          } catch (err) {
+                            // Non-critical, continue anyway
+                            console.log("[Home] Cleanup request failed (non-critical):", err);
+                          }
+                          
+                          // Also invalidate to force refetch
+                          queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+                          
+                          setShowTeamBattleSetup(true);
+                        } finally {
+                          // Reset loading state after a short delay to ensure smooth transition
+                          setTimeout(() => {
+                            setIsLoadingTeamBattle(false);
+                          }, 300);
                         }
-                        
-                        // Also invalidate to force refetch
-                        queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
-                        
-                        setShowTeamBattleSetup(true);
                       }}
-                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0"
+                      disabled={isLoadingTeamBattle}
+                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      <Sword className="mr-2 h-4 w-4 flex-shrink-0" /> <span className="hidden sm:inline">Enter Team Battle</span><span className="sm:hidden">Team Battle</span>
+                      {isLoadingTeamBattle ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 flex-shrink-0 animate-spin" />
+                          <span className="hidden sm:inline">Loading...</span>
+                          <span className="sm:hidden">Loading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sword className="mr-2 h-4 w-4 flex-shrink-0" />
+                          <span className="hidden sm:inline">Enter Team Battle</span>
+                          <span className="sm:hidden">Team Battle</span>
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>

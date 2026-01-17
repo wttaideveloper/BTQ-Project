@@ -120,7 +120,7 @@ export function useTeamBattleSetup(gameSessionId?: string) {
   });
 
   // Online users (for inviting)
-  const { data: onlineUsers = [] } = useQuery({
+  const { data: onlineUsers = [], refetch: refetchOnlineUsers } = useQuery({
     queryKey: ["/api/users/online"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/users/online");

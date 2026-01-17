@@ -98,6 +98,7 @@ export default function TeamBattleGame() {
   const gameStateRef = useRef<GameState>(gameState);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const isExitingRef = useRef<boolean>(false); // Track if user is explicitly exiting
   const [teamAnswer, setTeamAnswer] = useState<string | null>(null);
   const [memberAnswers, setMemberAnswers] = useState<Record<string, string>>(
     {}
@@ -211,6 +212,12 @@ export default function TeamBattleGame() {
 
           case "game_state_restored":
             // Handle game state restoration on page refresh/reconnect
+            // Don't redirect if user is explicitly exiting
+            if (isExitingRef.current) {
+              console.log("[TeamBattleGame] Ignoring game_state_restored - user is exiting");
+              break;
+            }
+            
             if (data.team) {
               updateTeamsData([data.team]);
               // Check if team is in a finished battle - redirect to setup
@@ -239,6 +246,12 @@ export default function TeamBattleGame() {
 
           case "no_active_game":
             // No active game found - redirect to setup page
+            // Don't redirect if user is explicitly exiting
+            if (isExitingRef.current) {
+              console.log("[TeamBattleGame] Ignoring no_active_game - user is exiting");
+              break;
+            }
+            
             toast({
               title: "No Active Battle",
               description: data.message || "No active team battle found. Redirecting to team setup.",
@@ -639,6 +652,9 @@ export default function TeamBattleGame() {
   };
 
   const handleExitGame = () => {
+    // Mark that user is explicitly exiting - prevent automatic redirects
+    isExitingRef.current = true;
+    
     // Inform server we are leaving, close socket, and navigate home
     try {
       sendGameEvent({
@@ -656,6 +672,7 @@ export default function TeamBattleGame() {
     } catch (e) {
       // Silent error handling
     }
+    // Navigate to home immediately
     setLocation("/");
   };
 
@@ -1331,6 +1348,9 @@ export default function TeamBattleGame() {
               variant="ghost"
               size="sm"
               onClick={() => {
+                // Mark that user is explicitly exiting
+                isExitingRef.current = true;
+                
                 try {
                   sendGameEvent({
                     type: "player_leaving_team_battle",
@@ -1343,6 +1363,7 @@ export default function TeamBattleGame() {
                 try {
                   closeGameSocket();
                 } catch (e) {}
+                // Navigate to home immediately
                 setLocation("/");
               }}
               className="flex-shrink-0 bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600/30 hover:border-red-500/50 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition-all duration-200 rounded-lg"

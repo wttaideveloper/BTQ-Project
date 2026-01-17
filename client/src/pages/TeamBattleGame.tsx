@@ -5,6 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Clock,
   Users,
   Crown,
@@ -15,6 +23,7 @@ import {
   Mic,
   MicOff,
   HelpCircle,
+  LogOut,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -118,6 +127,7 @@ export default function TeamBattleGame() {
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() =>
     isVoiceEnabled()
   );
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
 
 
   useEffect(() => {
@@ -653,10 +663,77 @@ export default function TeamBattleGame() {
   };
 
   const handleExitGame = async () => {
+    // Close the confirmation dialog
+    setShowExitConfirmation(false);
+    
     // Mark that user is explicitly exiting - prevent automatic redirects
     isExitingRef.current = true;
     
-    // Inform server we are leaving
+    // Helper function to add timeout to cleanup request
+    const cleanupWithTimeout = async (timeoutMs: number = 8000): Promise<void> => {
+      let cleanupSucceeded = false;
+      
+      try {
+        await Promise.race([
+          // Main cleanup request
+          apiRequest("POST", "/api/team-battle/cleanup")
+            .then(() => {
+              cleanupSucceeded = true;
+              console.log("[TeamBattleGame] Server-side cleanup completed on exit");
+            }),
+          // Timeout promise
+          new Promise<void>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error('Cleanup request timeout'));
+            }, timeoutMs);
+          })
+        ]);
+      } catch (err) {
+        // Timeout or other error - try fallback
+        console.log("[TeamBattleGame] Cleanup request failed or timed out, trying fallback:", err);
+        
+        // Fallback: Use sendBeacon if available (works even during page unload)
+        // Note: This is a best-effort fallback, may not work perfectly with JSON parsing
+        if (navigator.sendBeacon && !cleanupSucceeded) {
+          try {
+            // Use FormData as sendBeacon works better with it
+            const formData = new FormData();
+            formData.append('cleanup', 'true');
+            const success = navigator.sendBeacon('/api/team-battle/cleanup', formData);
+            if (success) {
+              console.log("[TeamBattleGame] Cleanup sent via sendBeacon (fallback)");
+            } else {
+              console.log("[TeamBattleGame] sendBeacon returned false");
+            }
+          } catch (beaconErr) {
+            console.log("[TeamBattleGame] sendBeacon also failed:", beaconErr);
+          }
+        }
+        
+        // Don't throw - allow navigation to continue even if cleanup fails
+        console.log("[TeamBattleGame] Cleanup timeout or error (non-critical):", err);
+      }
+    };
+
+    // Helper function with retry mechanism
+    const cleanupWithRetry = async (maxRetries: number = 2): Promise<void> => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          await cleanupWithTimeout(8000);
+          return; // Success, exit retry loop
+        } catch (err) {
+          if (attempt === maxRetries) {
+            console.log("[TeamBattleGame] Cleanup failed after all retries");
+            // Don't throw - allow navigation to continue
+            return;
+          }
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+    };
+    
+    // Inform server we are leaving (via WebSocket - fire and forget)
     try {
       sendGameEvent({
         type: "player_leaving_team_battle",
@@ -669,22 +746,26 @@ export default function TeamBattleGame() {
       // Silent error handling
     }
     
-    // CRITICAL: Clean up server-side team battle data
+    // CRITICAL: Clean up server-side team battle data with timeout and retry
+    // Wait for cleanup to complete (with timeout) before closing socket
     try {
-      await apiRequest("POST", "/api/team-battle/cleanup");
-      console.log("[TeamBattleGame] Server-side cleanup completed on exit");
+      await cleanupWithRetry(2); // 2 retries = 3 total attempts
     } catch (err) {
-      // Non-critical, continue anyway
-      console.log("[TeamBattleGame] Cleanup request failed (non-critical):", err);
+      // Already handled in cleanupWithRetry
     }
     
+    // Small delay to ensure server processes the cleanup
+    // This helps in production where network latency is higher
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Now close WebSocket after cleanup completes
     try {
       closeGameSocket();
     } catch (e) {
       // Silent error handling
     }
     
-    // Navigate to home immediately
+    // Navigate to home after cleanup completes
     setLocation("/");
   };
 
@@ -718,28 +799,10 @@ export default function TeamBattleGame() {
         {/* Exit button - more prominent */}
         <div className="flex justify-center">
           <Button
-            onClick={async () => {
-              // Mark that user is explicitly exiting
-              isExitingRef.current = true;
-              
-              // CRITICAL: Clean up server-side team battle data
-              try {
-                await apiRequest("POST", "/api/team-battle/cleanup");
-                console.log("[TeamBattleGame] Server-side cleanup completed on exit (waiting phase)");
-              } catch (err) {
-                // Non-critical, continue anyway
-                console.log("[TeamBattleGame] Cleanup request failed (non-critical):", err);
-              }
-              
-              try {
-                closeGameSocket();
-              } catch (e) {
-                // Silent error handling
-              }
-              setLocation("/");
-            }}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border-0 whitespace-nowrap w-full sm:w-auto"
+            onClick={() => setShowExitConfirmation(true)}
+            className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border-0 whitespace-nowrap w-full sm:w-auto shadow-lg hover:shadow-red-500/20 transition-all duration-200"
           >
+            <LogOut className="h-4 w-4 mr-2" />
             Exit to Home
           </Button>
         </div>
@@ -1288,11 +1351,11 @@ export default function TeamBattleGame() {
             <Button
               variant="outline"
               size="icon"
-              onClick={handleExitGame}
-              className="rounded-full transition-all duration-200 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 bg-red-600/20 text-red-400 border-red-500/30 hover:bg-red-600/30 hover:border-red-500/50"
+              onClick={() => setShowExitConfirmation(true)}
+              className="rounded-full transition-all duration-200 flex-shrink-0 h-9 w-9 sm:h-11 sm:w-11 bg-gradient-to-br from-red-500/20 to-red-600/20 text-red-400 border-2 border-red-500/40 hover:from-red-500/30 hover:to-red-600/30 hover:border-red-500/60 shadow-lg hover:shadow-red-500/20 hover:scale-105 active:scale-95"
               title="Exit game"
             >
-              <X size={16} className="sm:w-[18px] sm:h-[18px]" />
+              <LogOut size={18} className="sm:w-5 sm:h-5" />
             </Button>
           </div>
 
@@ -1366,45 +1429,6 @@ export default function TeamBattleGame() {
             >
               <HelpCircle size={16} className="sm:w-[18px] sm:h-[18px]" />
             </Button>
-
-            {/* Leave Game Button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                // Mark that user is explicitly exiting
-                isExitingRef.current = true;
-                
-                try {
-                  sendGameEvent({
-                    type: "player_leaving_team_battle",
-                    gameSessionId:
-                      gameState?.playerTeam?.gameSessionId || gameSessionId || undefined,
-                    userId: user?.id,
-                    username: user?.username,
-                  });
-                } catch (e) {}
-                
-                // CRITICAL: Clean up server-side team battle data
-                try {
-                  await apiRequest("POST", "/api/team-battle/cleanup");
-                  console.log("[TeamBattleGame] Server-side cleanup completed on leave");
-                } catch (err) {
-                  // Non-critical, continue anyway
-                  console.log("[TeamBattleGame] Cleanup request failed (non-critical):", err);
-                }
-                
-                try {
-                  closeGameSocket();
-                } catch (e) {}
-                // Navigate to home immediately
-                setLocation("/");
-              }}
-              className="flex-shrink-0 bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600/30 hover:border-red-500/50 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition-all duration-200 rounded-lg"
-            >
-              <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Leave Game</span>
-            </Button>
           </div>
         </header>
       </div>
@@ -1455,6 +1479,50 @@ export default function TeamBattleGame() {
           gameMode="team"
         />
       )}
+
+      {/* Exit Confirmation Dialog */}
+      <Dialog open={showExitConfirmation} onOpenChange={setShowExitConfirmation}>
+        <DialogContent className="sm:max-w-md bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white border border-white/20">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-center flex items-center justify-center gap-2">
+              <LogOut className="h-5 w-5 text-red-400" />
+              Exit Team Battle?
+            </DialogTitle>
+            <DialogDescription className="text-white/80 text-center pt-2">
+              Are you sure you want to leave the team battle? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2">
+              <p className="text-sm font-semibold text-red-400">What happens when you leave:</p>
+              <ul className="text-xs sm:text-sm text-white/70 space-y-1 list-disc list-inside">
+                <li>You will be removed from your team</li>
+                <li>Your team will continue without you</li>
+                <li>Your progress will be lost</li>
+                {gameState.phase === "question" && (
+                  <li className="text-red-400 font-semibold">The battle is currently in progress</li>
+                )}
+              </ul>
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowExitConfirmation(false)}
+              className="w-full sm:w-auto bg-white/5 border-white/30 text-white hover:bg-white/10 hover:border-white/40 hover:text-white transition-all duration-200"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExitGame}
+              className="w-full sm:w-auto bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold shadow-lg transition-all duration-200"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Yes, Exit Game
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

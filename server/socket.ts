@@ -158,6 +158,101 @@ const gameSessions: Map<
   }
 > = new Map();
 
+// Helper function to clean up game session and client gameIds for a battle
+export async function cleanupGameSessionForBattle(battleId: string, gameSessionId?: string) {
+  try {
+    // Find game session by battle ID or gameSessionId
+    let gameIdToClean: string | null = null;
+    
+    // Method 1: Search through gameSessions to find one matching this battle by teamBattleId
+    for (const [gameId, session] of gameSessions.entries()) {
+      if (session.gameType === "team_battle" && session.teams) {
+        // Check if any team in this session matches the battle
+        const matchingTeam = session.teams.find((team: any) => 
+          team.teamBattleId === battleId
+        );
+        if (matchingTeam) {
+          gameIdToClean = gameId;
+          break;
+        }
+      }
+    }
+    
+    // Method 2: If not found and gameSessionId provided, search by gameSessionId
+    // (clients might have gameSessionId set even if gameSession doesn't exist yet)
+    if (!gameIdToClean && gameSessionId) {
+      // Check if any client has this gameSessionId and a gameId
+      for (const client of clients.values()) {
+        if (client.gameSessionId === gameSessionId && client.gameId) {
+          // Verify this gameId is a team battle
+          const session = gameSessions.get(client.gameId);
+          if (session && session.gameType === "team_battle") {
+            gameIdToClean = client.gameId;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (gameIdToClean) {
+      // Clear all client gameIds for this game
+      let clearedCount = 0;
+      for (const client of clients.values()) {
+        if (client.gameId === gameIdToClean) {
+          client.gameId = undefined;
+          // Also clear gameSessionId if it matches
+          if (gameSessionId && client.gameSessionId === gameSessionId) {
+            client.gameSessionId = undefined;
+          }
+          clearedCount++;
+          console.log(`[cleanupGameSessionForBattle] Cleared gameId for client ${client.id} (userId: ${client.userId})`);
+        }
+      }
+      
+      // CRITICAL FIX: Also clear clients that have matching gameSessionId but no gameId
+      // This handles clients that joined setup but disconnected before game started
+      if (gameSessionId) {
+        let clearedSessionIds = 0;
+        for (const client of clients.values()) {
+          // Only clear if they have the gameSessionId but NOT the gameId (already cleared above)
+          if (client.gameSessionId === gameSessionId && client.gameId !== gameIdToClean) {
+            client.gameSessionId = undefined;
+            clearedSessionIds++;
+            console.log(`[cleanupGameSessionForBattle] Cleared orphaned gameSessionId for client ${client.id} (userId: ${client.userId})`);
+          }
+        }
+        if (clearedSessionIds > 0) {
+          console.log(`[cleanupGameSessionForBattle] ✅ Cleared ${clearedSessionIds} orphaned client gameSessionIds for battle ${battleId}`);
+        }
+      }
+      
+      // Delete game session
+      gameSessions.delete(gameIdToClean);
+      console.log(`[cleanupGameSessionForBattle] ✅ Cleaned up gameSession ${gameIdToClean} and cleared ${clearedCount} client gameIds for battle ${battleId}`);
+    } else {
+      // Even if no gameSession found, clear client gameSessionIds that match
+      if (gameSessionId) {
+        let clearedSessionIds = 0;
+        for (const client of clients.values()) {
+          if (client.gameSessionId === gameSessionId) {
+            client.gameSessionId = undefined;
+            clearedSessionIds++;
+          }
+        }
+        if (clearedSessionIds > 0) {
+          console.log(`[cleanupGameSessionForBattle] ✅ Cleared ${clearedSessionIds} client gameSessionIds for battle ${battleId} (no gameSession found)`);
+        } else {
+          console.log(`[cleanupGameSessionForBattle] No gameSession or client gameSessionIds found for battle ${battleId}`);
+        }
+      } else {
+        console.log(`[cleanupGameSessionForBattle] No gameSession found for battle ${battleId} (no gameSessionId provided)`);
+      }
+    }
+  } catch (error) {
+    console.error(`[cleanupGameSessionForBattle] Error cleaning up game session:`, error);
+  }
+}
+
 // In-memory ready state for team battles (per battle, per side)
 export const teamBattleReadyState: Map<
   string,

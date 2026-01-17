@@ -113,9 +113,23 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     return newGameSessionId;
   }, []);
 
-  // CRITICAL: Reset all state when modal closes to prevent stale data
+  // CRITICAL: Reset all state and clear cache when modal opens OR closes
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      // CRITICAL: Clear all cache when opening to ensure fresh start
+      console.log("[TeamBattleSetup] Modal opened - clearing all cache for fresh start");
+      queryClient.removeQueries({ queryKey: ["/api/teams"] });
+      queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
+      queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
+      queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
+      queryClient.removeQueries({ queryKey: ["/api/users/online"] });
+      
+      // Force immediate refetch of critical data
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/team-invitations"] });
+      }, 100);
+    } else {
       // Clear gameSessionId
       setGameSessionId(null);
       // Clear ready status
@@ -538,8 +552,31 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             // This ensures opponents appear as available immediately after battle ends
             console.log("[TeamBattleSetup Modal] Received online_users_updated event, invalidating cache");
             queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
-            // Also force immediate refetch
-            queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+            // Also invalidate teams to ensure consistency
+            if (wsSessionId) {
+              queryClient.invalidateQueries({ queryKey: ["/api/teams", wsSessionId] });
+            }
+            // Force immediate refetch with a small delay to ensure server state is ready
+            setTimeout(() => {
+              queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+            }, 200);
+            break;
+          }
+
+          case "team_battle_ended": {
+            // Immediately refresh available opponents when battle ends
+            console.log("[TeamBattleSetup Modal] Battle ended, refreshing available opponents");
+            queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+            if (wsSessionId) {
+              queryClient.invalidateQueries({ queryKey: ["/api/teams", wsSessionId] });
+            }
+            // Force refetch after a delay to ensure server cleanup is complete
+            setTimeout(() => {
+              queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+              if (wsSessionId) {
+                queryClient.refetchQueries({ queryKey: ["/api/teams", wsSessionId] });
+              }
+            }, 500);
             break;
           }
         }
@@ -2249,8 +2286,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={() => {
+                        // Invalidate and refetch with proper error handling
                         queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
-                        refetchOnlineUsers();
+                        queryClient.invalidateQueries({ queryKey: ["/api/teams", gameSessionId] });
+                        
+                        // Force refetch with a small delay to ensure server state is ready
+                        setTimeout(() => {
+                          refetchOnlineUsers();
+                          if (gameSessionId) {
+                            queryClient.refetchQueries({ queryKey: ["/api/teams", gameSessionId] });
+                          }
+                        }, 100);
+                        
                         toast({
                           title: "Refreshing...",
                           description: "Updating available opponents list",

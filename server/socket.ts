@@ -360,7 +360,7 @@ export async function expireAllPendingRequestsAndInvitationsForUser(userId: numb
 const userConnections: Map<number, string[]> = new Map();
 
 // Store active team memberships for quick availability checking
-const activeTeamMemberships: Map<number, string> = new Map(); // userId -> teamId
+export const activeTeamMemberships: Map<number, string> = new Map(); // userId -> teamId
 
 // Export function to check if a user is in an active team
 export function isUserInActiveTeam(userId: number): boolean {
@@ -1063,7 +1063,7 @@ async function sendUnreadNotifications(userId: number) {
 }
 
 // Broadcast online status updates to all connected clients
-async function broadcastOnlineStatusUpdate() {
+export async function broadcastOnlineStatusUpdate() {
   try {
     const onlineUsers = await database.getOnlineUsers();
 
@@ -5427,12 +5427,22 @@ async function endTeamBattle(gameId: string, reason?: string) {
     gameSessions.delete(gameId);
 
     // CRITICAL FIX: Broadcast online status update so all clients see updated available opponents
-    // Use a small delay to ensure all cleanup is complete before broadcasting
+    // Use a longer delay to ensure all cleanup is complete before broadcasting
     // This ensures consistency, especially in hosted environments
     setTimeout(async () => {
       try {
         await broadcastOnlineStatusUpdate();
         console.log(`[endTeamBattle] ✅ Broadcasted online status update after removing ${removedUserIds.length} users from activeTeamMemberships`);
+        
+        // Additional broadcast after a longer delay to catch any missed clients
+        setTimeout(async () => {
+          try {
+            await broadcastOnlineStatusUpdate();
+            console.log(`[endTeamBattle] ✅ Second broadcast sent for reliability`);
+          } catch (retryError) {
+            console.error(`[endTeamBattle] Second broadcast failed:`, retryError);
+          }
+        }, 1000); // 1 second delay for second broadcast
       } catch (error) {
         console.error(`[endTeamBattle] Error broadcasting online status update:`, error);
         // Retry once after a short delay
@@ -5445,7 +5455,7 @@ async function endTeamBattle(gameId: string, reason?: string) {
           }
         }, 500);
       }
-    }, 100); // Small delay to ensure all cleanup is complete
+    }, 300); // Increased from 100ms to 300ms for better reliability
     console.log(`[endTeamBattle] Battle ended for gameId: ${gameId}, ${removedUserIds.length} participants marked as available`);
   } catch (error) {
     console.error(`[endTeamBattle] Error ending battle:`, error);

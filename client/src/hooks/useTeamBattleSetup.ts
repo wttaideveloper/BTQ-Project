@@ -127,8 +127,8 @@ export function useTeamBattleSetup(gameSessionId?: string) {
       return await res.json();
     },
     enabled: !!user,
-    refetchInterval: 30000,
-    staleTime: 15000,
+    refetchInterval: 10000, // Reduced from 30000 to 10000 for faster updates
+    staleTime: 5000, // Reduced from 15000 to 5000 for fresher data
   });
 
   // Join requests

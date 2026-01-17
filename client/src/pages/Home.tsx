@@ -45,7 +45,7 @@ import TeamBattleSetup from "@/components/TeamBattleSetup";
 import WelcomeTutorial from "@/components/WelcomeTutorial";
 import FAQSection from "@/components/FAQSection";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Challenge, Notification } from "@shared/schema";
 import { voiceService } from "@/lib/voice-service";
@@ -60,6 +60,7 @@ const Home: React.FC = () => {
   const [showFAQ, setShowFAQ] = useState(false);
   const [titleEffect, setTitleEffect] = useState(false);
   const { user, logoutMutation } = useAuth();
+  const queryClient = useQueryClient();
 
   // Game configuration state
   const [gameType, setGameType] = useState<"question" | "time">("question");
@@ -734,7 +735,31 @@ const Home: React.FC = () => {
                       </div>
                     </div>
                     <Button
-                      onClick={() => setShowTeamBattleSetup(true)}
+                      onClick={async () => {
+                        // CRITICAL: Clear all team battle related cache before opening
+                        // This ensures fresh start every time user enters team battle
+                        console.log("[Home] Enter Team Battle clicked - clearing cache");
+                        queryClient.removeQueries({ queryKey: ["/api/teams"] });
+                        queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
+                        queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
+                        queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
+                        queryClient.removeQueries({ queryKey: ["/api/users/online"] });
+                        
+                        // Optional: Clean up server-side stale data
+                        try {
+                          await apiRequest("POST", "/api/team-battle/cleanup");
+                          console.log("[Home] Server-side cleanup completed");
+                        } catch (err) {
+                          // Non-critical, continue anyway
+                          console.log("[Home] Cleanup request failed (non-critical):", err);
+                        }
+                        
+                        // Also invalidate to force refetch
+                        queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+                        
+                        setShowTeamBattleSetup(true);
+                      }}
                       className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0"
                     >
                       <Sword className="mr-2 h-4 w-4 flex-shrink-0" /> <span className="hidden sm:inline">Enter Team Battle</span><span className="sm:hidden">Team Battle</span>

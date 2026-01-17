@@ -1838,11 +1838,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Clean up any old "forming" teams created by this captain
       // This prevents ghost teams from appearing in available teams list
+      // CRITICAL FIX: Import socket functions to manage activeTeamMemberships
+      const { activeTeamMemberships, broadcastOnlineStatusUpdate } = await import("./socket");
+      
       try {
         const existingBattles = await database.getTeamBattlesByUser(req.user.id, 'forming');
         
         for (const battle of existingBattles) {
           console.log(`🧹 Cleaning up old forming team for captain ${req.user.id}: battle ${battle.id}`);
+          
+          // CRITICAL FIX: Remove captain from activeTeamMemberships if they're in it
+          if (battle.teamACaptainId) {
+            activeTeamMemberships.delete(battle.teamACaptainId);
+          }
+          if (battle.teamBCaptainId) {
+            activeTeamMemberships.delete(battle.teamBCaptainId);
+          }
+          
+          // CRITICAL FIX: Remove teammates from activeTeamMemberships
+          const allTeammateIds = [
+            ...(battle.teamATeammates || []),
+            ...(battle.teamBTeammates || [])
+          ];
+          for (const teammateId of allTeammateIds) {
+            activeTeamMemberships.delete(teammateId);
+          }
+          
           await database.deleteTeamBattle(battle.id);
         }
         
@@ -1881,6 +1902,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const battle = await database.createTeamBattle(teamBattleData);
       
+      // CRITICAL FIX: Add team creator to activeTeamMemberships
+      activeTeamMemberships.set(req.user.id, `${battle.id}-team-a`);
+      console.log(`[POST /api/teams] Added user ${req.user.id} to activeTeamMemberships for team ${battle.id}-team-a`);
+      
+      // CRITICAL FIX: Broadcast update immediately so all clients see the change
+      try {
+        await broadcastOnlineStatusUpdate();
+        console.log(`[POST /api/teams] ✅ Broadcasted online status update after team creation`);
+      } catch (broadcastErr) {
+        console.error(`[POST /api/teams] Error broadcasting update:`, broadcastErr);
+        // Non-critical, continue
+      }
+      
       // Debug logging to verify team creation
       console.log('✅ Team Created:', {
         teamId: `${battle.id}-team-a`,
@@ -1895,6 +1929,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("Failed to create team:", err);
       res.status(500).json({ message: "Failed to create team" });
+    }
+  });
+
+  // Cleanup endpoint - removes user from activeTeamMemberships and cleans up old teams
+  app.post("/api/team-battle/cleanup", ensureAuthenticated, async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const userId = req.user.id;
+      
+      // Import socket functions
+      const { activeTeamMemberships, broadcastOnlineStatusUpdate } = await import("./socket");
+      
+      // Remove user from activeTeamMemberships if they're in it
+      const wasInTeam = activeTeamMemberships.has(userId);
+      if (wasInTeam) {
+        activeTeamMemberships.delete(userId);
+        console.log(`[Cleanup] Removed user ${userId} from activeTeamMemberships`);
+      }
+      
+      // Clean up any old "forming" teams created by this user
+      const existingBattles = await database.getTeamBattlesByUser(userId, 'forming');
+      let removedTeammates = 0;
+      
+      for (const battle of existingBattles) {
+        console.log(`[Cleanup] Removing old forming team for user ${userId}: battle ${battle.id}`);
+        await database.deleteTeamBattle(battle.id);
+        
+        // Also remove any teammates from activeTeamMemberships
+        const allTeammateIds = [
+          ...(battle.teamATeammates || []),
+          ...(battle.teamBTeammates || [])
+        ];
+        for (const teammateId of allTeammateIds) {
+          activeTeamMemberships.delete(teammateId);
+          removedTeammates++;
+        }
+        
+        // Remove captains too
+        if (battle.teamACaptainId) {
+          activeTeamMemberships.delete(battle.teamACaptainId);
+        }
+        if (battle.teamBCaptainId) {
+          activeTeamMemberships.delete(battle.teamBCaptainId);
+        }
+      }
+      
+      // Broadcast update if we made changes
+      if (wasInTeam || existingBattles.length > 0) {
+        await broadcastOnlineStatusUpdate();
+        console.log(`[Cleanup] Broadcasted online status update after cleanup`);
+      }
+      
+      res.json({ 
+        message: "Cleanup completed",
+        removedFromActiveTeam: wasInTeam,
+        removedOldTeams: existingBattles.length,
+        removedTeammates: removedTeammates
+      });
+    } catch (err) {
+      console.error("Failed to cleanup team battle data:", err);
+      res.status(500).json({ message: "Failed to cleanup team battle data" });
     }
   });
 

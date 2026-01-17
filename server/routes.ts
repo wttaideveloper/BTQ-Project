@@ -1948,7 +1948,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[Cleanup] 🧹 Starting comprehensive cleanup for user ${userId}`);
       
       // Import socket functions
-      const { activeTeamMemberships, broadcastOnlineStatusUpdate, teamBattleReadyState, cleanupGameSessionForBattle } = await import("./socket");
+      const { activeTeamMemberships, broadcastOnlineStatusUpdate, teamBattleReadyState } = await import("./socket");
       
       let changesMade = false;
       const cleanupStats = {
@@ -1971,21 +1971,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // ========================================================================
-      // STEP 2: Delete/cleanup ALL active battles (not just "forming")
+      // STEP 2: Delete all old "forming" teams created by this user
       // ========================================================================
-      // CRITICAL FIX: Get ALL battles for this user, not just "forming"
-      // This handles mid-game exits where battles are "playing" or "ready"
-      const allBattles = await database.getTeamBattlesByUser(userId);
-      const activeBattles = allBattles.filter(battle => 
-        battle.status === "forming" || 
-        battle.status === "ready" || 
-        battle.status === "playing"
-      );
+      const existingBattles = await database.getTeamBattlesByUser(userId, 'forming');
+      cleanupStats.removedOldTeams = existingBattles.length;
       
-      cleanupStats.removedOldTeams = activeBattles.length;
-      
-      for (const battle of activeBattles) {
-        console.log(`[Cleanup] 🗑️ Removing active battle (${battle.status}) for user ${userId}: battle ${battle.id}`);
+      for (const battle of existingBattles) {
+        console.log(`[Cleanup] 🗑️ Removing old forming team for user ${userId}: battle ${battle.id}`);
         
         // Remove all teammates from activeTeamMemberships
         const allTeammateIds = [
@@ -2020,49 +2012,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`[Cleanup] ✅ Cleared ready state from memory for battle ${battle.id}`);
         }
         
-        // CRITICAL FIX: Clean up in-memory game session and client gameIds
-        // This is especially important for "playing" battles that have active gameSessions
-        try {
-          await cleanupGameSessionForBattle(battle.id, battle.gameSessionId);
-          changesMade = true;
-        } catch (gameSessionError) {
-          console.error(`[Cleanup] ⚠️ Error cleaning up game session for battle ${battle.id}:`, gameSessionError);
-          // Non-critical, continue
-        }
-        
-        // Handle different battle statuses appropriately
-        if (battle.status === "playing") {
-          // Mark playing battles as finished to preserve game history
-          try {
-            await database.updateTeamBattle(battle.id, {
-              status: "finished",
-              finishedAt: new Date(),
-            });
-            console.log(`[Cleanup] ✅ Marked playing battle ${battle.id} as finished (preserved history)`);
-          } catch (updateError) {
-            console.error(`[Cleanup] ⚠️ Failed to mark battle ${battle.id} as finished:`, updateError);
-            // Fallback: delete if update fails
-            try {
-              await database.deleteTeamBattle(battle.id);
-              console.log(`[Cleanup] ✅ Deleted battle ${battle.id} (fallback after update failed)`);
-            } catch (deleteError) {
-              console.error(`[Cleanup] ❌ Failed to delete battle ${battle.id}:`, deleteError);
-            }
-          }
-        } else {
-          // Delete forming/ready battles (they're not in progress)
-          try {
-            await database.deleteTeamBattle(battle.id);
-            console.log(`[Cleanup] ✅ Deleted ${battle.status} battle ${battle.id}`);
-          } catch (deleteError) {
-            console.error(`[Cleanup] ❌ Failed to delete battle ${battle.id}:`, deleteError);
-          }
-        }
+        // Delete the battle
+        await database.deleteTeamBattle(battle.id);
         changesMade = true;
       }
       
-      if (activeBattles.length > 0) {
-        console.log(`[Cleanup] ✅ Cleaned up ${activeBattles.length} active battle(s) (${activeBattles.filter(b => b.status === "forming").length} forming, ${activeBattles.filter(b => b.status === "ready").length} ready, ${activeBattles.filter(b => b.status === "playing").length} playing)`);
+      if (existingBattles.length > 0) {
+        console.log(`[Cleanup] ✅ Deleted ${existingBattles.length} old forming team(s)`);
       }
       
       // ========================================================================

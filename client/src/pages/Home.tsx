@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 
 // NOTE: Multiplayer functionality is disabled for this POC
@@ -51,6 +51,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Challenge, Notification } from "@shared/schema";
 import { voiceService } from "@/lib/voice-service";
 import { stopSpeaking } from "@/lib/sounds";
+import { closeGameSocket } from "@/lib/socket";
 
 const Home: React.FC = () => {
   const [_, setLocation] = useLocation();
@@ -63,11 +64,172 @@ const Home: React.FC = () => {
   const [isLoadingTeamBattle, setIsLoadingTeamBattle] = useState(false);
   const { user, logoutMutation } = useAuth();
   const queryClient = useQueryClient();
+  const timerRefs = useRef<Set<NodeJS.Timeout>>(new Set());
 
   // Game configuration state
   const [gameType, setGameType] = useState<"question" | "time">("question");
   const [category, setCategory] = useState("Bible Stories");
   const [difficulty, setDifficulty] = useState("Beginner");
+
+  // Comprehensive hard refresh function for Team Battle
+  const hardRefreshTeamBattle = async (): Promise<void> => {
+    console.log("[Home] 🔄 Starting comprehensive hard refresh for Team Battle");
+    
+    try {
+      // ========================================================================
+      // STEP 1: Close all WebSocket connections
+      // ========================================================================
+      console.log("[Home] Step 1: Closing WebSocket connections");
+      try {
+        closeGameSocket();
+        // Wait for socket to fully close (production needs more time)
+        await new Promise(resolve => setTimeout(resolve, 200));
+        console.log("[Home] ✅ Step 1: WebSocket connections closed");
+      } catch (err) {
+        console.warn("[Home] ⚠️ Step 1: Error closing WebSocket (non-critical):", err);
+      }
+
+      // ========================================================================
+      // STEP 2: Clear all pending timers and intervals
+      // ========================================================================
+      console.log("[Home] Step 2: Clearing pending timers");
+      try {
+        // Clear all tracked timers
+        timerRefs.current.forEach(timerId => {
+          clearTimeout(timerId);
+          clearInterval(timerId);
+        });
+        timerRefs.current.clear();
+        console.log("[Home] ✅ Step 2: All timers cleared");
+      } catch (err) {
+        console.warn("[Home] ⚠️ Step 2: Error clearing timers (non-critical):", err);
+      }
+
+      // ========================================================================
+      // STEP 3: Clear browser storage (localStorage & sessionStorage)
+      // ========================================================================
+      console.log("[Home] Step 3: Clearing browser storage");
+      try {
+        // Clear team battle related storage keys
+        const storageKeys = [
+          'teamBattle_session',
+          'teamBattle_state',
+          'teamBattle_gameSessionId',
+          'teamBattle_teamId',
+        ];
+        
+        storageKeys.forEach(key => {
+          try {
+            localStorage.removeItem(key);
+            sessionStorage.removeItem(key);
+          } catch (e) {
+            // Ignore storage errors (may not be available in some contexts)
+          }
+        });
+        console.log("[Home] ✅ Step 3: Browser storage cleared");
+      } catch (err) {
+        console.warn("[Home] ⚠️ Step 3: Error clearing storage (non-critical):", err);
+      }
+
+      // ========================================================================
+      // STEP 4: Clear all React Query cache for team battle
+      // ========================================================================
+      console.log("[Home] Step 4: Clearing React Query cache");
+      try {
+        // Remove all team battle related queries (complete removal, not just invalidation)
+        queryClient.removeQueries({ 
+          predicate: (query) => {
+            const key = query.queryKey[0] as string;
+            return (
+              key === "/api/teams" ||
+              key === "/api/teams/available" ||
+              key === "/api/team-invitations" ||
+              key === "/api/team-join-requests" ||
+              key === "/api/users/online" ||
+              (typeof key === 'string' && key.includes('team'))
+            );
+          }
+        });
+        console.log("[Home] ✅ Step 4: React Query cache cleared");
+      } catch (err) {
+        console.warn("[Home] ⚠️ Step 4: Error clearing cache (non-critical):", err);
+      }
+
+      // ========================================================================
+      // STEP 5: Server-side cleanup (CRITICAL for production)
+      // ========================================================================
+      console.log("[Home] Step 5: Starting server-side cleanup");
+      try {
+        const cleanupPromise = apiRequest("POST", "/api/team-battle/cleanup");
+        // Add timeout for server cleanup (8 seconds)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Server cleanup timeout')), 8000);
+        });
+
+        const response = await Promise.race([cleanupPromise, timeoutPromise]) as Response;
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log("[Home] ✅ Step 5: Server-side cleanup completed", result.stats);
+        } else {
+          console.warn("[Home] ⚠️ Step 5: Server-side cleanup completed with warnings", result);
+        }
+      } catch (err) {
+        // Non-critical, continue anyway
+        console.warn("[Home] ⚠️ Step 5: Server cleanup failed or timed out (non-critical, continuing):", err);
+      }
+
+      // ========================================================================
+      // STEP 6: Force cache invalidation with cache busting
+      // ========================================================================
+      console.log("[Home] Step 6: Invalidating queries with cache busting");
+      try {
+        // Invalidate and force immediate refetch with cache busting
+        const cacheBuster = Date.now();
+        
+        await Promise.all([
+          queryClient.invalidateQueries({ 
+            queryKey: ["/api/teams"],
+            refetchType: 'active'
+          }),
+          queryClient.invalidateQueries({ 
+            queryKey: ["/api/users/online"],
+            refetchType: 'active'
+          }),
+          queryClient.invalidateQueries({ 
+            queryKey: ["/api/team-invitations"],
+            refetchType: 'active'
+          }),
+        ]);
+
+        // Force refetch with cache busting parameter
+        queryClient.refetchQueries({ 
+          queryKey: ["/api/teams"],
+          type: 'active'
+        });
+        
+        console.log("[Home] ✅ Step 6: Queries invalidated and refetched");
+      } catch (err) {
+        console.warn("[Home] ⚠️ Step 6: Error invalidating queries (non-critical):", err);
+      }
+
+      // ========================================================================
+      // STEP 7: Production delay to ensure all cleanup completes
+      // ========================================================================
+      console.log("[Home] Step 7: Waiting for cleanup to settle");
+      // Production needs more time due to network latency
+      const isProduction = process.env.NODE_ENV === 'production' || 
+                          window.location.hostname !== 'localhost';
+      const delay = isProduction ? 400 : 200;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      console.log("[Home] ✅ Step 7: Cleanup settled");
+
+      console.log("[Home] ✅ All hard refresh steps completed successfully");
+    } catch (error) {
+      // Don't throw - allow modal to open even if cleanup fails
+      console.error("[Home] ⚠️ Error during hard refresh (opening modal anyway):", error);
+    }
+  };
 
   // Get pending challenges count to display as a badge
   const { data: challenges } = useQuery({
@@ -94,6 +256,18 @@ const Home: React.FC = () => {
     challenges?.filter((c: Challenge) => c.status === "pending") || [];
   const unreadNotifications =
     notifications?.filter((n: Notification) => !n.read) || [];
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      // Clear all tracked timers when component unmounts
+      timerRefs.current.forEach(timerId => {
+        clearTimeout(timerId);
+        clearInterval(timerId);
+      });
+      timerRefs.current.clear();
+    };
+  }, []);
 
   // Clean up voice narration when entering home page
   useEffect(() => {
@@ -742,64 +916,23 @@ const Home: React.FC = () => {
                         setIsLoadingTeamBattle(true);
                         
                         try {
-                          // ========================================================================
-                          // STEP 1: Clear all team battle related cache (client-side)
-                          // ========================================================================
-                          console.log("[Home] 🧹 Enter Team Battle clicked - starting cleanup");
-                          console.log("[Home] Step 1: Clearing client-side cache");
+                          // Perform comprehensive hard refresh
+                          await hardRefreshTeamBattle();
                           
-                          queryClient.removeQueries({ queryKey: ["/api/teams"] });
-                          queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
-                          queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
-                          queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
-                          queryClient.removeQueries({ queryKey: ["/api/users/online"] });
-                          
-                          console.log("[Home] ✅ Step 1: Client-side cache cleared");
-                          
-                          // ========================================================================
-                          // STEP 2: Clean up server-side stale data (CRITICAL)
-                          // ========================================================================
-                          console.log("[Home] Step 2: Starting server-side cleanup");
-                          
-                          try {
-                            const response = await apiRequest("POST", "/api/team-battle/cleanup");
-                            const result = await response.json();
-                            
-                            if (result.success) {
-                              console.log("[Home] ✅ Step 2: Server-side cleanup completed", result.stats);
-                            } else {
-                              console.warn("[Home] ⚠️ Step 2: Server-side cleanup completed with warnings", result);
-                            }
-                          } catch (err) {
-                            // Non-critical, continue anyway
-                            console.error("[Home] ⚠️ Step 2: Cleanup request failed (non-critical, continuing):", err);
-                          }
-                          
-                          // ========================================================================
-                          // STEP 3: Invalidate queries to force fresh refetch when modal opens
-                          // ========================================================================
-                          console.log("[Home] Step 3: Invalidating queries for fresh data");
-                          
-                          queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
-                          queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
-                          
-                          console.log("[Home] ✅ Step 3: Queries invalidated");
-                          
-                          // ========================================================================
-                          // STEP 4: Open modal after cleanup is complete
-                          // ========================================================================
-                          console.log("[Home] ✅ All cleanup complete - opening Team Battle modal");
+                          // Open modal after hard refresh completes
+                          console.log("[Home] ✅ Hard refresh complete - opening Team Battle modal");
                           setShowTeamBattleSetup(true);
                           
                         } catch (error) {
                           // If anything fails, still open modal (non-blocking)
-                          console.error("[Home] ⚠️ Error during cleanup (opening modal anyway):", error);
+                          console.error("[Home] ⚠️ Error during hard refresh (opening modal anyway):", error);
                           setShowTeamBattleSetup(true);
                         } finally {
                           // Reset loading state after a short delay to ensure smooth transition
-                          setTimeout(() => {
+                          const resetTimer = setTimeout(() => {
                             setIsLoadingTeamBattle(false);
                           }, 300);
+                          timerRefs.current.add(resetTimer);
                         }
                       }}
                       disabled={isLoadingTeamBattle}

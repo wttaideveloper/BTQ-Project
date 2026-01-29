@@ -1217,6 +1217,15 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     message: string;
   } | null>(null);
 
+  // Remove member confirmation dialog
+  const [showRemoveMemberConfirmDialog, setShowRemoveMemberConfirmDialog] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<{
+    teamId: string;
+    userId: number;
+    memberName: string;
+    teamName: string;
+  } | null>(null);
+
   // Captain left dialog
   const [showCaptainLeftDialog, setShowCaptainLeftDialog] = useState(false);
   const [captainLeftInfo, setCaptainLeftInfo] = useState<{
@@ -2265,9 +2274,20 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                       isUserInTeam ? handleUpdateTeamName : undefined
                     }
                     onLeaveTeam={isUserInTeam ? handleLeaveTeam : undefined}
-                    onRemoveMember={(teamId, userId) =>
-                      removeMemberMutation.mutate({ teamId, userId })
-                    }
+                    onRemoveMember={(teamId, userId) => {
+                      // Find the member's name and team name for confirmation
+                      const team = teams.find((t) => t.id === teamId);
+                      const member = team?.members.find((m) => m.userId === userId);
+                      if (team && member) {
+                        setMemberToRemove({
+                          teamId,
+                          userId,
+                          memberName: member.username,
+                          teamName: team.name,
+                        });
+                        setShowRemoveMemberConfirmDialog(true);
+                      }
+                    }}
                     isUserTeam={isUserTeam}
                     isReady={isTeamReady}
                     joinRequests={(joinRequests || []).filter((jr) => {
@@ -3311,6 +3331,64 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             >
               Return Home
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Member Confirmation Dialog */}
+      <Dialog
+        open={showRemoveMemberConfirmDialog}
+        onOpenChange={setShowRemoveMemberConfirmDialog}
+      >
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <X className="h-5 w-5 text-red-500" />
+              Remove Member
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove {memberToRemove?.memberName || "this member"} from {memberToRemove?.teamName || "your team"}?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+              <p className="text-sm text-red-900">
+                <strong>This action cannot be undone.</strong>
+              </p>
+              <ul className="text-xs text-red-800 mt-2 space-y-1 ml-4 list-disc">
+                <li>{memberToRemove?.memberName || "The member"} will be removed from {memberToRemove?.teamName || "your team"}</li>
+                <li>They will receive a notification about being removed</li>
+                <li>They can join another team or create their own</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRemoveMemberConfirmDialog(false);
+                setMemberToRemove(null);
+              }}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (memberToRemove) {
+                  removeMemberMutation.mutate({
+                    teamId: memberToRemove.teamId,
+                    userId: memberToRemove.userId,
+                  });
+                  setShowRemoveMemberConfirmDialog(false);
+                  setMemberToRemove(null);
+                }
+              }}
+              disabled={removeMemberMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto"
+            >
+              {removeMemberMutation.isPending ? "Removing..." : "Yes, Remove Member"}
             </Button>
           </DialogFooter>
         </DialogContent>

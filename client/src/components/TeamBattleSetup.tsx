@@ -2630,8 +2630,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             </div>
           )}
 
-          {/* Stage 2: Invite Opponent */}
-          {currentStage === "invite-opponent" && (
+          {/* Stage 2: Invite Opponent - Only for captains */}
+          {currentStage === "invite-opponent" && userTeam && userTeam.captainId === user?.id && (
             <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
               <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
                 <div className="flex items-start gap-3 sm:gap-4">
@@ -2813,8 +2813,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             </div>
           )}
 
-          {/* Stage 3: Invite Teammates (only after opponent accepts) */}
-          {currentStage === "invite-teammates" && (
+          {/* Stage 3: Invite Teammates (only after opponent accepts) - Only for captains */}
+          {currentStage === "invite-teammates" && userTeam && userTeam.captainId === user?.id && (
             <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
               <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
                 <div className="flex items-start gap-3 sm:gap-4">

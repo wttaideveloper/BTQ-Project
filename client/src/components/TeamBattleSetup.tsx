@@ -427,6 +427,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
     const socket = setupGameSocket(user.id);
 
+    // Bind this websocket connection to the active lobby session so server-side
+    // disconnect/leave notifications can be routed correctly during setup.
+    if (gameSessionId) {
+      sendGameEvent({
+        type: "team_battle_setup_session",
+        userId: user.id,
+        gameSessionId,
+      });
+    }
+
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
@@ -442,27 +452,38 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         // This prevents late socket events from old battles and cleanup broadcasts
         // from corrupting a fresh session
         
-        // SPECIAL CASE: team_ready_status and team_battle_countdown events
-        // These are critical for UI and should be allowed if they match current session
-        // OR if cleanup is complete (Phase 3 might be setting up session)
-        const isCriticalUIEvent = data.type === "team_ready_status" || data.type === "team_battle_countdown";
+        // SPECIAL CASE: allow critical UI + notification events through the guard.
+        // If these get blocked, users won't see "captain left/disbanded" messages.
+        const criticalEventTypes = new Set([
+          "team_ready_status",
+          "team_battle_countdown",
+          // user-facing notifications during setup
+          "opponent_disconnected",
+          "teammate_disconnected",
+          "opponent_team_member_disconnected",
+          "team_member_removed",
+          "team_battle_cancelled",
+          "left_team_battle",
+        ]);
+        const isCriticalUIEvent = criticalEventTypes.has(data.type);
         
         if (wsSessionId) {
           const currentSession = currentSessionIdRef.current;
           const sessionStartedAt = sessionStartedAtRef.current;
           const isCleanupComplete = cleanupCompleteRef.current;
           
-          // For critical UI events, be more lenient during Phase 3 transition
+          // For critical events, be more lenient during Phase 3 transition
           if (isCriticalUIEvent) {
             // If we have a current session, it must match
             if (currentSession !== null && wsSessionId !== currentSession) {
               console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring ${data.type} from different session ${wsSessionId} (current: ${currentSession})`);
               return;
             }
-            // If no current session yet, check if cleanup is complete
-            // If cleanup is complete, allow it (Phase 3 is creating session)
+            // If no current session yet:
+            // - allow if cleanup is complete (Phase 3 is creating session)
+            // - OR allow if it matches the component's current gameSessionId (joining an existing lobby)
             if (currentSession === null) {
-              if (!isCleanupComplete) {
+              if (!isCleanupComplete && wsSessionId !== gameSessionId) {
                 console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring ${data.type} (cleanup not complete yet)`);
                 return;
               }
@@ -3073,38 +3094,42 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <X className="h-5 w-5 text-red-500" />
-              Opponent Disconnected
+              <X className="h-5 w-5 text-amber-500" />
+              Opponent Captain Left
             </DialogTitle>
             <DialogDescription>
-              {disconnectedPlayerInfo?.playerName} from team "
-              {disconnectedPlayerInfo?.teamName}" has disconnected from the team
-              setup.
+              The opponent captain left the lobby. You can invite a new opponent
+              captain to continue, or leave this lobby and start fresh.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="bg-red-50 p-3 rounded-lg border border-red-200">
-              <p className="text-sm text-red-800">
-                <strong>
-                  The opponent team has been affected by this disconnection.
-                </strong>
+            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+              <p className="text-sm text-amber-900">
+                <strong>What happened:</strong>{" "}
+                {disconnectedPlayerInfo?.playerName || "A player"} (captain of{" "}
+                {disconnectedPlayerInfo?.teamName || "Team B"}) left the lobby.
               </p>
-              <ul className="text-xs text-red-700 mt-2 space-y-1 ml-4 list-disc">
-                <li>
-                  The disconnected player has been removed from their team
-                </li>
-                <li>You can continue waiting or leave the team setup</li>
-                <li>The battle cannot proceed until both teams are ready</li>
+              <ul className="text-xs text-amber-800 mt-2 space-y-1 ml-4 list-disc">
+                <li>Team B has been reset and needs a new captain</li>
+                <li>Your Team A is still safe and can keep inviting</li>
+                <li>Battle starts only after both teams are formed</li>
               </ul>
             </div>
           </div>
           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2">
             <Button
-              variant="outline"
-              onClick={() => setShowOpponentDisconnectedDialog(false)}
-              className="w-full sm:w-auto"
+              onClick={() => {
+                setShowOpponentDisconnectedDialog(false);
+                // No special navigation needed — invite UI is already visible in the modal.
+                toast({
+                  title: "Invite a new opponent captain",
+                  description:
+                    "Pick an online player and send an Opponent Captain invite.",
+                });
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto"
             >
-              Continue Waiting
+              Invite New Opponent
             </Button>
             <Button
               onClick={() => {
@@ -3116,7 +3141,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               disabled={leaveTeamMutation.isPending}
               className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto"
             >
-              {leaveTeamMutation.isPending ? "Leaving..." : "Leave Team"}
+              {leaveTeamMutation.isPending ? "Leaving..." : "Leave Lobby"}
             </Button>
           </DialogFooter>
         </DialogContent>

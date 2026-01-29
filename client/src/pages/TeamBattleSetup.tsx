@@ -38,7 +38,7 @@ import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { setupGameSocket, onEvent } from "@/lib/socket";
+import { setupGameSocket, onEvent, sendGameEvent } from "@/lib/socket";
 import { useTeamBattleSetup } from "@/hooks/useTeamBattleSetup";
 
 interface User {
@@ -128,6 +128,17 @@ const TeamBattleSetup: React.FC = () => {
   const [pendingInvitationId, setPendingInvitationId] = useState<string | null>(
     null
   );
+
+  // Friendly lobby notifications (opponent/captain leaves, teammate leaves, etc.)
+  const [showOpponentDisconnectedDialog, setShowOpponentDisconnectedDialog] =
+    useState(false);
+  const [disconnectedPlayerInfo, setDisconnectedPlayerInfo] = useState<{
+    playerName: string;
+    teamName: string;
+    message?: string;
+  } | null>(null);
+  const lastTeamsUpdatedToastRef = useRef<string | null>(null);
+  const lastTeamsUpdatedToastAtRef = useRef<number>(0);
 
   // Shared setup data & mutations
   const {
@@ -244,6 +255,18 @@ const TeamBattleSetup: React.FC = () => {
       setupGameSocket(user.id);
     }
   }, [user?.id]);
+
+  // Bind this user's websocket connection to the active Team Battle lobby session.
+  // Without this, server disconnect handling won't know which lobby to notify.
+  useEffect(() => {
+    if (!user?.id || !gameSessionId) return;
+    setupGameSocket(user.id);
+    sendGameEvent({
+      type: "team_battle_setup_session",
+      userId: user.id,
+      gameSessionId,
+    });
+  }, [user?.id, gameSessionId]);
 
   // Show toast to captains when a new join request arrives
   useEffect(() => {
@@ -368,6 +391,111 @@ const TeamBattleSetup: React.FC = () => {
       queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
     });
 
+    // Friendly lobby notifications for disconnect/leave events
+    const offOpponentDisconnected = onEvent("opponent_disconnected", (data: any) => {
+      const targetSessionId = data.gameSessionId;
+      if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+
+      setDisconnectedPlayerInfo({
+        playerName: data.disconnectedPlayerName || "A player",
+        teamName: data.disconnectedTeamName || "Opponent team",
+        message: data.message,
+      });
+      setShowOpponentDisconnectedDialog(true);
+      debouncedRefetch();
+    });
+
+    const offTeammateDisconnected = onEvent("teammate_disconnected", (data: any) => {
+      const targetSessionId = data.gameSessionId;
+      if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+
+      toast({
+        title: "Teammate Left",
+        description: data.message || `${data.disconnectedPlayerName || "A player"} has left your team.`,
+      });
+      debouncedRefetch();
+    });
+
+    const offOpponentMemberDisconnected = onEvent(
+      "opponent_team_member_disconnected",
+      (data: any) => {
+        const targetSessionId = data.gameSessionId;
+        if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+
+        toast({
+          title: "Opponent Team Updated",
+          description:
+            data.message ||
+            `${data.disconnectedPlayerName || "A player"} from "${data.disconnectedTeamName || "Opponent team"}" disconnected.`,
+        });
+        debouncedRefetch();
+      }
+    );
+
+    const offTeamBattleCancelled = onEvent("team_battle_cancelled", (data: any) => {
+      const targetSessionId = data.gameSessionId;
+      if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+
+      toast({
+        title: "Battle Cancelled",
+        description: data.message || "This team battle lobby has been cancelled.",
+        variant: "destructive",
+      });
+
+      // Start fresh (keep user on this page but clear the dead session)
+      try {
+        sessionStorage.removeItem("teamBattleSessionId");
+      } catch {}
+      generateNewSessionId();
+      debouncedRefetch();
+    });
+
+    const offTeamMemberRemoved = onEvent("team_member_removed", (data: any) => {
+      const targetSessionId = data.gameSessionId;
+      if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+
+      toast({
+        title: "Removed From Match",
+        description: data.message || "You were removed from this team battle lobby.",
+        variant: "destructive",
+        duration: 3000,
+      });
+
+      // Send user back home after showing the toast
+      setTimeout(() => {
+        try {
+          sessionStorage.removeItem("teamBattleSessionId");
+        } catch {}
+        setLocation("/");
+      }, 1500);
+    });
+
+    const offLeftTeamBattle = onEvent("left_team_battle", (data: any) => {
+      const targetSessionId = data.gameSessionId;
+      if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+      toast({
+        title: "Left Team Battle",
+        description: data.message || "You left the team battle lobby.",
+      });
+      debouncedRefetch();
+    });
+
+    // Optional: show server-sent lobby update messages as toasts (throttled)
+    const offTeamsUpdatedToast = onEvent("teams_updated", (data: any) => {
+      const targetSessionId = data.gameSessionId;
+      if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+      const msg = typeof data.message === "string" ? data.message.trim() : "";
+      if (!msg) return;
+
+      const now = Date.now();
+      if (lastTeamsUpdatedToastRef.current === msg) return;
+      if (now - lastTeamsUpdatedToastAtRef.current < 1500) return;
+
+      lastTeamsUpdatedToastRef.current = msg;
+      lastTeamsUpdatedToastAtRef.current = now;
+      toast({ title: "Lobby Updated", description: msg });
+    });
+
     return () => {
       offTeamUpdated();
       offTeamCreated();
@@ -378,8 +506,24 @@ const TeamBattleSetup: React.FC = () => {
       offJoinRequestUpdated();
       offTeamBattleStarted();
       offOnlineUsersUpdated();
+      offOpponentDisconnected();
+      offTeammateDisconnected();
+      offOpponentMemberDisconnected();
+      offTeamBattleCancelled();
+      offTeamMemberRemoved();
+      offLeftTeamBattle();
+      offTeamsUpdatedToast();
     };
-  }, [user?.id, teams, debouncedRefetch, toast, gameSessionId, setLocation, queryClient]);
+  }, [
+    user?.id,
+    teams,
+    debouncedRefetch,
+    toast,
+    gameSessionId,
+    setLocation,
+    queryClient,
+    generateNewSessionId,
+  ]);
 
   // joinRequests provided by hook
 
@@ -2227,6 +2371,53 @@ const TeamBattleSetup: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Opponent Disconnected / Left Dialog */}
+      <Dialog
+        open={showOpponentDisconnectedDialog}
+        onOpenChange={setShowOpponentDisconnectedDialog}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-amber-500" />
+              Opponent Left the Lobby
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="font-semibold">
+                {disconnectedPlayerInfo?.playerName || "A player"} ({disconnectedPlayerInfo?.teamName || "Opponent team"})
+              </div>
+              <div className="mt-1">
+                {disconnectedPlayerInfo?.message ||
+                  "The opponent captain left. Your lobby is still open — invite a new opponent captain to continue."}
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowOpponentDisconnectedDialog(false);
+                }}
+              >
+                Got it
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowOpponentDisconnectedDialog(false);
+                  // Keep user in setup; the invite panel is already on this page.
+                  // Force a refresh so the lobby state is immediately correct.
+                  debouncedRefetch();
+                }}
+                className="bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                Invite New Opponent
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Team Name Dialog for Captain Invitations */}
       <Dialog open={showTeamNameDialog} onOpenChange={setShowTeamNameDialog}>

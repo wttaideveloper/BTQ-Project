@@ -2375,6 +2375,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         } else {
           // Team B captain leaving - can set to null since Team B is optional
+          // IMPORTANT: capture existing Team B teammates BEFORE clearing them, so we can notify them
+          const oldTeamBTeammateIds = extractTeammateIds(battle.teamBTeammates);
+          const oldTeamBName = battle.teamBName || "Team B";
           const updates: any = {
             teamBCaptainId: null,
             teamBName: null,
@@ -2390,11 +2393,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           for (const participantId of Array.from(participantIds)) {
             if (participantId !== userId) {
+              // Show a friendly popup/toast on the opponent side
+              sendToUser(participantId, {
+                type: "opponent_disconnected",
+                gameSessionId: updatedBattle.gameSessionId,
+                disconnectedPlayerName: req.user?.username || "A player",
+                disconnectedTeamName: oldTeamBName,
+                message: `⚠️ ${req.user?.username || "A player"} (Team B captain) has left the lobby. You can invite a new opponent captain to continue.`,
+                severity: "warning",
+                timestamp: new Date(),
+              });
               sendToUser(participantId, {
                 type: "teams_updated",
                 teams: teams,
                 gameSessionId: updatedBattle.gameSessionId,
-                message: `${req.user?.username || 'A player'} has left the team.`,
+                message: `Opponent captain left. Team B has been reset — you can invite a new opponent captain.`,
+              });
+            }
+          }
+
+          // Notify Team B teammates that their captain left and they were removed from the lobby
+          for (const teammateId of oldTeamBTeammateIds) {
+            if (teammateId !== userId) {
+              sendToUser(teammateId, {
+                type: "team_member_removed",
+                gameSessionId: updatedBattle.gameSessionId,
+                message: `Your captain left the lobby (${oldTeamBName}). You’ve been removed from this match. Please join/create a team again.`,
               });
             }
           }

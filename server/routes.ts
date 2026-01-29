@@ -774,13 +774,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } catch (notifyError) {
             console.error("[Backend] Failed to send teams_updated notification:", notifyError);
           }
+
+          // Get removed user's info for notifications
+          const removedUser = await database.getUser(userId).catch(() => null);
+          const removedUserName = removedUser?.username || "A player";
+
+          // Notify captain that they successfully removed the member
+          try {
+            sendToUser(user.id, {
+              type: "member_removed_by_captain",
+              gameSessionId: battle.gameSessionId,
+              removedMemberName: removedUserName,
+              teamName: teamSide === "a" ? (updatedBattle.teamAName || "Team A") : (updatedBattle.teamBName || "Team B"),
+              message: `You have removed ${removedUserName} from your team.`,
+            });
+          } catch (notifyError) {
+            console.error("[Backend] Failed to send member_removed_by_captain notification:", notifyError);
+          }
         }
 
         // Notify removed user (don't fail if this errors)
         try {
+          const removedUser = await database.getUser(userId).catch(() => null);
+          const removedUserName = removedUser?.username || "A player";
           sendToUser(userId, {
             type: "team_member_removed",
             teamId,
+            gameSessionId: battle.gameSessionId,
+            teamName: teamSide === "a" ? (battle.teamAName || "Team A") : (battle.teamBName || "Team B"),
+            captainName: user.username || "The captain",
+            message: `You have been removed from ${teamSide === "a" ? (battle.teamAName || "Team A") : (battle.teamBName || "Team B")} by ${user.username || "the captain"}.`,
           });
         } catch (notifyError) {
           console.error("[Backend] Failed to send team_member_removed notification:", notifyError);
@@ -2458,8 +2481,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const id of extractTeammateIds(updatedBattle.teamATeammates)) participantIds.add(id);
         for (const id of extractTeammateIds(updatedBattle.teamBTeammates)) participantIds.add(id);
 
+        // Determine which team the leaving member belonged to
+        const leavingTeamSide = teamSide;
+        const captainId = leavingTeamSide === "A" ? updatedBattle.teamACaptainId : updatedBattle.teamBCaptainId;
+
         for (const participantId of Array.from(participantIds)) {
           if (participantId !== userId) {
+            // Send specific notification to captain that their teammate left
+            if (participantId === captainId) {
+              sendToUser(participantId, {
+                type: "teammate_left",
+                gameSessionId: updatedBattle.gameSessionId,
+                playerName: req.user?.username || "A player",
+                teamName: leavingTeamSide === "A" ? (updatedBattle.teamAName || "Team A") : (updatedBattle.teamBName || "Team B"),
+                message: `${req.user?.username || 'A player'} has left your team.`,
+              });
+            }
+            // Also send teams_updated to all participants
             sendToUser(participantId, {
               type: "teams_updated",
               teams: teams,

@@ -800,7 +800,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             toast({
               title: "Removed from Team",
               description:
-                "You have been removed from the team by the captain. Returning to home.",
+                data.message || `You have been removed from ${data.teamName || "the team"} by ${data.captainName || "the captain"}. Returning to home.`,
               variant: "destructive",
             });
             // Force refetch of teams data
@@ -815,6 +815,40 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             setTimeout(() => {
               window.location.href = "/";
             }, 2000); // Delay to show toast
+            break;
+          }
+
+          case "teammate_left": {
+            // Handle when a teammate (same team) leaves - show toast to captain
+            toast({
+              title: "Teammate Left",
+              description:
+                data.message || `${data.playerName || "A teammate"} has left ${data.teamName || "your team"}.`,
+              variant: "default",
+            });
+            // Refresh teams data to reflect the change
+            if (wsSessionId) {
+              queryClient.invalidateQueries({
+                queryKey: ["/api/teams", wsSessionId],
+              });
+            }
+            break;
+          }
+
+          case "member_removed_by_captain": {
+            // Handle confirmation when captain successfully removes a member
+            toast({
+              title: "Member Removed",
+              description:
+                data.message || `You have removed ${data.removedMemberName || "the member"} from ${data.teamName || "your team"}.`,
+              variant: "default",
+            });
+            // Refresh teams data to reflect the change
+            if (wsSessionId) {
+              queryClient.invalidateQueries({
+                queryKey: ["/api/teams", wsSessionId],
+              });
+            }
             break;
           }
 

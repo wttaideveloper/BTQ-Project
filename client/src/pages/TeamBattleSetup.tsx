@@ -450,6 +450,28 @@ const TeamBattleSetup: React.FC = () => {
       debouncedRefetch();
     });
 
+    const offTeammateLeft = onEvent("teammate_left", (data: any) => {
+      const targetSessionId = data.gameSessionId;
+      if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+
+      toast({
+        title: "Teammate Left",
+        description: data.message || `${data.playerName || "A teammate"} has left ${data.teamName || "your team"}.`,
+      });
+      debouncedRefetch();
+    });
+
+    const offMemberRemovedByCaptain = onEvent("member_removed_by_captain", (data: any) => {
+      const targetSessionId = data.gameSessionId;
+      if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
+
+      toast({
+        title: "Member Removed",
+        description: data.message || `You have removed ${data.removedMemberName || "the member"} from ${data.teamName || "your team"}.`,
+      });
+      debouncedRefetch();
+    });
+
     const offTeamMemberRemoved = onEvent("team_member_removed", (data: any) => {
       const targetSessionId = data.gameSessionId;
       if (targetSessionId && gameSessionId && targetSessionId !== gameSessionId) return;
@@ -510,6 +532,8 @@ const TeamBattleSetup: React.FC = () => {
       offTeammateDisconnected();
       offOpponentMemberDisconnected();
       offTeamBattleCancelled();
+      offTeammateLeft();
+      offMemberRemovedByCaptain();
       offTeamMemberRemoved();
       offLeftTeamBattle();
       offTeamsUpdatedToast();

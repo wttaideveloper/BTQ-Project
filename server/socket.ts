@@ -3149,6 +3149,8 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
 
     // For same-team members, send a simple teammate_disconnected event (or just rely on teams_updated)
     // This will show a toast notification instead of the full popup
+    // Also send teammate_left specifically to the captain for clarity
+    const captainId = leavingTeam.captainId;
     for (const participantId of Array.from(sameTeamMemberIds)) {
       sendToUser(participantId, {
         type: "teammate_disconnected",
@@ -3157,6 +3159,16 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
         teamName: leavingTeam.name,
         message: `${username || client.playerName || "A player"} has left your team.`,
       });
+      // Send specific notification to captain
+      if (participantId === captainId) {
+        sendToUser(participantId, {
+          type: "teammate_left",
+          gameSessionId: gameSessionId,
+          playerName: username || client.playerName || "A player",
+          teamName: leavingTeam.name,
+          message: `${username || client.playerName || "A player"} has left ${leavingTeam.name}.`,
+        });
+      }
     }
 
     // Broadcast updated teams to all participants so captain sees the updated team without disconnected member

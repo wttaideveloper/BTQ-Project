@@ -2369,15 +2369,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           for (const id of extractTeammateIds(battle.teamATeammates)) participantIds.add(id);
           for (const id of extractTeammateIds(battle.teamBTeammates)) participantIds.add(id);
 
+          const captainName = req.user?.username || "The captain";
+          const teamAName = battle.teamAName || "Team A";
+
           for (const participantId of Array.from(participantIds)) {
             if (participantId !== userId) {
-              sendToUser(participantId, {
-                type: "team_battle_cancelled",
-                teamBattleId: battleId,
-                gameSessionId: battle.gameSessionId,
-                reason: "Team A captain left the battle",
-                message: "The team battle has been cancelled because the Team A captain left.",
-              });
+              // Check if this participant is a Team A member (they should see captain_left_team)
+              const isTeamAMember = participantId === battle.teamACaptainId || 
+                                    extractTeammateIds(battle.teamATeammates).includes(participantId);
+              
+              if (isTeamAMember) {
+                // Team A members see captain_left_team popup
+                sendToUser(participantId, {
+                  type: "captain_left_team",
+                  gameSessionId: battle.gameSessionId,
+                  captainName: captainName,
+                  teamName: teamAName,
+                  message: `Your captain (${captainName}) left ${teamAName}. The battle has been cancelled.`,
+                });
+              } else {
+                // Opponents see battle cancelled
+                sendToUser(participantId, {
+                  type: "team_battle_cancelled",
+                  teamBattleId: battleId,
+                  gameSessionId: battle.gameSessionId,
+                  reason: "Team A captain left the battle",
+                  message: "The team battle has been cancelled because the Team A captain left.",
+                });
+              }
             }
           }
 
@@ -2439,9 +2458,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           for (const teammateId of oldTeamBTeammateIds) {
             if (teammateId !== userId) {
               sendToUser(teammateId, {
-                type: "team_member_removed",
+                type: "captain_left_team",
                 gameSessionId: updatedBattle.gameSessionId,
-                message: `Your captain left the lobby (${oldTeamBName}). You’ve been removed from this match. Please join/create a team again.`,
+                captainName: req.user?.username || "The captain",
+                teamName: oldTeamBName,
+                message: `Your captain (${req.user?.username || "The captain"}) left ${oldTeamBName}. You've been removed from this match.`,
               });
             }
           }

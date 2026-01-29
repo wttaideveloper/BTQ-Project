@@ -464,6 +464,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           "member_removed_by_captain", // Captain confirmation when removing member
           "opponent_team_member_disconnected",
           "team_member_removed",
+          "captain_left_team", // Member notification when captain leaves
           "team_battle_cancelled",
           "left_team_battle",
         ]);
@@ -797,26 +798,40 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           }
 
           case "team_member_removed": {
-            // Handle when a team member is removed by captain
+            // Handle when a team member is removed by captain - show popup instead of redirect
             console.log("[WebSocket] team_member_removed received", data);
-            toast({
-              title: "Removed from Team",
-              description:
-                data.message || `You have been removed from ${data.teamName || "the team"} by ${data.captainName || "the captain"}. Returning to home.`,
-              variant: "destructive",
+            setMemberRemovedInfo({
+              captainName: data.captainName || "The captain",
+              teamName: data.teamName || "the team",
+              message: data.message || `You have been removed from ${data.teamName || "the team"} by ${data.captainName || "the captain"}.`,
             });
+            setShowMemberRemovedDialog(true);
             // Force refetch of teams data
             queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
             queryClient.refetchQueries({ queryKey: ["/api/teams"] });
-            // Also refetch available teams
             queryClient.invalidateQueries({
               queryKey: ["/api/teams/available"],
             });
             queryClient.refetchQueries({ queryKey: ["/api/teams/available"] });
-            // Redirect to home page
-            setTimeout(() => {
-              window.location.href = "/";
-            }, 2000); // Delay to show toast
+            break;
+          }
+
+          case "captain_left_team": {
+            // Handle when captain leaves - show popup to team members
+            console.log("[WebSocket] captain_left_team received", data);
+            setCaptainLeftInfo({
+              captainName: data.captainName || "The captain",
+              teamName: data.teamName || "your team",
+              message: data.message || `Your captain (${data.captainName || "The captain"}) left ${data.teamName || "your team"}.`,
+            });
+            setShowCaptainLeftDialog(true);
+            // Force refetch of teams data
+            queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+            queryClient.refetchQueries({ queryKey: ["/api/teams"] });
+            queryClient.invalidateQueries({
+              queryKey: ["/api/teams/available"],
+            });
+            queryClient.refetchQueries({ queryKey: ["/api/teams/available"] });
             break;
           }
 
@@ -1192,6 +1207,22 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const [disconnectedPlayerInfo, setDisconnectedPlayerInfo] = useState<{
     playerName: string;
     teamName: string;
+  } | null>(null);
+
+  // Member removed dialog
+  const [showMemberRemovedDialog, setShowMemberRemovedDialog] = useState(false);
+  const [memberRemovedInfo, setMemberRemovedInfo] = useState<{
+    captainName: string;
+    teamName: string;
+    message: string;
+  } | null>(null);
+
+  // Captain left dialog
+  const [showCaptainLeftDialog, setShowCaptainLeftDialog] = useState(false);
+  const [captainLeftInfo, setCaptainLeftInfo] = useState<{
+    captainName: string;
+    teamName: string;
+    message: string;
   } | null>(null);
 
   // Ref to track if we should send leave event (only when page actually unloads)
@@ -3178,6 +3209,108 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto"
             >
               {leaveTeamMutation.isPending ? "Leaving..." : "Leave Lobby"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Member Removed Dialog */}
+      <Dialog
+        open={showMemberRemovedDialog}
+        onOpenChange={setShowMemberRemovedDialog}
+      >
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <X className="h-5 w-5 text-red-500" />
+              Removed from Team
+            </DialogTitle>
+            <DialogDescription>
+              You have been removed from {memberRemovedInfo?.teamName || "the team"} by {memberRemovedInfo?.captainName || "the captain"}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+              <p className="text-sm text-red-900">
+                <strong>What happened:</strong>{" "}
+                {memberRemovedInfo?.captainName || "The captain"} removed you from {memberRemovedInfo?.teamName || "the team"}.
+              </p>
+              <ul className="text-xs text-red-800 mt-2 space-y-1 ml-4 list-disc">
+                <li>You are no longer part of this team battle</li>
+                <li>Your progress in this lobby has been reset</li>
+              </ul>
+            </div>
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <p className="text-sm text-blue-900 font-medium mb-1">
+                What to do next:
+              </p>
+              <p className="text-xs text-blue-800">
+                Return to the home page to join a different team or create your own team battle.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setShowMemberRemovedDialog(false);
+                setMemberRemovedInfo(null);
+                onClose();
+                setLocation("/");
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Return Home
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Captain Left Dialog */}
+      <Dialog
+        open={showCaptainLeftDialog}
+        onOpenChange={setShowCaptainLeftDialog}
+      >
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <X className="h-5 w-5 text-amber-500" />
+              Captain Left the Team
+            </DialogTitle>
+            <DialogDescription>
+              Your captain ({captainLeftInfo?.captainName || "The captain"}) left {captainLeftInfo?.teamName || "your team"}. The team battle has been cancelled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+              <p className="text-sm text-amber-900">
+                <strong>What happened:</strong>{" "}
+                {captainLeftInfo?.captainName || "The captain"} left {captainLeftInfo?.teamName || "your team"}, so the battle has been cancelled.
+              </p>
+              <ul className="text-xs text-amber-800 mt-2 space-y-1 ml-4 list-disc">
+                <li>You've been removed from this team battle lobby</li>
+                <li>All team members have been notified</li>
+              </ul>
+            </div>
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <p className="text-sm text-blue-900 font-medium mb-1">
+                What to do next:
+              </p>
+              <p className="text-xs text-blue-800">
+                Return to the home page to join a different team or create your own team battle.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setShowCaptainLeftDialog(false);
+                setCaptainLeftInfo(null);
+                onClose();
+                setLocation("/");
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Return Home
             </Button>
           </DialogFooter>
         </DialogContent>

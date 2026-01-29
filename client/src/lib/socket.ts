@@ -350,6 +350,7 @@ export function onError(callback: (error: any) => void) {
   'no_active_game',           // CRITICAL: Pre-register error state
   'teammate_left',            // CRITICAL: Captain notification when member leaves
   'member_removed_by_captain', // CRITICAL: Captain confirmation when removing member
+  'captain_left_team',         // CRITICAL: Member notification when captain leaves
   'teammate_disconnected',     // CRITICAL: Teammate disconnect notification
   'opponent_disconnected',     // CRITICAL: Opponent disconnect notification
   'team_member_removed',       // CRITICAL: Member removed notification

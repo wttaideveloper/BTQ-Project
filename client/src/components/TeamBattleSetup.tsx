@@ -460,6 +460,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           // user-facing notifications during setup
           "opponent_disconnected",
           "teammate_disconnected",
+          "teammate_left", // Captain notification when member leaves
+          "member_removed_by_captain", // Captain confirmation when removing member
           "opponent_team_member_disconnected",
           "team_member_removed",
           "team_battle_cancelled",

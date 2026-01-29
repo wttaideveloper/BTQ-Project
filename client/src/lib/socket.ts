@@ -348,6 +348,11 @@ export function onError(callback: (error: any) => void) {
   'game_state_restored',      // CRITICAL: Pre-register game state
   'game_state_update',        // CRITICAL: Pre-register game updates
   'no_active_game',           // CRITICAL: Pre-register error state
+  'teammate_left',            // CRITICAL: Captain notification when member leaves
+  'member_removed_by_captain', // CRITICAL: Captain confirmation when removing member
+  'teammate_disconnected',     // CRITICAL: Teammate disconnect notification
+  'opponent_disconnected',     // CRITICAL: Opponent disconnect notification
+  'team_member_removed',       // CRITICAL: Member removed notification
 ].forEach((key) => {
   if (!eventListeners[key]) eventListeners[key] = [];
 });

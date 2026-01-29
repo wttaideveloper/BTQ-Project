@@ -2481,28 +2481,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const id of extractTeammateIds(updatedBattle.teamATeammates)) participantIds.add(id);
         for (const id of extractTeammateIds(updatedBattle.teamBTeammates)) participantIds.add(id);
 
-        // Determine which team the leaving member belonged to
+        // Determine which team the leaving member belonged to and get captain ID
         const leavingTeamSide = teamSide;
         const captainId = leavingTeamSide === "A" ? updatedBattle.teamACaptainId : updatedBattle.teamBCaptainId;
+        const teamName = leavingTeamSide === "A" ? (updatedBattle.teamAName || "Team A") : (updatedBattle.teamBName || "Team B");
+        
+        // Get leaving user's info for notifications
+        const leavingUser = await database.getUser(userId).catch(() => null);
+        const leavingUserName = leavingUser?.username || req.user?.username || "A player";
 
+        // Send specific notification to captain that their teammate left (if captain exists)
+        if (captainId && captainId !== userId) {
+          try {
+            sendToUser(captainId, {
+              type: "teammate_left",
+              gameSessionId: updatedBattle.gameSessionId,
+              playerName: leavingUserName,
+              teamName: teamName,
+              message: `${leavingUserName} has left ${teamName}.`,
+            });
+          } catch (notifyError) {
+            console.error("[Backend] Failed to send teammate_left notification to captain:", notifyError);
+          }
+        }
+
+        // Also send teams_updated to all participants
         for (const participantId of Array.from(participantIds)) {
           if (participantId !== userId) {
-            // Send specific notification to captain that their teammate left
-            if (participantId === captainId) {
-              sendToUser(participantId, {
-                type: "teammate_left",
-                gameSessionId: updatedBattle.gameSessionId,
-                playerName: req.user?.username || "A player",
-                teamName: leavingTeamSide === "A" ? (updatedBattle.teamAName || "Team A") : (updatedBattle.teamBName || "Team B"),
-                message: `${req.user?.username || 'A player'} has left your team.`,
-              });
-            }
-            // Also send teams_updated to all participants
             sendToUser(participantId, {
               type: "teams_updated",
               teams: teams,
               gameSessionId: updatedBattle.gameSessionId,
-              message: `${req.user?.username || 'A player'} has left the team.`,
+              message: `${leavingUserName} has left the team.`,
             });
           }
         }

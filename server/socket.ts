@@ -5791,8 +5791,23 @@ async function handleTeamBattlePlayerDisconnect(
 
     // Disconnected team found
 
+    // Get disconnected member info for notifications
+    const disconnectedMember = disconnectedTeam.members.find(
+      (m: any) => m.userId === userId
+    );
+
     // Check if disconnected player was the captain
-    if (disconnectedTeam.captainId === userId) {
+    const isCaptainDisconnect = disconnectedTeam.captainId === userId;
+    
+    if (isCaptainDisconnect) {
+      // FIRST: Notify same-team members that the captain disconnected (before captain change)
+      await notifySameTeamOfDisconnect(
+        gameId,
+        disconnectedTeam,
+        disconnectedMember?.username || "Unknown Player",
+        userId
+      );
+
       // Find another connected team member
       const connectedTeamMembers = disconnectedTeam.members.filter((member: any) => {
         const memberClient = Array.from(clients.values()).find(
@@ -5817,7 +5832,10 @@ async function handleTeamBattlePlayerDisconnect(
           });
         }
 
-        // Notify team members about new captain
+        // SECOND: Notify team members about new captain (after teammate disconnect notification)
+        // Add a small delay to ensure teammate_disconnected notification is processed first
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const teamClients = Array.from(clients.values()).filter(
           (c: Client) => disconnectedTeam.members.some((m: any) => m.userId === c.userId)
         );
@@ -5944,13 +5962,9 @@ async function handleTeamBattlePlayerDisconnect(
         );
       }
     } else {
-      // Only one player disconnected - notify both opposing team AND same-team members
+      // Only one player disconnected (not captain) - notify both opposing team AND same-team members
       const opposingTeam = gameSession.teams.find(
         (t: any) => t.id !== disconnectedTeam.id
-      );
-
-      const disconnectedMember = disconnectedTeam.members.find(
-        (m: any) => m.userId === userId
       );
 
       // Notify opposing team about partial disconnect
@@ -5963,13 +5977,15 @@ async function handleTeamBattlePlayerDisconnect(
         );
       }
 
-      // Notify same-team members and captain about teammate disconnect
-      await notifySameTeamOfDisconnect(
-        gameId,
-        disconnectedTeam,
-        disconnectedMember?.username || "Unknown Player",
-        userId
-      );
+      // Notify same-team members and captain about teammate disconnect (only if not captain, since captain was already notified above)
+      if (!isCaptainDisconnect) {
+        await notifySameTeamOfDisconnect(
+          gameId,
+          disconnectedTeam,
+          disconnectedMember?.username || "Unknown Player",
+          userId
+        );
+      }
     }
   } catch (error) {
     // Silent error handling

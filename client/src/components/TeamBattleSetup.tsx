@@ -456,6 +456,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         // If these get blocked, users won't see "captain left/disbanded" messages.
         const criticalEventTypes = new Set([
           "team_ready_status",
+          "ready_status_response", // Response to ready status request
           "team_battle_countdown",
           // user-facing notifications during setup
           "opponent_disconnected",
@@ -703,6 +704,41 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 teamAReady: data.teamAReady,
                 teamBReady: data.teamBReady,
               });
+              // Also update local isReady state based on user's team side
+              if (userTeam?.teamSide === "A" && data.teamAReady) {
+                setIsReady(true);
+              } else if (userTeam?.teamSide === "B" && data.teamBReady) {
+                setIsReady(true);
+              } else if (
+                (userTeam?.teamSide === "A" && !data.teamAReady) ||
+                (userTeam?.teamSide === "B" && !data.teamBReady)
+              ) {
+                setIsReady(false);
+              }
+            }
+            break;
+          }
+
+          case "ready_status_response": {
+            if (
+              data.teamAReady !== undefined &&
+              data.teamBReady !== undefined
+            ) {
+              setReadyStatus({
+                teamAReady: data.teamAReady,
+                teamBReady: data.teamBReady,
+              });
+              // Also update local isReady state based on user's team side
+              if (userTeam?.teamSide === "A" && data.teamAReady) {
+                setIsReady(true);
+              } else if (userTeam?.teamSide === "B" && data.teamBReady) {
+                setIsReady(true);
+              } else if (
+                (userTeam?.teamSide === "A" && !data.teamAReady) ||
+                (userTeam?.teamSide === "B" && !data.teamBReady)
+              ) {
+                setIsReady(false);
+              }
             }
             break;
           }
@@ -1379,8 +1415,36 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   const [isReady, setIsReady] = useState(false);
 
+  // FIX: Request ready status when userTeam is available
+  useEffect(() => {
+    if (userTeam?.teamBattleId && user) {
+      // Request current ready status from server
+      // sendGameEvent handles socket connection internally
+      sendGameEvent({
+        type: "request_ready_status",
+        teamBattleId: userTeam.teamBattleId,
+        gameSessionId: userTeam.gameSessionId || gameSessionId || undefined,
+      });
+    }
+  }, [userTeam?.teamBattleId, user, gameSessionId]);
+
   const handleReadyToPlay = async () => {
     if (!userTeam || !user) return;
+    
+    // FIX: Check if already ready before sending request
+    const isAlreadyReady = userTeam.teamSide === "A" 
+      ? readyStatus?.teamAReady 
+      : readyStatus?.teamBReady;
+      
+    if (isAlreadyReady) {
+      toast({
+        title: "Already Ready",
+        description: "Your team is already marked as ready",
+        variant: "default",
+      });
+      return;
+    }
+    
     try {
       sendGameEvent({
         type: "team_battle_ready",

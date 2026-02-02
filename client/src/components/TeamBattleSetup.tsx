@@ -3194,12 +3194,35 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               <p className="text-sm text-amber-900">
                 <strong>What happened:</strong>{" "}
                 {disconnectedPlayerInfo?.playerName || "A player"} (captain of{" "}
-                {disconnectedPlayerInfo?.teamName || "Team B"}) left the lobby.
+                {disconnectedPlayerInfo?.teamName || "the opponent team"}) left the lobby.
               </p>
               <ul className="text-xs text-amber-800 mt-2 space-y-1 ml-4 list-disc">
-                <li>Team B has been reset and needs a new captain</li>
-                <li>Your Team A is still safe and can keep inviting</li>
-                <li>Battle starts only after both teams are formed</li>
+                {(() => {
+                  const disconnectedTeamName = disconnectedPlayerInfo?.teamName || "";
+                  const isTeamA = disconnectedTeamName.toLowerCase().includes("team a") || disconnectedTeamName.toLowerCase().startsWith("a");
+                  const disconnectedTeam = isTeamA ? "Team A" : "Team B";
+                  const userTeamSide = userTeam?.teamSide;
+                  const userTeamName = userTeamSide === "A" ? "Team A" : userTeamSide === "B" ? "Team B" : "your team";
+                  
+                  // If Team A captain left, battle is cancelled
+                  if (isTeamA) {
+                    return (
+                      <>
+                        <li>{disconnectedTeam} captain left, so the battle has been cancelled</li>
+                        <li>You can create a new team battle or join another one</li>
+                      </>
+                    );
+                  } else {
+                    // Team B captain left
+                    return (
+                      <>
+                        <li>{disconnectedTeam} has been reset and needs a new captain</li>
+                        <li>Your {userTeamName} is still safe and can keep inviting</li>
+                        <li>Battle starts only after both teams are formed</li>
+                      </>
+                    );
+                  }
+                })()}
               </ul>
             </div>
           </div>

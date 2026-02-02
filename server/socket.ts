@@ -129,6 +129,8 @@ interface GameEvent {
   seconds?: number;
   newCaptainId?: number;
   newCaptainName?: string;
+  captainName?: string; // Captain name for various events
+  removedMemberName?: string; // Name of removed member
   // Team battle question fields
   isYourTurn?: boolean;
   answeringTeamName?: string;
@@ -471,10 +473,14 @@ export function setupWebSocketServer(server: Server) {
               // Check if the disconnected user is a captain
               if (battle.teamACaptainId === disconnectUserId) {
                 // Team A captain disconnected - remove Team A (required for battle)
+                // IMPORTANT: capture existing Team A teammates BEFORE deleting, so we can notify them
+                const oldTeamATeammateIds = extractTeammateIds(battle.teamATeammates);
+                const oldTeamAName = battle.teamAName || "Team A";
+                
                 await database.deleteTeamBattle(battle.id);
                 teamRemoved = true;
 
-                // Notify all participants that the battle has been cancelled
+                // Notify all participants
                 const participantIds = new Set<number>();
                 if (battle.teamACaptainId) participantIds.add(battle.teamACaptainId);
                 if (battle.teamBCaptainId) participantIds.add(battle.teamBCaptainId);
@@ -483,13 +489,31 @@ export function setupWebSocketServer(server: Server) {
 
                 for (const userId of Array.from(participantIds)) {
                   if (userId !== disconnectUserId) {
-                    sendToUser(userId, {
-                      type: "team_battle_cancelled",
-                      teamBattleId: battle.id,
-                      gameSessionId: battle.gameSessionId,
-                      reason: "Team A captain disconnected",
-                      message: "The team battle has been cancelled because the Team A captain disconnected.",
-                    });
+                    // Check if this participant is a Team A member (they should see captain_left_team)
+                    const isTeamAMember = userId === battle.teamACaptainId || 
+                                          oldTeamATeammateIds.includes(userId);
+                    
+                    if (isTeamAMember) {
+                      // Team A members see captain_left_team popup
+                      sendToUser(userId, {
+                        type: "captain_left_team",
+                        gameSessionId: disconnectGameSessionId,
+                        captainName: client.playerName || "The captain",
+                        teamName: oldTeamAName,
+                        message: `Your captain (${client.playerName || "The captain"}) left ${oldTeamAName}. The battle has been cancelled.`,
+                      });
+                    } else {
+                      // Team B (opponents) see opponent_disconnected popup
+                      sendToUser(userId, {
+                        type: "opponent_disconnected",
+                        gameSessionId: disconnectGameSessionId,
+                        disconnectedPlayerName: client.playerName || 'A player',
+                        disconnectedTeamName: oldTeamAName,
+                        message: `⚠️ ${client.playerName || 'A player'} (Team A captain) has left the lobby. The battle has been cancelled.`,
+                        severity: "warning",
+                        timestamp: new Date(),
+                      });
+                    }
                   }
                 }
               } else if (battle.teamBCaptainId === disconnectUserId) {

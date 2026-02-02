@@ -2360,23 +2360,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isCaptain) {
         if (teamSide === "A") {
           // Team A captain leaving - delete the entire battle since Team A is required
+          // IMPORTANT: capture existing Team A teammates BEFORE deleting, so we can notify them
+          const oldTeamATeammateIds = extractTeammateIds(battle.teamATeammates);
+          const oldTeamAName = battle.teamAName || "Team A";
+          const captainName = req.user?.username || "The captain";
+          
           await database.deleteTeamBattle(battleId);
 
-          // Notify all participants that the battle has been cancelled
+          // Notify all participants
           const participantIds = new Set<number>();
           if (battle.teamACaptainId) participantIds.add(battle.teamACaptainId);
           if (battle.teamBCaptainId) participantIds.add(battle.teamBCaptainId);
           for (const id of extractTeammateIds(battle.teamATeammates)) participantIds.add(id);
           for (const id of extractTeammateIds(battle.teamBTeammates)) participantIds.add(id);
 
-          const captainName = req.user?.username || "The captain";
-          const teamAName = battle.teamAName || "Team A";
-
           for (const participantId of Array.from(participantIds)) {
             if (participantId !== userId) {
               // Check if this participant is a Team A member (they should see captain_left_team)
               const isTeamAMember = participantId === battle.teamACaptainId || 
-                                    extractTeammateIds(battle.teamATeammates).includes(participantId);
+                                    oldTeamATeammateIds.includes(participantId);
               
               if (isTeamAMember) {
                 // Team A members see captain_left_team popup
@@ -2384,17 +2386,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   type: "captain_left_team",
                   gameSessionId: battle.gameSessionId,
                   captainName: captainName,
-                  teamName: teamAName,
-                  message: `Your captain (${captainName}) left ${teamAName}. The battle has been cancelled.`,
+                  teamName: oldTeamAName,
+                  message: `Your captain (${captainName}) left ${oldTeamAName}. The battle has been cancelled.`,
                 });
               } else {
-                // Opponents see battle cancelled
+                // Team B (opponents) see opponent_disconnected popup
                 sendToUser(participantId, {
-                  type: "team_battle_cancelled",
-                  teamBattleId: battleId,
+                  type: "opponent_disconnected",
                   gameSessionId: battle.gameSessionId,
-                  reason: "Team A captain left the battle",
-                  message: "The team battle has been cancelled because the Team A captain left.",
+                  disconnectedPlayerName: captainName,
+                  disconnectedTeamName: oldTeamAName,
+                  message: `⚠️ ${captainName} (Team A captain) has left the lobby. The battle has been cancelled.`,
+                  severity: "warning",
+                  timestamp: new Date(),
                 });
               }
             }

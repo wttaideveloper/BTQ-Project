@@ -366,3 +366,33 @@ button span, .answer-button span {
     padding-right: 1.5rem;
   }
 }
+
+/* Mobile Safe Area Support for Team Battle Setup Modal */
+@supports (padding: max(0px)) {
+  .safe-area-top {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Team Battle Setup Modal Mobile Fixes */
+@media (max-width: 640px) {
+  /* Ensure modal takes full viewport on mobile */
+  [class*="fixed inset-0"] {
+    padding: 0 !important;
+  }
+  
+  /* Smooth scrolling for mobile */
+  [class*="overflow-y-auto"] {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  
+  /* Prevent content from being cut off */
+  [class*="max-h-"] {
+    max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}

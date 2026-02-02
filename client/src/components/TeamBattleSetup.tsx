@@ -2188,10 +2188,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   }, [teams, userTeam]);
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-black/80 via-primary-dark/80 to-secondary-dark/80 backdrop-blur-sm flex items-center justify-center z-50 py-2 sm:py-4 md:py-6 px-2 sm:px-4">
-      <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-3xl mx-auto my-auto max-h-[98vh] sm:max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden border border-white/20">
+    <div className="fixed inset-0 bg-gradient-to-br from-black/80 via-primary-dark/80 to-secondary-dark/80 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:py-4 md:py-6 sm:px-4">
+      <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-none sm:rounded-xl md:rounded-2xl shadow-2xl w-full h-full sm:h-auto sm:max-w-3xl mx-auto my-auto sm:max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden border-0 sm:border border-white/20">
         {/* Header Section */}
-        <div className="bg-gradient-to-r from-primary via-primary-dark to-secondary p-3 sm:p-4 md:p-6 relative overflow-hidden flex-shrink-0">
+        <div className="bg-gradient-to-r from-primary via-primary-dark to-secondary p-3 sm:p-4 md:p-6 relative overflow-hidden flex-shrink-0 safe-area-top">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
           <div className="relative z-10 flex justify-between items-center gap-2">
             <Button
@@ -2224,9 +2224,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-4 md:p-6 bg-white/95 pb-6 sm:pb-8 md:pb-10">
+        <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-4 md:p-6 bg-white/95 pb-6 sm:pb-8 md:pb-10 safe-area-bottom" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
           {/* Game Configuration Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-6">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border border-blue-200/50 shadow-sm hover:shadow-md transition-shadow duration-200">
               <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
                 <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
@@ -2283,7 +2283,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           </div>
 
           {/* Current Teams Overview */}
-          <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
+          <div className="mb-3 sm:mb-6 space-y-3 sm:space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-blue-200/50">
               <div className="flex-1 min-w-0">
                 <h3 className="text-lg sm:text-xl font-heading font-bold text-gray-900 flex items-center gap-2">
@@ -2416,7 +2416,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Landing: Enter Team Battle */}
           {currentStage === "enter" && (
-            <div className="mt-4 sm:mt-6 space-y-3 sm:space-y-4">
+            <div className="mt-3 sm:mt-6 space-y-3 sm:space-y-4">
               <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border border-blue-200/50 shadow-sm">
                 <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
@@ -2475,7 +2475,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Stage 1: Create Team */}
           {currentStage === "create-team" && (
-            <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
+            <div className="mt-3 sm:mt-6 space-y-4 sm:space-y-5">
               <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
                 <div className="flex items-start gap-3 sm:gap-4">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -2531,7 +2531,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Stage: Join as Member */}
           {currentStage === "join-as-member" && (
-            <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
+            <div className="mt-3 sm:mt-6 space-y-4 sm:space-y-5">
               <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
                 <div className="flex items-start gap-3 sm:gap-4">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -2590,7 +2590,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     <span>Available Teams</span>
                   </h4>
                 </div>
-                <div className="max-h-48 sm:max-h-64 overflow-y-auto">
+                <div className="max-h-48 sm:max-h-64 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                   {availableTeamsForJoin.length === 0 && (
                     <div className="px-4 sm:px-5 py-6 sm:py-8 text-center">
                       <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3">
@@ -2767,7 +2767,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     </Button>
                   </div>
                 </div>
-                <div className="max-h-48 sm:max-h-64 overflow-y-auto">
+                <div className="max-h-48 sm:max-h-64 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                   {isLoading && (
                     <div className="px-4 sm:px-5 py-6 sm:py-8 text-center">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-2 sm:mb-3"></div>
@@ -2910,7 +2910,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 <h4 className="font-medium text-sm sm:text-base text-neutral-800 mb-2 sm:mb-3">
                   Available Players
                 </h4>
-                <div className="border rounded-lg bg-neutral-50 max-h-48 sm:max-h-64 overflow-y-auto">
+                <div className="border rounded-lg bg-neutral-50 max-h-48 sm:max-h-64 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                   {isLoading && (
                     <div className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-neutral-500">
                       Loading online players...
@@ -3003,7 +3003,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             (inv: TeamInvitation) =>
               inv.status === "pending" && inv.inviteeId === user?.id
           ).length > 0 && (
-            <div className="mt-4 sm:mt-6 space-y-3 sm:space-y-4">
+            <div className="mt-3 sm:mt-6 space-y-3 sm:space-y-4">
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-blue-200">
                 <h4 className="font-heading font-bold text-base sm:text-lg text-gray-900 mb-1 flex items-center gap-2 flex-wrap">
                   <Mail className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />

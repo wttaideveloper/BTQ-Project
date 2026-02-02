@@ -497,6 +497,24 @@ export default function TeamBattleGame() {
             });
             break;
 
+          // Handle same-team member disconnect notification
+          case "teammate_disconnected":
+            toast({
+              title: "⚠️ Teammate Disconnected",
+              description: `${data.disconnectedPlayerName} from your team has disconnected!`,
+              variant: "destructive",
+            });
+            // Update teams to reflect the disconnected member
+            if (data.teamName && gameState.playerTeam?.name === data.teamName) {
+              // Refresh team data to show updated member list
+              sendGameEvent({
+                type: "get_game_state",
+                gameSessionId,
+                userId: user.id,
+              });
+            }
+            break;
+
           // Handle end of battle due to opponent team being unavailable
           case "team_battle_ended_opponent_disconnect":
             setGameState((prev) => ({

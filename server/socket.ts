@@ -5944,18 +5944,17 @@ async function handleTeamBattlePlayerDisconnect(
         );
       }
     } else {
-      // Only one player disconnected - notify opposing team
+      // Only one player disconnected - notify both opposing team AND same-team members
       const opposingTeam = gameSession.teams.find(
         (t: any) => t.id !== disconnectedTeam.id
       );
 
+      const disconnectedMember = disconnectedTeam.members.find(
+        (m: any) => m.userId === userId
+      );
+
+      // Notify opposing team about partial disconnect
       if (opposingTeam) {
-        const disconnectedMember = disconnectedTeam.members.find(
-          (m: any) => m.userId === userId
-        );
-
-        // Notifying opponent about partial disconnect
-
         await notifyOpponentTeamOfDisconnect(
           gameId,
           opposingTeam,
@@ -5963,6 +5962,14 @@ async function handleTeamBattlePlayerDisconnect(
           disconnectedTeam.name
         );
       }
+
+      // Notify same-team members and captain about teammate disconnect
+      await notifySameTeamOfDisconnect(
+        gameId,
+        disconnectedTeam,
+        disconnectedMember?.username || "Unknown Player",
+        userId
+      );
     }
   } catch (error) {
     // Silent error handling
@@ -5991,6 +5998,41 @@ async function notifyOpponentTeamOfDisconnect(
         gameId: gameId,
         disconnectedPlayerName: disconnectedPlayerName,
         disconnectedTeamName: disconnectedTeamName,
+        message: message,
+        severity: "warning",
+        timestamp: new Date(),
+      });
+    }
+  } catch (error) {
+    // Silent error handling
+  }
+}
+
+// Notify same-team members and captain that a teammate has disconnected
+async function notifySameTeamOfDisconnect(
+  gameId: string,
+  disconnectedTeam: any,
+  disconnectedPlayerName: string,
+  disconnectedUserId: number | undefined
+) {
+  try {
+    // Get all connected same-team members (excluding the disconnected user)
+    const sameTeamClients = Array.from(clients.values()).filter(
+      (c: Client) =>
+        c.gameId === gameId &&
+        disconnectedTeam.members.some((m: any) => m.userId === c.userId && m.userId !== disconnectedUserId) &&
+        c.ws &&
+        c.ws.readyState === WebSocket.OPEN
+    );
+
+    const message = `⚠️ ${disconnectedPlayerName} from your team has disconnected!`;
+
+    for (const client of sameTeamClients) {
+      sendToClient(client.id, {
+        type: "teammate_disconnected",
+        gameId: gameId,
+        disconnectedPlayerName: disconnectedPlayerName,
+        teamName: disconnectedTeam.name,
         message: message,
         severity: "warning",
         timestamp: new Date(),

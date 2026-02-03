@@ -5922,6 +5922,21 @@ async function handleTeamBattlePlayerDisconnect(
             gameSessionId: gameSessionId
           });
         }
+      } else {
+        // No connected team members left after captain disconnect - entire team is offline
+        // Declare opponent as winner immediately
+        const opposingTeam = gameSession.teams.find(
+          (t: any) => t.id !== disconnectedTeam.id
+        );
+
+        if (opposingTeam) {
+          await declareTeamBattleWinner(
+            gameId,
+            opposingTeam,
+            `Opponent team (${disconnectedTeam.name}) has disconnected - all members left`
+          );
+          return; // Exit early since battle is ended
+        }
       }
     }
 

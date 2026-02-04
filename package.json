@@ -15,6 +15,7 @@
     "db:postgres": "sudo ./server/setup-postgres.sh",
     "db:setup-db": "tsx server/setup-database.ts",
     "db:init-full": "npm run db:setup-db && npm run db:init",
+    "db:migrate-ready": "tsx server/migrate-ready-timestamps.ts",
     "preview": "vite preview --port 4173 --strictPort"
   },
   "dependencies": {

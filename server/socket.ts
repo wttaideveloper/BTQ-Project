@@ -836,6 +836,11 @@ function handleGameEvent(clientId: string, event: GameEvent) {
       handleRequestReadyStatus(clientId, event);
       break;
 
+    // Get ready state (for refresh/reconnect)
+    case "get_ready_state":
+      handleGetReadyState(clientId, event);
+      break;
+
     // Bind a websocket connection to the current team-battle lobby session.
     // This enables disconnect notifications during the team setup (lobby) phase.
     case "team_battle_setup_session": {
@@ -947,20 +952,18 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           )[0];
           
-          // FIX: Initialize ready state from database and sync to client
-          await initializeTeamBattleReadyState(battle.id);
-          const readyState = teamBattleReadyState.get(battle.id);
+          // PRODUCTION-SAFE: Get ready state from database and sync to client
+          const readyState = await database.getTeamReadyState(battle.id);
           
-          if (readyState) {
-            // Send current ready status to client
-            sendToClient(clientId, {
-              type: "team_ready_status",
-              teamBattleId: battle.id,
-              gameSessionId: userTeam.gameSessionId,
-              teamAReady: readyState.teamAReady,
-              teamBReady: readyState.teamBReady,
-            });
-          }
+          // Send current ready status to client
+          sendToClient(clientId, {
+            type: "team_ready_status",
+            teamBattleId: battle.id,
+            gameSessionId: userTeam.gameSessionId,
+            teamAReady: readyState.teamAReady,
+            teamBReady: readyState.teamBReady,
+            updatedAt: readyState.updatedAt,
+          });
           
           // If battle status is "playing" (IN_GAME), send team_battle_started event
           // This ensures client navigates even if in-memory gameSessions is empty
@@ -3595,40 +3598,23 @@ async function handleTeamReady(clientId: string, event: GameEvent) {
   }
 }
 
-// Initialize team battle ready state from database (for persistence across restarts)
+// DEPRECATED: No longer needed - database is source of truth
+// Kept for backward compatibility but always reads from DB
 async function initializeTeamBattleReadyState(battleId: string) {
-  // Check if already initialized
-  if (teamBattleReadyState.has(battleId)) {
-    return teamBattleReadyState.get(battleId)!;
-  }
-
   try {
-    const battle = await database.getTeamBattle(battleId);
-    if (!battle) {
-      const initialState = { teamAReady: false, teamBReady: false };
-      teamBattleReadyState.set(battleId, initialState);
-      return initialState;
-    }
-
-    // Initialize from database status
-    // If battle status is "ready" or "playing", both teams were ready
-    const initialState = {
-      teamAReady: battle.status === "ready" || battle.status === "playing",
-      teamBReady: battle.status === "ready" || battle.status === "playing",
+    const readyState = await database.getTeamReadyState(battleId);
+    return {
+      teamAReady: readyState.teamAReady,
+      teamBReady: readyState.teamBReady,
     };
-
-    teamBattleReadyState.set(battleId, initialState);
-    console.log(`[initializeTeamBattleReadyState] Initialized ready state for battle ${battleId} from database:`, initialState);
-    return initialState;
   } catch (error) {
-    console.error(`[initializeTeamBattleReadyState] Failed to initialize ready state:`, error);
-    const initialState = { teamAReady: false, teamBReady: false };
-    teamBattleReadyState.set(battleId, initialState);
-    return initialState;
+    console.error(`[initializeTeamBattleReadyState] Failed to get ready state:`, error);
+    return { teamAReady: false, teamBReady: false };
   }
 }
 
-// Team battle ready handler (for new team_battles flow)
+// PRODUCTION-SAFE: Team battle ready handler (database-first, atomic operations)
+// Database is the single source of truth - no in-memory state dependency
 async function handleTeamBattleReady(clientId: string, event: GameEvent) {
   const client = clients.get(clientId);
   if (!client || !client.userId || !event.teamBattleId || !event.teamSide) {
@@ -3636,12 +3622,17 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
   }
 
   try {
+    // STEP 1: Validate battle exists
     const battle = await database.getTeamBattle(event.teamBattleId);
     if (!battle) {
+      sendToClient(clientId, {
+        type: "error",
+        message: "Battle not found",
+      });
       return;
     }
 
-    // Only the appropriate captain can mark their side as ready
+    // STEP 2: Validate captain authorization
     if (
       (event.teamSide === "A" && battle.teamACaptainId !== client.userId) ||
       (event.teamSide === "B" && battle.teamBCaptainId !== client.userId)
@@ -3653,174 +3644,203 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
       return;
     }
 
-    // FIX: Initialize ready state from database if not already in memory
-    await initializeTeamBattleReadyState(battle.id);
+    // STEP 3: Get current ready state from database (before update)
+    const previousState = await database.getTeamReadyState(battle.id);
+    const wasBothReady = previousState.teamAReady && previousState.teamBReady;
+
+    // STEP 4: Check if already ready (prevent duplicate clicks)
+    const isAlreadyReady = event.teamSide === "A" 
+      ? previousState.teamAReady 
+      : previousState.teamBReady;
     
-    const current = teamBattleReadyState.get(battle.id)!;
-
-    const wasBothReady = current.teamAReady && current.teamBReady;
-
-    // FIX: Check if team is already ready before setting
-    if (event.teamSide === "A") {
-      if (current.teamAReady) {
-        sendToClient(clientId, {
-          type: "error",
-          message: "Your team is already marked as ready",
-        });
-        return;
-      }
-      current.teamAReady = true;
-    } else if (event.teamSide === "B") {
-      if (current.teamBReady) {
-        sendToClient(clientId, {
-          type: "error",
-          message: "Your team is already marked as ready",
-        });
-        return;
-      }
-      current.teamBReady = true;
-    }
-
-    teamBattleReadyState.set(battle.id, current);
-
-    const bothReady = current.teamAReady && current.teamBReady;
-
-    // Collect all participant userIds (captains + teammates)
-    const participantIds = new Set<number>();
-    participantIds.add(battle.teamACaptainId);
-    if (battle.teamBCaptainId) {
-      participantIds.add(battle.teamBCaptainId);
-    }
-    
-    // Add all teammates from both teams
-    for (const id of extractTeammateIds(battle.teamATeammates)) {
-      participantIds.add(id);
-    }
-    for (const id of extractTeammateIds(battle.teamBTeammates)) {
-      participantIds.add(id);
-    }
-
-    // CRITICAL FIX: Broadcast current ready status to all participants
-    // Use sendToUser to ensure all connections for each user get the update
-    for (const userId of Array.from(participantIds)) {
-      sendToUser(userId, {
-        type: "team_ready_status",
-        teamBattleId: battle.id,
-        gameSessionId: battle.gameSessionId,
-        teamAReady: current.teamAReady,
-        teamBReady: current.teamBReady,
+    if (isAlreadyReady) {
+      sendToClient(clientId, {
+        type: "error",
+        message: "Your team is already marked as ready",
       });
-    }
-    
-    // ADDITIONAL FIX: Also send to all clients in the game session to ensure synchronization
-    // This handles cases where userConnections might not be fully updated
-    const sessionClients = Array.from(clients.values()).filter((c) => {
-      if (!c.userId) return false;
-      return participantIds.has(c.userId);
-    });
-    
-    for (const sessionClient of sessionClients) {
-      // Only send if not already sent via sendToUser (avoid duplicates)
-      // But ensure we catch any clients that might have missed the sendToUser call
-      sendToClient(sessionClient.id, {
-        type: "team_ready_status",
-        teamBattleId: battle.id,
-        gameSessionId: battle.gameSessionId,
-        teamAReady: current.teamAReady,
-        teamBReady: current.teamBReady,
-      });
+      // Still broadcast current state to ensure client is in sync
+      await broadcastReadyState(battle.id, battle.gameSessionId);
+      return;
     }
 
-    // When both sides become ready (transition from not-both-ready -> both-ready),
-    // update battle status to "ready" (COUNTDOWN phase) and broadcast countdown event
+    // STEP 5: ATOMIC UPDATE - Mark team as ready in database
+    // This operation is atomic and prevents race conditions
+    const newState = await database.markTeamReady(battle.id, event.teamSide);
+    const bothReady = newState.teamAReady && newState.teamBReady;
+
+    // STEP 6: Broadcast updated ready state to ALL participants
+    // Database update happened FIRST, now broadcast the truth
+    await broadcastReadyState(battle.id, battle.gameSessionId, newState.updatedAt);
+
+    // STEP 7: If both teams just became ready, update battle status and start countdown
     if (bothReady && !wasBothReady) {
-      // CRITICAL: Update battle status to "ready" (COUNTDOWN phase) in database
-      // This makes the server the authoritative source of truth
       try {
+        // Update battle status to "ready" (COUNTDOWN phase) in database
         await database.updateTeamBattle(battle.id, {
           status: "ready", // COUNTDOWN phase
         });
-        console.log(`[handleTeamBattleReady] Battle ${battle.id} status updated to "ready" (COUNTDOWN phase)`);
+        console.log(`[handleTeamBattleReady] ✅ Battle ${battle.id} status updated to "ready" (COUNTDOWN phase)`);
+
+        // Broadcast countdown to all participants
+        const countdownSeconds = 5;
+        await broadcastCountdown(battle.id, battle.gameSessionId, countdownSeconds);
+
+        // After countdown, automatically start the team battle
+        setTimeout(() => {
+          try {
+            const allClients = Array.from(clients.values());
+            const captainClient =
+              allClients.find((c) => c.userId === battle.teamACaptainId) ||
+              (battle.teamBCaptainId
+                ? allClients.find((c) => c.userId === battle.teamBCaptainId)
+                : undefined);
+
+            if (captainClient) {
+              handleStartTeamBattle(captainClient.id, {
+                type: "start_team_battle",
+                gameSessionId: battle.gameSessionId,
+              } as GameEvent);
+            }
+          } catch (err) {
+            console.error(`[handleTeamBattleReady] Failed to start battle:`, err);
+          }
+        }, countdownSeconds * 1000);
       } catch (error) {
         console.error(`[handleTeamBattleReady] Failed to update battle status:`, error);
-      }
-      
-      const countdownSeconds = 5;
-      // CRITICAL FIX: Send countdown to all participants via sendToUser
-      for (const userId of Array.from(participantIds)) {
-        sendToUser(userId, {
-          type: "team_battle_countdown",
-          gameSessionId: battle.gameSessionId,
-          seconds: countdownSeconds,
+        sendToClient(clientId, {
+          type: "error",
+          message: "Failed to mark team as ready. Please try again.",
         });
       }
-      
-      // ADDITIONAL FIX: Also send to all clients in the game session
-      const sessionClients = Array.from(clients.values()).filter((c) => {
-        if (!c.userId) return false;
-        return participantIds.has(c.userId);
-      });
-      
-      for (const sessionClient of sessionClients) {
-        sendToClient(sessionClient.id, {
-          type: "team_battle_countdown",
-          gameSessionId: battle.gameSessionId,
-          seconds: countdownSeconds,
-        });
-      }
-      
-      // CRITICAL FIX: After countdown, handleStartTeamBattle will send team_battle_started
-      // So we don't need to send it here - that would cause duplicate events
-      // The handleStartTeamBattle function already sends team_battle_started to all clients
-
-      // After the shared countdown completes, automatically start the team battle
-      // using the existing start_team_battle flow so questions are delivered.
-      setTimeout(() => {
-        try {
-          const allClients = Array.from(clients.values());
-          const captainClient =
-            allClients.find((c) => c.userId === battle.teamACaptainId) ||
-            (battle.teamBCaptainId
-              ? allClients.find((c) => c.userId === battle.teamBCaptainId)
-              : undefined);
-
-          if (captainClient) {
-            handleStartTeamBattle(captainClient.id, {
-              type: "start_team_battle",
-              gameSessionId: battle.gameSessionId,
-            } as GameEvent);
-          } else {
-            // No active captain client found
-          }
-        } catch (err) {
-          // Silent error handling
-        }
-      }, countdownSeconds * 1000);
     }
   } catch (error) {
-    // Silent error handling
+    console.error(`[handleTeamBattleReady] Error:`, error);
+    sendToClient(clientId, {
+      type: "error",
+      message: "Failed to mark team as ready. Please try again.",
+    });
   }
 }
 
-// Handle request for current ready status
+// Helper: Broadcast ready state to all participants (single broadcast path)
+async function broadcastReadyState(
+  battleId: string,
+  gameSessionId: string,
+  updatedAt?: Date
+) {
+  // Get fresh state from database (always authoritative)
+  const readyState = await database.getTeamReadyState(battleId);
+  
+  // Get battle to collect participant IDs
+  const battle = await database.getTeamBattle(battleId);
+  if (!battle) return;
+
+  // Collect all participant userIds (captains + teammates)
+  const participantIds = new Set<number>();
+  participantIds.add(battle.teamACaptainId);
+  if (battle.teamBCaptainId) {
+    participantIds.add(battle.teamBCaptainId);
+  }
+  
+  for (const id of extractTeammateIds(battle.teamATeammates)) {
+    participantIds.add(id);
+  }
+  for (const id of extractTeammateIds(battle.teamBTeammates)) {
+    participantIds.add(id);
+  }
+
+  // Single broadcast path - send to all participants
+  const readyStatusMessage = {
+    type: "team_ready_status",
+    teamBattleId: battleId,
+    gameSessionId: gameSessionId,
+    teamAReady: readyState.teamAReady,
+    teamBReady: readyState.teamBReady,
+    updatedAt: updatedAt || readyState.updatedAt || new Date(),
+  };
+
+  // Send to all participants via sendToUser (handles multiple connections per user)
+  for (const userId of Array.from(participantIds)) {
+    sendToUser(userId, readyStatusMessage);
+  }
+}
+
+// Helper: Broadcast countdown to all participants
+async function broadcastCountdown(
+  battleId: string,
+  gameSessionId: string,
+  seconds: number
+) {
+  const battle = await database.getTeamBattle(battleId);
+  if (!battle) return;
+
+  const participantIds = new Set<number>();
+  participantIds.add(battle.teamACaptainId);
+  if (battle.teamBCaptainId) {
+    participantIds.add(battle.teamBCaptainId);
+  }
+  
+  for (const id of extractTeammateIds(battle.teamATeammates)) {
+    participantIds.add(id);
+  }
+  for (const id of extractTeammateIds(battle.teamBTeammates)) {
+    participantIds.add(id);
+  }
+
+  const countdownMessage = {
+    type: "team_battle_countdown",
+    gameSessionId: gameSessionId,
+    seconds: seconds,
+  };
+
+  for (const userId of Array.from(participantIds)) {
+    sendToUser(userId, countdownMessage);
+  }
+}
+
+// PRODUCTION-SAFE: Handle request for current ready status (database-first)
 async function handleRequestReadyStatus(clientId: string, event: GameEvent) {
   if (!event.teamBattleId) return;
   
   try {
-    await initializeTeamBattleReadyState(event.teamBattleId);
-    const readyState = teamBattleReadyState.get(event.teamBattleId);
+    // Get fresh state from database (always authoritative)
+    const readyState = await database.getTeamReadyState(event.teamBattleId);
     
-    if (readyState) {
-      sendToClient(clientId, {
-        type: "ready_status_response",
-        teamBattleId: event.teamBattleId,
-        gameSessionId: event.gameSessionId,
-        teamAReady: readyState.teamAReady,
-        teamBReady: readyState.teamBReady,
-      });
-    }
+    sendToClient(clientId, {
+      type: "ready_status_response",
+      teamBattleId: event.teamBattleId,
+      gameSessionId: event.gameSessionId,
+      teamAReady: readyState.teamAReady,
+      teamBReady: readyState.teamBReady,
+      updatedAt: readyState.updatedAt,
+    });
   } catch (error) {
     console.error(`[handleRequestReadyStatus] Failed to get ready status:`, error);
+    sendToClient(clientId, {
+      type: "error",
+      message: "Failed to get ready status",
+    });
+  }
+}
+
+// PRODUCTION-SAFE: Handle get_ready_state request (for client refresh/reconnect)
+async function handleGetReadyState(clientId: string, event: GameEvent) {
+  if (!event.teamBattleId) return;
+  
+  try {
+    // Get fresh state from database (always authoritative)
+    const readyState = await database.getTeamReadyState(event.teamBattleId);
+    
+    sendToClient(clientId, {
+      type: "ready_status_response",
+      teamBattleId: event.teamBattleId,
+      gameSessionId: event.gameSessionId,
+      teamAReady: readyState.teamAReady,
+      teamBReady: readyState.teamBReady,
+      updatedAt: readyState.updatedAt,
+    });
+  } catch (error) {
+    console.error(`[handleGetReadyState] Failed to get ready status:`, error);
   }
 }
 

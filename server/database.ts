@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, and, or, like, desc, asc, gte, lt } from "drizzle-orm";
+import { eq, and, or, like, desc, asc, gte, lt, isNull } from "drizzle-orm";
 import postgres from "postgres";
 import {
   users,
@@ -197,6 +197,14 @@ export interface IDatabase {
     updates: Partial<TeamBattle>
   ): Promise<TeamBattle>;
   deleteTeamBattle(id: string): Promise<void>;
+  // Atomic ready state operations (database is source of truth)
+  markTeamReady(
+    battleId: string,
+    teamSide: "A" | "B"
+  ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date }>;
+  getTeamReadyState(
+    battleId: string
+  ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date | null }>;
 
   // Voice settings methods
   getVoiceCloneId(): Promise<string | null>;
@@ -2165,6 +2173,8 @@ class PostgreSQLDatabase implements IDatabase {
       createdAt: battle.createdAt ?? new Date(),
       startedAt: battle.startedAt,
       finishedAt: battle.finishedAt,
+      teamAReadyAt: battle.teamAReadyAt ?? null,
+      teamBReadyAt: battle.teamBReadyAt ?? null,
     };
   }
 
@@ -2380,6 +2390,87 @@ class PostgreSQLDatabase implements IDatabase {
 
   async deleteTeamBattle(id: string): Promise<void> {
     await db.delete(teamBattles).where(eq(teamBattles.id, id));
+  }
+
+  // Atomic ready state operations (database is source of truth)
+  // Mark team as ready atomically - only updates if not already ready
+  async markTeamReady(
+    battleId: string,
+    teamSide: "A" | "B"
+  ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date }> {
+    const now = new Date();
+    
+    // CRITICAL: Use atomic UPDATE with WHERE clause to prevent race conditions
+    // Only update if the field is NULL (not already ready)
+    if (teamSide === "A") {
+      await db
+        .update(teamBattles)
+        .set({ teamAReadyAt: now })
+        .where(
+          and(
+            eq(teamBattles.id, battleId),
+            isNull(teamBattles.teamAReadyAt)
+          )
+        );
+    } else {
+      await db
+        .update(teamBattles)
+        .set({ teamBReadyAt: now })
+        .where(
+          and(
+            eq(teamBattles.id, battleId),
+            isNull(teamBattles.teamBReadyAt)
+          )
+        );
+    }
+
+    // Re-fetch from database to get current state (handles concurrent updates)
+    const battle = await this.getTeamBattle(battleId);
+    if (!battle) {
+      throw new Error(`Team battle ${battleId} not found`);
+    }
+
+    const teamAReady = battle.teamAReadyAt !== null;
+    const teamBReady = battle.teamBReadyAt !== null;
+    
+    // Determine most recent update timestamp
+    const updatedAt = teamAReady && teamBReady
+      ? (battle.teamAReadyAt && battle.teamBReadyAt
+          ? (battle.teamAReadyAt > battle.teamBReadyAt ? battle.teamAReadyAt : battle.teamBReadyAt)
+          : now)
+      : (teamAReady ? battle.teamAReadyAt : battle.teamBReadyAt) || now;
+
+    return {
+      teamAReady,
+      teamBReady,
+      updatedAt,
+    };
+  }
+
+  // Get current ready state from database (always fresh)
+  async getTeamReadyState(
+    battleId: string
+  ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date | null }> {
+    const battle = await this.getTeamBattle(battleId);
+    if (!battle) {
+      return { teamAReady: false, teamBReady: false, updatedAt: null };
+    }
+
+    const teamAReady = battle.teamAReadyAt !== null;
+    const teamBReady = battle.teamBReadyAt !== null;
+    
+    // Determine most recent update timestamp
+    const updatedAt = teamAReady && teamBReady
+      ? (battle.teamAReadyAt && battle.teamBReadyAt
+          ? (battle.teamAReadyAt > battle.teamBReadyAt ? battle.teamAReadyAt : battle.teamBReadyAt)
+          : null)
+      : (teamAReady ? battle.teamAReadyAt : teamBReady ? battle.teamBReadyAt : null);
+
+    return {
+      teamAReady,
+      teamBReady,
+      updatedAt,
+    };
   }
 
   // Voice settings methods

@@ -99,6 +99,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const [readyStatus, setReadyStatus] = useState<{
     teamAReady: boolean;
     teamBReady: boolean;
+    updatedAt?: number | Date | null;
   } | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [gameSessionId, setGameSessionId] = useState<string | null>(null);
@@ -696,39 +697,79 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           }
 
           case "team_ready_status": {
+            // CRITICAL: Validate battle ID matches current battle
+            if (data.teamBattleId && userTeam?.teamBattleId && data.teamBattleId !== userTeam.teamBattleId) {
+              console.log(`[TeamBattleSetup] ⚠️ Ignoring team_ready_status for different battle: ${data.teamBattleId} vs ${userTeam.teamBattleId}`);
+              break;
+            }
+            
             if (
               data.teamAReady !== undefined &&
               data.teamBReady !== undefined
             ) {
-              setReadyStatus({
-                teamAReady: data.teamAReady,
-                teamBReady: data.teamBReady,
-              });
-              // Also update local isReady state based on user's team side
-              if (userTeam?.teamSide === "A" && data.teamAReady) {
-                setIsReady(true);
-              } else if (userTeam?.teamSide === "B" && data.teamBReady) {
-                setIsReady(true);
-              } else if (
-                (userTeam?.teamSide === "A" && !data.teamAReady) ||
-                (userTeam?.teamSide === "B" && !data.teamBReady)
-              ) {
-                setIsReady(false);
+              // CRITICAL: Only update if timestamp is newer (prevent stale updates)
+              const currentTimestamp = readyStatus?.updatedAt 
+                ? (typeof readyStatus.updatedAt === 'number' 
+                    ? readyStatus.updatedAt 
+                    : new Date(readyStatus.updatedAt).getTime())
+                : 0;
+              
+              const messageTimestamp = data.updatedAt
+                ? (typeof data.updatedAt === 'number'
+                    ? data.updatedAt
+                    : new Date(data.updatedAt).getTime())
+                : Date.now();
+              
+              if (messageTimestamp >= currentTimestamp) {
+                setReadyStatus({
+                  teamAReady: data.teamAReady,
+                  teamBReady: data.teamBReady,
+                  updatedAt: messageTimestamp,
+                });
+                
+                // Update local isReady state based on user's team side
+                if (userTeam?.teamSide === "A" && data.teamAReady) {
+                  setIsReady(true);
+                } else if (userTeam?.teamSide === "B" && data.teamBReady) {
+                  setIsReady(true);
+                } else if (
+                  (userTeam?.teamSide === "A" && !data.teamAReady) ||
+                  (userTeam?.teamSide === "B" && !data.teamBReady)
+                ) {
+                  setIsReady(false);
+                }
+              } else {
+                console.log(`[TeamBattleSetup] ⚠️ Ignoring stale team_ready_status: ${messageTimestamp} < ${currentTimestamp}`);
               }
             }
             break;
           }
 
           case "ready_status_response": {
+            // CRITICAL: Validate battle ID matches current battle
+            if (data.teamBattleId && userTeam?.teamBattleId && data.teamBattleId !== userTeam.teamBattleId) {
+              console.log(`[TeamBattleSetup] ⚠️ Ignoring ready_status_response for different battle: ${data.teamBattleId} vs ${userTeam.teamBattleId}`);
+              break;
+            }
+            
             if (
               data.teamAReady !== undefined &&
               data.teamBReady !== undefined
             ) {
+              // Always accept response (it's a fresh query result)
+              const messageTimestamp = data.updatedAt
+                ? (typeof data.updatedAt === 'number'
+                    ? data.updatedAt
+                    : new Date(data.updatedAt).getTime())
+                : Date.now();
+              
               setReadyStatus({
                 teamAReady: data.teamAReady,
                 teamBReady: data.teamBReady,
+                updatedAt: messageTimestamp,
               });
-              // Also update local isReady state based on user's team side
+              
+              // Update local isReady state based on user's team side
               if (userTeam?.teamSide === "A" && data.teamAReady) {
                 setIsReady(true);
               } else if (userTeam?.teamSide === "B" && data.teamBReady) {
@@ -1415,18 +1456,35 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   const [isReady, setIsReady] = useState(false);
 
-  // FIX: Request ready status when userTeam is available
+  // PRODUCTION-SAFE: Request ready status from database when userTeam is available
   useEffect(() => {
-    if (userTeam?.teamBattleId && user) {
-      // Request current ready status from server
-      // sendGameEvent handles socket connection internally
+    if (userTeam?.teamBattleId && user && open) {
+      // Request current ready status from database (always fresh)
       sendGameEvent({
-        type: "request_ready_status",
+        type: "get_ready_state",
         teamBattleId: userTeam.teamBattleId,
         gameSessionId: userTeam.gameSessionId || gameSessionId || undefined,
       });
     }
-  }, [userTeam?.teamBattleId, user, gameSessionId]);
+  }, [userTeam?.teamBattleId, user, gameSessionId, open]);
+
+  // PRODUCTION-SAFE: Periodic sync to ensure state is always current (fallback)
+  useEffect(() => {
+    if (!userTeam?.teamBattleId || !open) return;
+    
+    // Request ready status every 3 seconds as fallback
+    const syncInterval = setInterval(() => {
+      if (userTeam?.teamBattleId && user) {
+        sendGameEvent({
+          type: "get_ready_state",
+          teamBattleId: userTeam.teamBattleId,
+          gameSessionId: userTeam.gameSessionId || gameSessionId || undefined,
+        });
+      }
+    }, 3000);
+    
+    return () => clearInterval(syncInterval);
+  }, [userTeam?.teamBattleId, user, gameSessionId, open]);
 
   const handleReadyToPlay = async () => {
     if (!userTeam || !user) return;

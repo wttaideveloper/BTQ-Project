@@ -109,6 +109,9 @@ export type TeamBattle = {
   createdAt: Date;
   startedAt: Date | null;
   finishedAt: Date | null;
+  // Ready state timestamps (database is source of truth)
+  teamAReadyAt: Date | null; // null = not ready, Date = ready
+  teamBReadyAt: Date | null; // null = not ready, Date = ready
 };
 
 export type Question = {
@@ -391,6 +394,9 @@ export const teamBattles = pgTable("team_battles", {
   createdAt: timestamp("created_at").defaultNow(),
   startedAt: timestamp("started_at"),
   finishedAt: timestamp("finished_at"),
+  // Ready state timestamps (database is source of truth)
+  teamAReadyAt: timestamp("team_a_ready_at"), // null = not ready, timestamp = ready
+  teamBReadyAt: timestamp("team_b_ready_at"), // null = not ready, timestamp = ready
 });
 
 // Sessions table for PostgreSQL session store

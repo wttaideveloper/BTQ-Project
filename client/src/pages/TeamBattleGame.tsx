@@ -114,6 +114,7 @@ export default function TeamBattleGame() {
     {}
   );
   const [connected, setConnected] = useState(false);
+  const connectedRef = useRef<boolean>(false); // Track connection state for beforeunload handler
   const [suggestions, setSuggestions] = useState<SuggestionsByAnswerId>({});
   const [waitingForResults, setWaitingForResults] = useState(false);
   const [correctAnswerId, setCorrectAnswerId] = useState<string | null>(null);
@@ -133,6 +134,10 @@ export default function TeamBattleGame() {
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
+
+  useEffect(() => {
+    connectedRef.current = connected;
+  }, [connected]);
 
   useEffect(() => {
     if (lastRoundCorrect !== null) {
@@ -182,12 +187,30 @@ export default function TeamBattleGame() {
     }
 
     // Add beforeunload listener to notify server when page is about to unload
-    const handleBeforeUnload = () => {
-      if (
-        connected &&
-        gameState.phase !== "waiting" &&
-        gameState.phase !== "finished"
-      ) {
+    // and show browser confirmation dialog if game is in progress
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Use refs to get the most current state
+      const currentGameState = gameStateRef.current;
+      
+      // Only show dialog if we have a game session and game is in progress
+      const hasGameSession = !!gameSessionId;
+      const phase = currentGameState.phase;
+      const isFinished = phase === "finished";
+      const isWaiting = phase === "waiting";
+      const hasGameData = !!(currentGameState.playerTeam || currentGameState.teams?.length);
+      
+      // Show dialog if:
+      // - We have a game session AND
+      // - Game is not finished AND
+      // - (Phase is defined and not "waiting", OR we have game data indicating game has started)
+      // This ensures we show dialog during: ready, playing, question, results phases
+      const shouldShowDialog = 
+        hasGameSession && 
+        !isFinished && 
+        ((phase && phase !== "waiting") || hasGameData);
+      
+      if (shouldShowDialog) {
+        // Try to notify server (non-blocking)
         try {
           sendGameEvent({
             type: "player_leaving_team_battle",
@@ -196,8 +219,15 @@ export default function TeamBattleGame() {
             username: user.username,
           });
         } catch (e) {
-          // Silent error handling
+          // Silent error handling - page might be closing
         }
+        
+        // Trigger browser's default confirmation dialog
+        // Modern browsers ignore the custom message and show their own default message
+        // IMPORTANT: Both preventDefault() and returnValue are needed for cross-browser support
+        event.preventDefault();
+        event.returnValue = ""; // Required for Chrome/Edge
+        return ""; // Required for some browsers (Safari, Firefox)
       }
     };
 

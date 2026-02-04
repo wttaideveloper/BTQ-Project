@@ -71,6 +71,8 @@ const client = postgres(connectionString, {
 });
 
 export const db = drizzle(client);
+// Export raw postgres client for migrations and raw SQL queries
+export { client as sql };
 
 // Database interface for all operations
 export interface IDatabase {

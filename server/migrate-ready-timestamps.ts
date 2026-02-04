@@ -1,42 +1,15 @@
 import "dotenv/config";
-import postgres from "postgres";
+import { sql } from "./database";
 
 async function migrateReadyTimestamps() {
-  const connectionString =
-    process.env.DATABASE_URL ||
-    "postgresql://faithiq_user:faithiq_password123@localhost:5432/bible_trivia_db";
-
-  if (!connectionString) {
-    console.error("❌ DATABASE_URL environment variable is not set");
-    console.log("💡 Please set DATABASE_URL in your .env file or as an environment variable");
-    process.exit(1);
-  }
-
-  console.log("🔍 Database connection string:", connectionString.replace(/:[^:@]*@/, ":****@"));
-
-  // Enable SSL for Neon or when sslmode=require is present
-  const useSSL =
-    connectionString.includes("neon.tech") ||
-    connectionString.includes("sslmode=require");
-
-  console.log("🔐 SSL mode:", useSSL ? "required" : "disabled");
-
-  const client = postgres(connectionString, {
-    max: 1,
-    idle_timeout: 20,
-    connect_timeout: 30, // Increased timeout for network issues
-    onnotice: () => {},
-    ssl: useSSL ? "require" : false,
-  });
-
   try {
     console.log("🚀 Starting migration: Add team ready timestamps...");
-    console.log("🔗 Connected to database");
+    console.log("🔗 Using database connection from server/database.ts (same connection as application)");
     console.log("⚠️  IMPORTANT: This migration only adds columns. Ready timestamps will only be set by new READY logic going forward.");
 
     // Step 1: Add columns
     console.log("📋 Step 1: Adding team_a_ready_at and team_b_ready_at columns...");
-    await client`
+    await sql`
       ALTER TABLE team_battles
       ADD COLUMN IF NOT EXISTS team_a_ready_at TIMESTAMP NULL,
       ADD COLUMN IF NOT EXISTS team_b_ready_at TIMESTAMP NULL
@@ -46,7 +19,7 @@ async function migrateReadyTimestamps() {
     // Step 2: Create index (optional - for performance, not required for correctness)
     console.log("📋 Step 2: Creating optional index for ready state queries...");
     try {
-      await client`
+      await sql`
         CREATE INDEX IF NOT EXISTS idx_team_battles_ready_state 
         ON team_battles(team_a_ready_at, team_b_ready_at) 
         WHERE team_a_ready_at IS NOT NULL OR team_b_ready_at IS NOT NULL
@@ -58,17 +31,17 @@ async function migrateReadyTimestamps() {
 
     // Step 3: Add comments
     console.log("📋 Step 3: Adding column comments...");
-    await client`
+    await sql`
       COMMENT ON COLUMN team_battles.team_a_ready_at IS 'Timestamp when Team A marked ready. NULL = not ready, timestamp = ready'
     `;
-    await client`
+    await sql`
       COMMENT ON COLUMN team_battles.team_b_ready_at IS 'Timestamp when Team B marked ready. NULL = not ready, timestamp = ready'
     `;
     console.log("✅ Comments added successfully");
 
     // Step 4: Verify
     console.log("📋 Step 4: Verifying migration...");
-    const verify = await client`
+    const verify = await sql`
       SELECT 
         column_name, 
         data_type, 
@@ -116,12 +89,6 @@ async function migrateReadyTimestamps() {
     } else {
       throw error;
     }
-  } finally {
-    try {
-      await client.end();
-    } catch (e) {
-      // Ignore errors during cleanup
-    }
   }
 }
 
@@ -135,4 +102,3 @@ migrateReadyTimestamps()
     console.error("\n❌ Migration script failed:", error);
     process.exit(1);
   });
-

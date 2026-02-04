@@ -3668,11 +3668,22 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
     const newState = await database.markTeamReady(battle.id, event.teamSide);
     const bothReady = newState.teamAReady && newState.teamBReady;
 
-    // STEP 6: Broadcast updated ready state to ALL participants
-    // Database update happened FIRST, now broadcast the truth
+    // STEP 6: Send IMMEDIATE confirmation to requesting client (instant feedback)
+    // This provides instant UI update before broadcasting to all participants
+    sendToClient(clientId, {
+      type: "team_ready_status",
+      teamBattleId: battle.id,
+      gameSessionId: battle.gameSessionId,
+      teamAReady: newState.teamAReady,
+      teamBReady: newState.teamBReady,
+      updatedAt: newState.updatedAt,
+    });
+
+    // STEP 7: Broadcast updated ready state to ALL participants
+    // Database update happened FIRST, now broadcast the truth to everyone
     await broadcastReadyState(battle.id, battle.gameSessionId, newState.updatedAt);
 
-    // STEP 7: If both teams just became ready, update battle status and start countdown
+    // STEP 8: If both teams just became ready, update battle status and start countdown
     if (bothReady && !wasBothReady) {
       try {
         // Update battle status to "ready" (COUNTDOWN phase) in database

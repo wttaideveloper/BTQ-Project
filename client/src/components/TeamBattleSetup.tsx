@@ -1504,6 +1504,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     }
     
     try {
+      // Send ready request to server
       sendGameEvent({
         type: "team_battle_ready",
         gameSessionId: userTeam.gameSessionId || gameSessionId || undefined,
@@ -1512,7 +1513,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         userId: user.id,
       });
 
+      // Optimistically update UI for instant feedback
+      // Server will confirm via team_ready_status event immediately after DB update
       setIsReady(true);
+      const optimisticReadyStatus = {
+        teamAReady: userTeam.teamSide === "A" ? true : readyStatus?.teamAReady || false,
+        teamBReady: userTeam.teamSide === "B" ? true : readyStatus?.teamBReady || false,
+        updatedAt: Date.now(),
+      };
+      setReadyStatus(optimisticReadyStatus);
+      
       toast({
         title: "Team Ready!",
         description: "Your team is ready to play. Waiting for opponent...",

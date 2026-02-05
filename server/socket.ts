@@ -207,22 +207,35 @@ export function listJoinRequestsForTeam(teamId: string): JoinRequest[] {
 // ============================================================================
 // Track when each connection was last active to detect stale connections
 // This ensures we clean up dead connections and don't send to them
+// CRITICAL: lastSeen must be updated on EVERY incoming message, including ping
 // ============================================================================
 const connectionLastSeen: Map<string, number> = new Map();
-const STALE_CONNECTION_THRESHOLD = 90000; // 90 seconds (3 missed pings)
+// INCREASED THRESHOLD: 3 minutes (180 seconds) - must be much longer than ping interval (25s)
+// This prevents false "captain left" errors when connections are idle but alive
+const STALE_CONNECTION_THRESHOLD = 180000; // 180 seconds = 3 minutes
 
-// Update connection last seen time
+// Update connection last seen time - MUST be called on every incoming message
 function updateConnectionLastSeen(clientId: string) {
-  connectionLastSeen.set(clientId, Date.now());
+  const now = Date.now();
+  connectionLastSeen.set(clientId, now);
 }
 
-// Periodic cleanup of stale connections (every 30 seconds)
+// Initialize connection lastSeen when client first connects
+function initializeConnectionLastSeen(clientId: string) {
+  connectionLastSeen.set(clientId, Date.now());
+  console.log(`[Socket] 🔗 Initialized lastSeen for client: ${clientId}`);
+}
+
+// Periodic cleanup of stale connections (every 60 seconds - less aggressive)
 setInterval(() => {
   const now = Date.now();
   const staleClientIds: string[] = [];
   
   for (const [clientId, lastSeen] of connectionLastSeen.entries()) {
-    if (now - lastSeen > STALE_CONNECTION_THRESHOLD) {
+    const timeSinceLastSeen = now - lastSeen;
+    if (timeSinceLastSeen > STALE_CONNECTION_THRESHOLD) {
+      const client = clients.get(clientId);
+      console.log(`[Socket] ⚠️ Detected stale connection: ${clientId} (user: ${client?.userId}, idle: ${Math.round(timeSinceLastSeen / 1000)}s)`);
       staleClientIds.push(clientId);
     }
   }
@@ -230,7 +243,17 @@ setInterval(() => {
   for (const clientId of staleClientIds) {
     const client = clients.get(clientId);
     if (client) {
-      console.log(`[Socket] 🧹 Cleaning up stale connection: ${clientId} (user: ${client.userId})`);
+      // CRITICAL: Double-check WebSocket readyState before marking as stale
+      // readyState 1 = OPEN (still connected)
+      if (client.ws && client.ws.readyState === 1) {
+        // Connection is still open - might be alive but idle
+        // Update lastSeen and skip cleanup this round
+        console.log(`[Socket] 🔄 Connection ${clientId} (user: ${client.userId}) appears stale but WebSocket is OPEN - giving grace period`);
+        connectionLastSeen.set(clientId, Date.now() - (STALE_CONNECTION_THRESHOLD / 2)); // Give 50% more time
+        continue;
+      }
+      
+      console.log(`[Socket] 🧹 Cleaning up truly stale connection: ${clientId} (user: ${client.userId}, wsState: ${client.ws?.readyState})`);
       
       // Remove from userConnections
       if (client.userId) {
@@ -258,9 +281,9 @@ setInterval(() => {
   }
   
   if (staleClientIds.length > 0) {
-    console.log(`[Socket] 🧹 Cleaned up ${staleClientIds.length} stale connection(s)`);
+    console.log(`[Socket] 🧹 Processed ${staleClientIds.length} stale connection check(s)`);
   }
-}, 30000);
+}, 60000); // Check every 60 seconds (less aggressive)
 
 // ============================================================================
 // DATABASE KEEP-ALIVE (Prevents Neon serverless cold start)
@@ -488,6 +511,10 @@ export function setupWebSocketServer(server: Server) {
 
     // Store client in map
     clients.set(clientId, { id: clientId, ws });
+    
+    // CRITICAL: Initialize connectionLastSeen immediately when client connects
+    // This prevents new connections from being incorrectly marked as stale
+    initializeConnectionLastSeen(clientId);
 
     // Handle incoming messages
     ws.on("message", (message) => {
@@ -808,6 +835,9 @@ export function setupWebSocketServer(server: Server) {
 
       // Remove client from map
       clients.delete(clientId);
+      
+      // Clean up connectionLastSeen
+      connectionLastSeen.delete(clientId);
     });
 
     // Send initial connection confirmation
@@ -835,6 +865,9 @@ function handleGameEvent(clientId: string, event: GameEvent) {
     // PING/PONG - Keep connection alive
     // ========================================================================
     case "ping":
+      // CRITICAL: Explicitly update lastSeen on ping (in addition to the call above)
+      // This ensures idle connections sending pings are never marked as stale
+      updateConnectionLastSeen(clientId);
       sendToClient(clientId, { type: "pong", serverTime: Date.now() });
       break;
       

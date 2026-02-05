@@ -1,12 +1,27 @@
 import "dotenv/config";
-import { sql } from "./database";
+import postgres from "postgres";
 
 async function migrateReadyTimestamps() {
-  try {
-    console.log("🚀 Starting migration: Add team ready timestamps...");
-    console.log("🔗 Using database connection from server/database.ts (same connection as application)");
-    console.log("⚠️  IMPORTANT: This migration only adds columns. Ready timestamps will only be set by new READY logic going forward.");
+  const connectionString = process.env.DATABASE_URL;
+  
+  if (!connectionString) {
+    console.error("❌ DATABASE_URL environment variable is required");
+    process.exit(1);
+  }
 
+  console.log("🚀 Starting migration: Add team ready timestamps...");
+  console.log("🔗 Connecting to database:", connectionString.replace(/:[^:@]*@/, ":****@"));
+  console.log("⚠️  IMPORTANT: This migration only adds columns. Ready timestamps will only be set by new READY logic going forward.");
+
+  // Create connection for migration (uses same DATABASE_URL as application)
+  const sql = postgres(connectionString, {
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 30,
+    onnotice: () => {},
+  });
+
+  try {
     // Step 1: Add columns
     console.log("📋 Step 1: Adding team_a_ready_at and team_b_ready_at columns...");
     await sql`
@@ -89,6 +104,8 @@ async function migrateReadyTimestamps() {
     } else {
       throw error;
     }
+  } finally {
+    await sql.end();
   }
 }
 

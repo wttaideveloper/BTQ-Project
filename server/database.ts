@@ -42,37 +42,28 @@ import {
   type InsertQuestionAnalytics,
 } from "@shared/schema";
 
-// Production PostgreSQL Database Connection
-const connectionString =
-  process.env.DATABASE_URL ||
-  "postgresql://faithiq_user:faithiq_password123@localhost:5432/bible_trivia_db";
+// Single PostgreSQL connection - SSL handled via URL parameters
+const connectionString = process.env.DATABASE_URL;
 
-// Ensure the connection string is properly formatted
-if (!connectionString || typeof connectionString !== "string") {
-  throw new Error("DATABASE_URL must be a valid string");
+if (!connectionString) {
+  throw new Error("DATABASE_URL environment variable is required");
 }
 
 console.log(
   "🔗 Connecting to database:",
   connectionString.replace(/:[^:@]*@/, ":****@")
-); // Hide password in logs
+);
 
-// Enable SSL for Neon or when sslmode=require is present, keep it disabled for local connections
-const useSSL =
-  connectionString.includes("neon.tech") ||
-  connectionString.includes("sslmode=require");
-
-const client = postgres(connectionString, {
-  max: 10, // Maximum number of connections
-  idle_timeout: 20, // Close idle connections after 20 seconds
-  connect_timeout: 10, // Connection timeout
-  onnotice: () => {}, // Suppress notices
-  ssl: useSSL ? "require" : false,
+// Single postgres client instance (SSL handled by URL, e.g. ?sslmode=require)
+const sql = postgres(connectionString, {
+  max: 10,
+  idle_timeout: 20,
+  connect_timeout: 10,
+  onnotice: () => {},
 });
 
-export const db = drizzle(client);
-// Export raw postgres client for migrations and raw SQL queries
-export { client as sql };
+// Single drizzle instance
+const db = drizzle(sql);
 
 // Database interface for all operations
 export interface IDatabase {
@@ -242,6 +233,9 @@ export interface IDatabase {
 }
 
 class PostgreSQLDatabase implements IDatabase {
+  // Expose drizzle instance for raw queries (used in db-setup.ts)
+  db = db;
+  
   // User methods
   async getUser(id: number): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.id, id));
@@ -2228,6 +2222,8 @@ class PostgreSQLDatabase implements IDatabase {
       teamBCorrectAnswers: battle.teamBCorrectAnswers || 0,
       teamAIncorrectAnswers: battle.teamAIncorrectAnswers || 0,
       teamBIncorrectAnswers: battle.teamBIncorrectAnswers || 0,
+      teamAReadyAt: battle.teamAReadyAt,
+      teamBReadyAt: battle.teamBReadyAt,
       createdAt: battle.createdAt ?? new Date(),
       startedAt: battle.startedAt,
       finishedAt: battle.finishedAt,
@@ -2261,6 +2257,8 @@ class PostgreSQLDatabase implements IDatabase {
       teamBCorrectAnswers: battle.teamBCorrectAnswers || 0,
       teamAIncorrectAnswers: battle.teamAIncorrectAnswers || 0,
       teamBIncorrectAnswers: battle.teamBIncorrectAnswers || 0,
+      teamAReadyAt: battle.teamAReadyAt,
+      teamBReadyAt: battle.teamBReadyAt,
       createdAt: battle.createdAt ?? new Date(),
       startedAt: battle.startedAt,
       finishedAt: battle.finishedAt,
@@ -2292,6 +2290,8 @@ class PostgreSQLDatabase implements IDatabase {
       teamBCorrectAnswers: battle.teamBCorrectAnswers || 0,
       teamAIncorrectAnswers: battle.teamAIncorrectAnswers || 0,
       teamBIncorrectAnswers: battle.teamBIncorrectAnswers || 0,
+      teamAReadyAt: battle.teamAReadyAt,
+      teamBReadyAt: battle.teamBReadyAt,
       createdAt: battle.createdAt ?? new Date(),
       startedAt: battle.startedAt,
       finishedAt: battle.finishedAt,
@@ -2348,6 +2348,8 @@ class PostgreSQLDatabase implements IDatabase {
       teamBCorrectAnswers: created.teamBCorrectAnswers || 0,
       teamAIncorrectAnswers: created.teamAIncorrectAnswers || 0,
       teamBIncorrectAnswers: created.teamBIncorrectAnswers || 0,
+      teamAReadyAt: created.teamAReadyAt,
+      teamBReadyAt: created.teamBReadyAt,
       createdAt: created.createdAt ?? new Date(),
       startedAt: created.startedAt,
       finishedAt: created.finishedAt,
@@ -3255,12 +3257,10 @@ class PostgreSQLDatabase implements IDatabase {
       const regularTeams = await db.select().from(teams).where(eq(teams.captainId, captainId));
       
       // Get Team Battle teams where user is captain
-      const sql = postgres(connectionString);
       const battles = await sql`
         SELECT * FROM team_battles 
         WHERE team_a_captain_id = ${captainId} OR team_b_captain_id = ${captainId}
       `;
-      await sql.end();
       
       // Convert battles to virtual team IDs
       const virtualTeams: any[] = [];
@@ -3316,9 +3316,7 @@ class PostgreSQLDatabase implements IDatabase {
 
   async getJoinRequestsByUser(userId: number): Promise<any[]> {
     try {
-      const sql = postgres(connectionString);
       const rows = await sql`SELECT * FROM team_join_request WHERE requester_id = ${userId} ORDER BY created_at DESC`;
-      await sql.end();
       return rows;
     } catch (error) {
       console.error("Error getJoinRequestsByUser:", error);
@@ -3328,9 +3326,7 @@ class PostgreSQLDatabase implements IDatabase {
 
   async getJoinRequestsByTeam(teamId: string): Promise<any[]> {
     try {
-      const sql = postgres(connectionString);
       const rows = await sql`SELECT * FROM team_join_request WHERE team_id = ${teamId} ORDER BY created_at DESC`;
-      await sql.end();
       return rows;
     } catch (error) {
       console.error("Error getJoinRequestsByTeam:", error);
@@ -3340,9 +3336,7 @@ class PostgreSQLDatabase implements IDatabase {
 
   async getAllJoinRequests(): Promise<any[]> {
     try {
-      const sql = postgres(connectionString);
       const rows = await sql`SELECT * FROM team_join_request ORDER BY created_at DESC`;
-      await sql.end();
       return rows;
     } catch (error) {
       console.error("Error getAllJoinRequests:", error);
@@ -3353,8 +3347,6 @@ class PostgreSQLDatabase implements IDatabase {
   async getJoinRequestsForCaptain(captainId: number): Promise<any[]> {
     try {
       console.log(`[DB] getJoinRequestsForCaptain: Getting ALL join requests for captain ${captainId}`);
-      
-      const sql = postgres(connectionString);
       
       // Get ALL forming battles where user is captain (no session filter)
       const battles = await sql`
@@ -3380,7 +3372,6 @@ class PostgreSQLDatabase implements IDatabase {
       
       if (teamIds.length === 0) {
         console.log(`[DB] No teams found, returning empty`);
-        await sql.end();
         return [];
       }
       
@@ -3408,7 +3399,6 @@ class PostgreSQLDatabase implements IDatabase {
         console.log(`  - ${jr.id}: ${jr.requester_username} -> ${jr.team_id} (expires: ${jr.expires_at})`);
       });
       
-      await sql.end();
       return joinRequests;
     } catch (error) {
       console.error("[DB] Error getJoinRequestsForCaptain:", error);
@@ -3419,12 +3409,10 @@ class PostgreSQLDatabase implements IDatabase {
   async createJoinRequest(teamId: string, requesterId: number, requesterUsername: string, expiresAt: Date): Promise<any> {
     const id = `jr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
-      const sql = postgres(connectionString);
       await sql`
         INSERT INTO team_join_request (id, team_id, requester_id, requester_username, status, created_at, expires_at)
         VALUES (${id}, ${teamId}, ${requesterId}, ${requesterUsername}, 'pending', NOW(), ${expiresAt})
       `;
-      await sql.end();
       return { id, teamId, requesterId, requesterUsername, status: "pending", createdAt: new Date(), expiresAt };
     } catch (error) {
       console.error("Error createJoinRequest:", error);
@@ -3434,9 +3422,7 @@ class PostgreSQLDatabase implements IDatabase {
 
   async updateJoinRequestStatus(id: string, status: "accepted" | "rejected" | "expired" | "cancelled"): Promise<void> {
     try {
-      const sql = postgres(connectionString);
       await sql`UPDATE team_join_request SET status = ${status} WHERE id = ${id}`;
-      await sql.end();
     } catch (error) {
       console.error("Error updateJoinRequestStatus:", error);
       throw error;
@@ -3446,3 +3432,4 @@ class PostgreSQLDatabase implements IDatabase {
 
 // Export the database instance
 export const database = new PostgreSQLDatabase();
+export default database;

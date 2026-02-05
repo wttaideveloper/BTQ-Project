@@ -1,7 +1,10 @@
 import "dotenv/config";
-import { database, db } from "./database";
+import { database } from "./database";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+
+// Access drizzle instance through database
+const db = database.db;
 
 async function setupDatabase() {
   try {

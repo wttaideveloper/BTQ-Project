@@ -138,6 +138,10 @@ interface GameEvent {
   wasYourTurn?: boolean;
   opposingTeamName?: string;
   invitationId?: string;
+  // DB-authoritative state fields
+  updatedAt?: Date | number | string | null;
+  serverTime?: number;
+  shouldRefetch?: boolean;
 }
 
 // Store active WebSocket clients
@@ -197,6 +201,66 @@ export function listJoinRequestsForTeam(teamId: string): JoinRequest[] {
   });
   return result;
 }
+
+// ============================================================================
+// CONNECTION LIVENESS TRACKING (Ping/Pong)
+// ============================================================================
+// Track when each connection was last active to detect stale connections
+// This ensures we clean up dead connections and don't send to them
+// ============================================================================
+const connectionLastSeen: Map<string, number> = new Map();
+const STALE_CONNECTION_THRESHOLD = 90000; // 90 seconds (3 missed pings)
+
+// Update connection last seen time
+function updateConnectionLastSeen(clientId: string) {
+  connectionLastSeen.set(clientId, Date.now());
+}
+
+// Periodic cleanup of stale connections (every 30 seconds)
+setInterval(() => {
+  const now = Date.now();
+  const staleClientIds: string[] = [];
+  
+  for (const [clientId, lastSeen] of connectionLastSeen.entries()) {
+    if (now - lastSeen > STALE_CONNECTION_THRESHOLD) {
+      staleClientIds.push(clientId);
+    }
+  }
+  
+  for (const clientId of staleClientIds) {
+    const client = clients.get(clientId);
+    if (client) {
+      console.log(`[Socket] 🧹 Cleaning up stale connection: ${clientId} (user: ${client.userId})`);
+      
+      // Remove from userConnections
+      if (client.userId) {
+        const connections = userConnections.get(client.userId) || [];
+        const filtered = connections.filter(id => id !== clientId);
+        if (filtered.length > 0) {
+          userConnections.set(client.userId, filtered);
+        } else {
+          userConnections.delete(client.userId);
+        }
+      }
+      
+      // Close the websocket if still connected
+      try {
+        if (client.ws && client.ws.readyState === 1) {
+          client.ws.close();
+        }
+      } catch (e) {
+        // Ignore close errors
+      }
+      
+      clients.delete(clientId);
+    }
+    connectionLastSeen.delete(clientId);
+  }
+  
+  if (staleClientIds.length > 0) {
+    console.log(`[Socket] 🧹 Cleaned up ${staleClientIds.length} stale connection(s)`);
+  }
+}, 30000);
 
 export function createJoinRequest(teamId: string, requesterId: number, requesterUsername: string, gameSessionId?: string): JoinRequest {
   const id = `jr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -737,7 +801,17 @@ function handleGameEvent(clientId: string, event: GameEvent) {
   const client = clients.get(clientId);
   if (!client) return;
 
+  // Update connection liveness on every message
+  updateConnectionLastSeen(clientId);
+  
   switch (event.type) {
+    // ========================================================================
+    // PING/PONG - Keep connection alive
+    // ========================================================================
+    case "ping":
+      sendToClient(clientId, { type: "pong", serverTime: Date.now() });
+      break;
+      
     // Real-time multiplayer events
     case "authenticate":
       handleAuthenticate(clientId, event);
@@ -3685,6 +3759,18 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
 
     // STEP 8: If both teams just became ready, update battle status and start countdown
     if (bothReady && !wasBothReady) {
+      // ================================================================
+      // ELITE HARDENING: Guard against double countdown start
+      // ================================================================
+      // Re-fetch battle to check current phase - prevents race conditions
+      // where multiple ready events could trigger multiple countdowns
+      // ================================================================
+      const freshBattle = await database.getTeamBattle(battle.id);
+      if (!freshBattle || freshBattle.status !== "forming") {
+        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - battle already in phase: ${freshBattle?.status}`);
+        return; // Already transitioned - don't double-start
+      }
+      
       try {
         // Update battle status to "ready" (COUNTDOWN phase) in database
         await database.updateTeamBattle(battle.id, {
@@ -3733,7 +3819,9 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
   }
 }
 
-// Helper: Broadcast ready state to all participants (single broadcast path)
+// Helper: Broadcast ready state notification to all participants
+// IMPORTANT: This is a NOTIFICATION only - clients must refetch from /api/team-battle/state
+// The event includes data for backwards compatibility but clients should NOT trust it as authoritative
 async function broadcastReadyState(
   battleId: string,
   gameSessionId: string,
@@ -3760,15 +3848,22 @@ async function broadcastReadyState(
     participantIds.add(id);
   }
 
-  // Single broadcast path - send to all participants
+  // NOTIFICATION message - tells clients state changed, they should refetch from API
+  // Include data for backwards compatibility but mark as notification-only
   const readyStatusMessage = {
     type: "team_ready_status",
     teamBattleId: battleId,
     gameSessionId: gameSessionId,
+    // Include data for backwards compatibility but clients should refetch
     teamAReady: readyState.teamAReady,
     teamBReady: readyState.teamBReady,
     updatedAt: updatedAt || readyState.updatedAt || new Date(),
+    // NEW: Signal that this is a notification - clients MUST refetch from API
+    shouldRefetch: true,
+    serverTime: Date.now(),
   };
+
+  console.log(`[broadcastReadyState] 📢 Notifying ${participantIds.size} participants to refetch state for battle ${battleId}`);
 
   // Send to all participants via sendToUser (handles multiple connections per user)
   for (const userId of Array.from(participantIds)) {

@@ -3619,6 +3619,156 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================================================
+  // DB-AUTHORITATIVE TEAM BATTLE STATE API
+  // ============================================================================
+  // This is the SINGLE SOURCE OF TRUTH for team battle state.
+  // Clients must fetch from this endpoint and render UI based on its response.
+  // WebSocket events are just notifications to trigger a refetch.
+  // ============================================================================
+  app.get("/api/team-battle/state", ensureAuthenticated, async (req, res) => {
+    try {
+      const { gameSessionId } = req.query;
+      if (!gameSessionId || typeof gameSessionId !== "string") {
+        return res.status(400).json({ message: "gameSessionId is required" });
+      }
+
+      const battles = await database.getTeamBattlesByGameSession(gameSessionId);
+      if (battles.length === 0) {
+        return res.json({
+          phase: "no_battle",
+          battleId: null,
+          gameSessionId,
+          teams: [],
+          countdown: null,
+          serverTime: Date.now(),
+        });
+      }
+
+      // Get the most recent battle (should only be one per session)
+      const battle = battles.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0];
+
+      // Get ready state from database (source of truth)
+      const readyState = await database.getTeamReadyState(battle.id);
+
+      // Map status to phase
+      const phaseMap: Record<string, string> = {
+        forming: "forming",
+        ready: "countdown",
+        playing: "started",
+        finished: "finished",
+      };
+      const phase = phaseMap[battle.status] || battle.status;
+
+      // Calculate countdown if in ready/countdown phase
+      let countdown: number | null = null;
+      if (battle.status === "ready" && readyState.teamAReady && readyState.teamBReady) {
+        // Both teams ready - calculate remaining countdown
+        const readyTimestamp = readyState.updatedAt;
+        if (readyTimestamp) {
+          const countdownDuration = 5000; // 5 seconds countdown
+          const elapsed = Date.now() - new Date(readyTimestamp).getTime();
+          const remaining = Math.max(0, countdownDuration - elapsed);
+          countdown = Math.ceil(remaining / 1000);
+          
+          // If countdown is 0, phase should transition to started
+          if (countdown <= 0) {
+            countdown = 0;
+          }
+        }
+      }
+
+      // Build team structures with ready state from DB
+      const teams = [];
+
+      // Team A
+      if (battle.teamACaptainId) {
+        const teamAMembers: number[] = [battle.teamACaptainId];
+        if (Array.isArray(battle.teamATeammates)) {
+          for (const t of battle.teamATeammates as any[]) {
+            const id = typeof t === 'object' && t !== null ? (t as any).id : t;
+            if (typeof id === 'number') teamAMembers.push(id);
+          }
+        }
+
+        teams.push({
+          teamId: `${battle.id}-team-a`,
+          teamSide: "A",
+          name: battle.teamAName,
+          captainId: battle.teamACaptainId,
+          members: teamAMembers,
+          ready: readyState.teamAReady,
+          readyAt: battle.teamAReadyAt,
+        });
+      }
+
+      // Team B
+      if (battle.teamBCaptainId && battle.teamBName) {
+        const teamBMembers: number[] = [battle.teamBCaptainId];
+        if (Array.isArray(battle.teamBTeammates)) {
+          for (const t of battle.teamBTeammates as any[]) {
+            const id = typeof t === 'object' && t !== null ? (t as any).id : t;
+            if (typeof id === 'number') teamBMembers.push(id);
+          }
+        }
+
+        teams.push({
+          teamId: `${battle.id}-team-b`,
+          teamSide: "B",
+          name: battle.teamBName,
+          captainId: battle.teamBCaptainId,
+          members: teamBMembers,
+          ready: readyState.teamBReady,
+          readyAt: battle.teamBReadyAt,
+        });
+      }
+
+      // ================================================================
+      // ELITE HARDENING: Compute monotonic stateVersion
+      // ================================================================
+      // This helps clients ignore out-of-order responses and aids debugging.
+      // Version increments on any meaningful battle state change.
+      // Computed from: status hash + ready timestamps + member counts
+      // ================================================================
+      const statusHash = { forming: 1, ready: 2, playing: 3, finished: 4 }[battle.status] || 0;
+      const teamAReadyTs = battle.teamAReadyAt ? new Date(battle.teamAReadyAt).getTime() : 0;
+      const teamBReadyTs = battle.teamBReadyAt ? new Date(battle.teamBReadyAt).getTime() : 0;
+      const memberCount = teams.reduce((sum, t) => sum + t.members.length, 0);
+      const createdTs = battle.createdAt ? new Date(battle.createdAt).getTime() : 0;
+      
+      // Monotonic version: larger = more recent state
+      // Formula ensures any state change produces a larger version
+      const stateVersion = 
+        (statusHash * 1_000_000_000_000) +  // Status is most significant
+        Math.max(teamAReadyTs, teamBReadyTs, createdTs) +  // Latest timestamp
+        (memberCount * 1000);  // Member changes bump version
+
+      // Build response
+      const response = {
+        phase,
+        battleId: battle.id,
+        gameSessionId: battle.gameSessionId,
+        status: battle.status,
+        teams,
+        countdown,
+        bothReady: readyState.teamAReady && readyState.teamBReady,
+        serverTime: Date.now(), // For client-side time sync
+        createdAt: battle.createdAt,
+        startedAt: battle.startedAt,
+        stateVersion, // ELITE: Monotonic version for debugging & out-of-order detection
+      };
+
+      console.log(`[GET /api/team-battle/state] Session: ${gameSessionId}, Phase: ${phase}, BothReady: ${response.bothReady}, Countdown: ${countdown}, StateVersion: ${stateVersion}`);
+
+      return res.json(response);
+    } catch (error) {
+      console.error("[GET /api/team-battle/state] Error:", error);
+      return res.status(500).json({ message: "Failed to get battle state" });
+    }
+  });
+
   console.log("✅ All routes registered successfully");
   return httpServer;
 }

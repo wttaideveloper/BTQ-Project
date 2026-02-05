@@ -25,6 +25,7 @@ import { Crown, Users, UserPlus, Check, X, Mail, Clock, RefreshCw } from "lucide
 import TeamDisplay from "./TeamDisplay";
 import ClockCountdown from "./ui/ClockCountdown";
 import { setupGameSocket, sendGameEvent, onEvent } from "@/lib/socket";
+import { useBattleState } from "@/hooks/useBattleState";
 
 export interface TeamBattleSetupProps {
   open: boolean;
@@ -104,7 +105,67 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const [countdown, setCountdown] = useState<number | null>(null);
   const [gameSessionId, setGameSessionId] = useState<string | null>(null);
   const [hasNavigatedToGame, setHasNavigatedToGame] = useState(false);
+  const [isReadyLoading, setIsReadyLoading] = useState(false); // Loading state for Ready button
   const [, setLocation] = useLocation();
+
+  // ============================================================================
+  // DB-AUTHORITATIVE BATTLE STATE (SINGLE SOURCE OF TRUTH)
+  // ============================================================================
+  // This hook fetches from /api/team-battle/state and is the AUTHORITATIVE source
+  // for ready status, countdown, and phase. Socket events trigger refetch, not
+  // direct state updates. This ensures all clients stay in sync with the database.
+  // ============================================================================
+  const {
+    battleState,
+    refetch: refetchBattleState,
+    forceRefetch: forceRefetchBattleState,
+    bothReady: dbBothReady,
+    countdown: dbCountdown,
+    phase: dbPhase,
+  } = useBattleState(gameSessionId);
+
+  // Use DB-authoritative countdown when available (fallback to local state)
+  const effectiveCountdown = dbCountdown !== null ? dbCountdown : countdown;
+  
+  // Use DB-authoritative ready status when available
+  const effectiveReadyStatus = battleState ? {
+    teamAReady: battleState.teams.find(t => t.teamSide === "A")?.ready ?? false,
+    teamBReady: battleState.teams.find(t => t.teamSide === "B")?.ready ?? false,
+  } : readyStatus;
+
+  // ============================================================================
+  // SYNC DB-AUTHORITATIVE STATE TO LOCAL STATE
+  // ============================================================================
+  // When DB state changes, sync to local state for backwards compatibility
+  // with existing UI logic that depends on local state
+  // ============================================================================
+  useEffect(() => {
+    if (battleState) {
+      // Sync ready status from DB to local state
+      const dbTeamAReady = battleState.teams.find(t => t.teamSide === "A")?.ready ?? false;
+      const dbTeamBReady = battleState.teams.find(t => t.teamSide === "B")?.ready ?? false;
+      
+      setReadyStatus(prev => {
+        // Only update if values are different to prevent infinite loops
+        if (prev?.teamAReady !== dbTeamAReady || prev?.teamBReady !== dbTeamBReady) {
+          return {
+            teamAReady: dbTeamAReady,
+            teamBReady: dbTeamBReady,
+            updatedAt: Date.now(),
+          };
+        }
+        return prev;
+      });
+      
+      // Sync countdown from DB if available
+      if (dbCountdown !== null && dbCountdown !== countdown) {
+        setCountdown(dbCountdown);
+      }
+    }
+  }, [battleState, dbCountdown]);
+
+  // Ref for tracking previous ready status (used in effect below, after userTeam is defined)
+  const prevReadyStatusRef = useRef<{ teamAReady: boolean; teamBReady: boolean } | null>(null);
 
   const createGameSession = useCallback(() => {
     const newGameSessionId = `battle-${Date.now()}-${Math.random()
@@ -138,6 +199,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setReadyStatus(null);
       setCountdown(null);
       setIsReady(false);
+      setIsReadyLoading(false);
       
       // UI stage and navigation
       setCurrentStage("enter");
@@ -204,6 +266,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setReadyStatus(null);
       setCountdown(null);
       setIsReady(false);
+      setIsReadyLoading(false);
       setHasNavigatedToGame(false);
       setCurrentStage("enter");
       setTeamName("");
@@ -662,7 +725,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "teams_updated":
           case "team_update": {
-            console.log("[WebSocket] teams_updated received", data);
+            console.log("[WebSocket] teams_updated received, refetching battle state from API...");
             if (wsSessionId) {
               if (wsSessionId !== gameSessionId) {
                 setGameSessionId(wsSessionId);
@@ -692,6 +755,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               queryClient.refetchQueries({
                 queryKey: ["/api/teams/available"],
               });
+              
+              // CRITICAL: Also refetch DB-authoritative battle state
+              refetchBattleState();
             }
             break;
           }
@@ -703,11 +769,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               break;
             }
             
+            // ================================================================
+            // DB-AUTHORITATIVE: Socket event is a NOTIFICATION only
+            // Always refetch from API for authoritative state
+            // ================================================================
+            console.log(`[TeamBattleSetup] 📨 team_ready_status notification received, refetching from API...`);
+            
+            // Still update local state for backwards compatibility and optimistic UI
             if (
               data.teamAReady !== undefined &&
               data.teamBReady !== undefined
             ) {
-              // CRITICAL: Only update if timestamp is newer (prevent stale updates)
               const currentTimestamp = readyStatus?.updatedAt 
                 ? (typeof readyStatus.updatedAt === 'number' 
                     ? readyStatus.updatedAt 
@@ -738,10 +810,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 ) {
                   setIsReady(false);
                 }
-              } else {
-                console.log(`[TeamBattleSetup] ⚠️ Ignoring stale team_ready_status: ${messageTimestamp} < ${currentTimestamp}`);
               }
             }
+            
+            // CRITICAL: Always refetch from API for DB-authoritative state
+            // This handles cases where socket event data might be stale or lost
+            refetchBattleState();
             break;
           }
 
@@ -752,11 +826,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               break;
             }
             
+            console.log(`[TeamBattleSetup] 📨 ready_status_response received, updating local state and refetching from API...`);
+            
             if (
               data.teamAReady !== undefined &&
               data.teamBReady !== undefined
             ) {
-              // Always accept response (it's a fresh query result)
+              // Update local state for backwards compatibility
               const messageTimestamp = data.updatedAt
                 ? (typeof data.updatedAt === 'number'
                     ? data.updatedAt
@@ -781,10 +857,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 setIsReady(false);
               }
             }
+            
+            // CRITICAL: Also refetch from API for DB-authoritative state
+            refetchBattleState();
             break;
           }
 
           case "team_battle_countdown": {
+            console.log("[TeamBattleSetup] 📨 team_battle_countdown received, setting countdown and refetching...");
             const seconds = typeof data.seconds === "number" ? data.seconds : 5;
             if (wsSessionId && wsSessionId !== gameSessionId) {
               setGameSessionId(wsSessionId);
@@ -792,6 +872,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             // CRITICAL FIX: Reset countdown - this will clear any existing timer and start fresh
             // This ensures countdown stays in sync with server
             setCountdown(seconds);
+            
+            // CRITICAL: Also refetch DB-authoritative state for phase confirmation
+            refetchBattleState();
             break;
           }
 
@@ -1009,7 +1092,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       // Clear session ref when component unmounts or modal closes
       currentSessionIdRef.current = null;
     };
-  }, [user, open, queryClient, toast, gameSessionId, hasNavigatedToGame, onClose, setLocation]);
+  }, [user, open, queryClient, toast, gameSessionId, hasNavigatedToGame, onClose, setLocation, refetchBattleState]);
   
   // Update currentSessionIdRef when gameSessionId changes (Phase 3)
   // This allows socket events to be processed for the new session
@@ -1112,6 +1195,60 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       ) || null
     );
   }, [teams, user]);
+
+  // ============================================================================
+  // READY STATUS CONFIRMATION - Clear loading and show toast
+  // ============================================================================
+  // When ready status is confirmed from DB, clear loading state and show toast
+  // This effect must be after userTeam is defined
+  // ============================================================================
+  useEffect(() => {
+    if (!effectiveReadyStatus || !userTeam) return;
+    
+    const userTeamReady = userTeam.teamSide === "A" 
+      ? effectiveReadyStatus.teamAReady 
+      : effectiveReadyStatus.teamBReady;
+    const opponentTeamReady = userTeam.teamSide === "A"
+      ? effectiveReadyStatus.teamBReady
+      : effectiveReadyStatus.teamAReady;
+    
+    // Check if this is a new confirmation (was loading and now confirmed)
+    if (isReadyLoading && userTeamReady) {
+      // Clear loading state
+      setIsReadyLoading(false);
+      
+      // Show appropriate toast based on opponent status
+      if (opponentTeamReady) {
+        toast({
+          title: "🎮 Both Teams Ready!",
+          description: "Game starting soon...",
+        });
+      } else {
+        toast({
+          title: "✅ Team Ready!",
+          description: "Your team is ready to play. Waiting for opponent...",
+        });
+      }
+    }
+    
+    // Also handle when opponent becomes ready (and we were already ready)
+    const prevStatus = prevReadyStatusRef.current;
+    if (prevStatus && !isReadyLoading) {
+      const wasOpponentReady = userTeam.teamSide === "A" ? prevStatus.teamBReady : prevStatus.teamAReady;
+      if (!wasOpponentReady && opponentTeamReady && userTeamReady) {
+        toast({
+          title: "🎮 Both Teams Ready!",
+          description: "Game starting soon...",
+        });
+      }
+    }
+    
+    // Update previous status ref
+    prevReadyStatusRef.current = {
+      teamAReady: effectiveReadyStatus.teamAReady,
+      teamBReady: effectiveReadyStatus.teamBReady,
+    };
+  }, [effectiveReadyStatus, userTeam, isReadyLoading, toast]);
 
   // Show toast to captains when a new join request arrives
   useEffect(() => {
@@ -1232,7 +1369,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       team.members.some((member: TeamMember) => member.userId === user?.id)
     ) ?? true; // Default to true if teams query hasn't loaded yet
 
-    if (countdown === 0 && isInAnyTeam) {
+    // Use effectiveCountdown (prefers DB-authoritative value)
+    if (effectiveCountdown === 0 && isInAnyTeam) {
       console.log("[TeamBattleSetup] Countdown reached 0, navigating to game");
       // CRITICAL: Set flag immediately to prevent double navigation
       setHasNavigatedToGame(true);
@@ -1245,13 +1383,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     }
 
     // FALLBACK #2: If countdown is null but we have a session, check if game might have started
-    // This handles cases where countdown event was missed
-    if (countdown === null && gameSessionId && isInAnyTeam) {
-      // Don't auto-navigate here - wait for team_battle_started event
-      // But we could add a timeout fallback if needed
+    // DB-AUTHORITATIVE: Check dbPhase for navigation trigger
+    if (effectiveCountdown === null && gameSessionId && isInAnyTeam && dbPhase === "started") {
+      console.log("[TeamBattleSetup] DB phase is 'started', navigating to game");
+      setHasNavigatedToGame(true);
+      onClose();
+      setLocation(`/team-battle-game?session=${gameSessionId}`);
+      return;
     }
   }, [
     countdown,
+    effectiveCountdown,
+    dbPhase,
     hasNavigatedToGame,
     gameSessionId,
     teams,
@@ -1489,10 +1632,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const handleReadyToPlay = async () => {
     if (!userTeam || !user) return;
     
-    // FIX: Check if already ready before sending request
+    // FIX: Check if already ready using DB-authoritative state first, fallback to local
     const isAlreadyReady = userTeam.teamSide === "A" 
-      ? readyStatus?.teamAReady 
-      : readyStatus?.teamBReady;
+      ? (effectiveReadyStatus?.teamAReady ?? readyStatus?.teamAReady)
+      : (effectiveReadyStatus?.teamBReady ?? readyStatus?.teamBReady);
       
     if (isAlreadyReady) {
       toast({
@@ -1502,6 +1645,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       });
       return;
     }
+    
+    // Set loading state - button will show loader
+    setIsReadyLoading(true);
     
     try {
       // Send ready request to server
@@ -1513,8 +1659,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         userId: user.id,
       });
 
-      // Optimistically update UI for instant feedback
-      // Server will confirm via team_ready_status event immediately after DB update
+      // Optimistically update local UI for instant feedback
       setIsReady(true);
       const optimisticReadyStatus = {
         teamAReady: userTeam.teamSide === "A" ? true : readyStatus?.teamAReady || false,
@@ -1523,12 +1668,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       };
       setReadyStatus(optimisticReadyStatus);
       
-      toast({
-        title: "Team Ready!",
-        description: "Your team is ready to play. Waiting for opponent...",
-      });
+      // CRITICAL: Refetch DB-authoritative state after a short delay
+      // This ensures UI syncs with database even if socket event is missed
+      // Toast will be shown after ready status is confirmed in useEffect
+      setTimeout(() => {
+        forceRefetchBattleState();
+      }, 500);
+      
+      // Note: Toast is now shown in useEffect when ready status is confirmed
     } catch (error) {
-      // Silent error handling
+      setIsReadyLoading(false);
       toast({
         title: "Error",
         description: "Failed to mark team as ready. Please try again.",
@@ -2389,11 +2538,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 const isUserInTeam = team.members.some(
                   (m) => m.userId === user?.id
                 );
-                const isTeamReady = readyStatus
+                // Use DB-authoritative ready status (effectiveReadyStatus) for display
+                const isTeamReady = effectiveReadyStatus
                   ? team.teamSide === "A"
-                    ? readyStatus.teamAReady
+                    ? effectiveReadyStatus.teamAReady
                     : team.teamSide === "B"
-                    ? readyStatus.teamBReady
+                    ? effectiveReadyStatus.teamBReady
                     : false
                   : false;
                 return (
@@ -2422,6 +2572,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     }}
                     isUserTeam={isUserTeam}
                     isReady={isTeamReady}
+                    isReadyLoading={isUserTeam ? isReadyLoading : false}
                     joinRequests={(joinRequests || []).filter((jr) => {
                       // Backend already filters to only return join requests for teams
                       // where the current user is captain, so we just need to match exact teamId
@@ -2474,9 +2625,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           </div>
 
           {/* Enhanced Clock Countdown overlay when both captains are ready */}
-          {countdown !== null && countdown > 0 && (
+          {/* Uses effectiveCountdown which prefers DB-authoritative value */}
+          {effectiveCountdown !== null && effectiveCountdown > 0 && (
             <ClockCountdown
-              countdown={countdown}
+              countdown={effectiveCountdown}
               message="Both teams are ready"
               subMessage="Game starting soon..."
             />

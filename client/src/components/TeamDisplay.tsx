@@ -1,4 +1,4 @@
-import { Crown, Edit2, LogOut } from "lucide-react";
+import { Crown, Edit2, LogOut, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { useState } from "react";
@@ -34,6 +34,7 @@ type TeamDisplayProps = {
   title?: string;
   isUserTeam?: boolean;
   isReady?: boolean;
+  isReadyLoading?: boolean; // Loading state for Ready button
   joinRequests?: Array<{
     id: string;
     teamId: string;
@@ -55,6 +56,7 @@ const TeamDisplay = ({
   title,
   isUserTeam,
   isReady,
+  isReadyLoading = false,
   joinRequests = [],
   onAcceptJoinRequest,
   onRejectJoinRequest,
@@ -140,9 +142,17 @@ const TeamDisplay = ({
             {canReady && (
               <Button
                 onClick={onReady}
-                className="bg-green-600 hover:bg-green-700 w-full sm:w-auto text-sm sm:text-base py-2 sm:py-2.5"
+                disabled={isReadyLoading}
+                className="bg-green-600 hover:bg-green-700 w-full sm:w-auto text-sm sm:text-base py-2 sm:py-2.5 disabled:opacity-70"
               >
-                Ready to Play
+                {isReadyLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Getting Ready...
+                  </>
+                ) : (
+                  "Ready to Play"
+                )}
               </Button>
             )}
             {isUserTeam && onLeaveTeam && (

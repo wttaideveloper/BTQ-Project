@@ -94,6 +94,10 @@ let authenticatedUserId: number | null = null;
 let reconnectAttempts = 0;
 let maxReconnectAttempts = 5;
 let reconnectTimeout: NodeJS.Timeout | null = null;
+let pingInterval: NodeJS.Timeout | null = null;
+
+// Ping interval to keep connection alive (25 seconds)
+const PING_INTERVAL_MS = 25000;
 
 export function setupGameSocket(userId?: number): WebSocket {
   console.log('setupGameSocket called with userId:', userId);
@@ -140,6 +144,16 @@ export function setupGameSocket(userId?: number): WebSocket {
   socket.addEventListener('open', () => {
     console.log('WebSocket connected successfully');
     reconnectAttempts = 0;
+    
+    // Start ping interval to keep connection alive
+    if (pingInterval) {
+      clearInterval(pingInterval);
+    }
+    pingInterval = setInterval(() => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, PING_INTERVAL_MS);
     
     // If we have a userId, authenticate the connection
     if (userId) {
@@ -189,7 +203,14 @@ export function setupGameSocket(userId?: number): WebSocket {
   
   socket.addEventListener('close', () => {
     console.log('WebSocket closed');
+    const wasAuthenticated = authenticatedUserId;
     socket = null;
+    
+    // Clear ping interval
+    if (pingInterval) {
+      clearInterval(pingInterval);
+      pingInterval = null;
+    }
     
     // Attempt to reconnect if we should
     if (reconnectAttempts < maxReconnectAttempts) {
@@ -203,7 +224,8 @@ export function setupGameSocket(userId?: number): WebSocket {
       
       reconnectTimeout = setTimeout(() => {
         console.log('Attempting WebSocket reconnection...');
-        setupGameSocket(authenticatedUserId || undefined);
+        // Re-authenticate with previous user ID on reconnect
+        setupGameSocket(wasAuthenticated || undefined);
       }, delay);
     } else {
       console.error('WebSocket max reconnection attempts reached');
@@ -225,6 +247,11 @@ export function closeGameSocket() {
   if (reconnectTimeout) {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
+  }
+  
+  if (pingInterval) {
+    clearInterval(pingInterval);
+    pingInterval = null;
   }
   
   reconnectAttempts = maxReconnectAttempts; // Prevent auto-reconnect

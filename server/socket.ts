@@ -262,6 +262,32 @@ setInterval(() => {
   }
 }, 30000);
 
+// ============================================================================
+// DATABASE KEEP-ALIVE (Prevents Neon serverless cold start)
+// ============================================================================
+// Ping database every 2 minutes to prevent Neon from sleeping.
+// This ensures the database is always warm when users click Ready.
+// ============================================================================
+let lastDbPingTime = Date.now();
+setInterval(async () => {
+  try {
+    // Simple lightweight query to keep connection alive
+    const startTime = Date.now();
+    await database.getUser(1);
+    const duration = Date.now() - startTime;
+    lastDbPingTime = Date.now();
+    console.log(`[Database] 💓 Keep-alive ping successful (${duration}ms)`);
+  } catch (error: any) {
+    console.error(`[Database] ❌ Keep-alive ping failed:`, error?.message || error);
+    // Connection might be dead - the next actual request will re-establish it
+  }
+}, 2 * 60 * 1000); // Every 2 minutes
+
+// Export function to check if database was recently active
+export function isDatabaseWarm(): boolean {
+  return Date.now() - lastDbPingTime < 3 * 60 * 1000; // Active in last 3 minutes
+}
+
 export function createJoinRequest(teamId: string, requesterId: number, requesterUsername: string, gameSessionId?: string): JoinRequest {
   const id = `jr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const expiresAt = Date.now() + 60_000;

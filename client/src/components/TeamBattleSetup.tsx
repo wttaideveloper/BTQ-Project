@@ -406,6 +406,27 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     console.log("[TeamBattleSetup] ✅ PHASE 3: Fresh session started successfully");
     console.log(`[TeamBattleSetup] 🎯 Ready for user interaction with session: ${newSessionId}`);
   }, [open, user, cleanupComplete, queryClient, createGameSession]);
+
+  // ============================================================================
+  // LOBBY KEEP-ALIVE - Prevent database cold start while waiting
+  // ============================================================================
+  // Periodically fetch battle state to keep the database connection warm.
+  // This prevents the "Getting Ready..." timeout issue when users wait
+  // in the lobby for several minutes before clicking Ready.
+  // ============================================================================
+  useEffect(() => {
+    if (!open || !gameSessionId) return;
+    
+    // Ping battle state API every 90 seconds to keep database warm
+    const keepAliveInterval = setInterval(() => {
+      console.log("[TeamBattleSetup] 💓 Lobby keep-alive ping...");
+      refetchBattleState();
+    }, 90 * 1000); // Every 90 seconds
+    
+    return () => {
+      clearInterval(keepAliveInterval);
+    };
+  }, [open, gameSessionId, refetchBattleState]);
   
   // CRITICAL: Check battle phase on modal open - server-authoritative navigation
   // This ensures clients always check server state, not just events
@@ -1250,6 +1271,31 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     };
   }, [effectiveReadyStatus, userTeam, isReadyLoading, toast]);
 
+  // ============================================================================
+  // READY LOADING TIMEOUT - Prevent infinite loading state
+  // ============================================================================
+  // If ready loading takes more than 15 seconds, show error and allow retry
+  // This handles database timeout/cold start scenarios
+  // ============================================================================
+  useEffect(() => {
+    if (!isReadyLoading) return;
+    
+    const timeoutId = setTimeout(() => {
+      if (isReadyLoading) {
+        setIsReadyLoading(false);
+        toast({
+          title: "⚠️ Connection Slow",
+          description: "Ready request is taking longer than expected. Please try again.",
+          variant: "destructive",
+        });
+        // Force refetch to try to get current state
+        forceRefetchBattleState();
+      }
+    }, 15000); // 15 second timeout
+    
+    return () => clearTimeout(timeoutId);
+  }, [isReadyLoading, toast, forceRefetchBattleState]);
+
   // Show toast to captains when a new join request arrives
   useEffect(() => {
     if (!user?.id || !open) return;
@@ -1668,12 +1714,19 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       };
       setReadyStatus(optimisticReadyStatus);
       
-      // CRITICAL: Refetch DB-authoritative state after a short delay
-      // This ensures UI syncs with database even if socket event is missed
-      // Toast will be shown after ready status is confirmed in useEffect
-      setTimeout(() => {
-        forceRefetchBattleState();
-      }, 500);
+      // CRITICAL: Multiple refetch attempts with increasing delays
+      // This handles slow database wake-up (Neon cold start)
+      // Each attempt gives the database more time to respond
+      const refetchDelays = [500, 2000, 5000, 10000]; // 0.5s, 2s, 5s, 10s
+      refetchDelays.forEach((delay) => {
+        setTimeout(() => {
+          // Only refetch if still loading (not yet confirmed)
+          if (isReadyLoading) {
+            console.log(`[handleReadyToPlay] Refetch attempt at ${delay}ms...`);
+            forceRefetchBattleState();
+          }
+        }, delay);
+      });
       
       // Note: Toast is now shown in useEffect when ready status is confirmed
     } catch (error) {

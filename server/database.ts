@@ -3411,7 +3411,7 @@ class PostgreSQLDatabase implements IDatabase {
     try {
       await sql`
         INSERT INTO team_join_request (id, team_id, requester_id, requester_username, status, created_at, expires_at)
-        VALUES (${id}, ${teamId}, ${requesterId}, ${requesterUsername}, 'pending', NOW(), ${expiresAt})
+        VALUES (${id}, ${teamId}, ${requesterId}, ${requesterUsername}, 'pending', NOW(), ${expiresAt.toISOString()})
       `;
       return { id, teamId, requesterId, requesterUsername, status: "pending", createdAt: new Date(), expiresAt };
     } catch (error) {

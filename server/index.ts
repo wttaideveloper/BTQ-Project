@@ -1,7 +1,12 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { setupVite, log } from "./vite";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -76,7 +81,25 @@ app.use((req, res, next) => {
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    // Production: serve static files from dist/public
+    // Development fallback: serve from client/dist
+    const isProduction = process.env.NODE_ENV === "production";
+    
+    // Resolve the static files path based on environment
+    const distPath = isProduction
+      ? path.resolve(__dirname, "public")      // Production: dist/public (relative to dist/index.js)
+      : path.resolve(__dirname, "..", "client", "dist"); // Development: client/dist
+    
+    // Log the resolved path for debugging (visible in PM2 logs)
+    console.log(`Serving static files from: ${distPath}`);
+    
+    // Serve static files
+    app.use(express.static(distPath));
+    
+    // SPA fallback: serve index.html for all non-API routes
+    app.get("*", (_req, res) => {
+      res.sendFile(path.resolve(distPath, "index.html"));
+    });
   }
 
   // Serve the app on port 5001

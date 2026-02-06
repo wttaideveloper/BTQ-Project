@@ -1859,16 +1859,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("Could not fetch game session, using defaults:", err);
       }
 
-      // Clean up any old "forming" teams created by this captain
+      // Clean up any old "forming" AND "ready" teams created by this captain
       // This prevents ghost teams from appearing in available teams list
+      // CRITICAL FIX: Also clean "ready" battles that were abandoned (prevents stale ready state)
       // CRITICAL FIX: Import socket functions to manage activeTeamMemberships
-      const { activeTeamMemberships, broadcastOnlineStatusUpdate } = await import("./socket");
+      const { activeTeamMemberships, broadcastOnlineStatusUpdate, resetBattleState } = await import("./socket");
       
       try {
-        const existingBattles = await database.getTeamBattlesByUser(req.user.id, 'forming');
+        const formingBattles = await database.getTeamBattlesByUser(req.user.id, 'forming');
+        const readyBattles = await database.getTeamBattlesByUser(req.user.id, 'ready');
+        const existingBattles = [...formingBattles, ...readyBattles];
         
         for (const battle of existingBattles) {
-          console.log(`🧹 Cleaning up old forming team for captain ${req.user.id}: battle ${battle.id}`);
+          console.log(`🧹 Cleaning up old ${battle.status} team for captain ${req.user.id}: battle ${battle.id}`);
           
           // CRITICAL FIX: Remove captain from activeTeamMemberships if they're in it
           if (battle.teamACaptainId) {
@@ -1887,11 +1890,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             activeTeamMemberships.delete(teammateId);
           }
           
-          await database.deleteTeamBattle(battle.id);
+          // CENTRALIZED: Use resetBattleState for cleanup
+          await resetBattleState({
+            battleId: battle.id,
+            reason: "cleanup",
+            deleteBattle: true, // Cleanup deletes the battle
+          });
         }
         
         if (existingBattles.length > 0) {
-          console.log(`✅ Removed ${existingBattles.length} old forming team(s) for captain ${req.user.id}`);
+          console.log(`✅ Removed ${existingBattles.length} old team(s) for captain ${req.user.id}`);
         }
       } catch (cleanupErr) {
         console.error("Failed to cleanup old teams:", cleanupErr);
@@ -1971,7 +1979,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[Cleanup] 🧹 Starting comprehensive cleanup for user ${userId}`);
       
       // Import socket functions
-      const { activeTeamMemberships, broadcastOnlineStatusUpdate, teamBattleReadyState } = await import("./socket");
+      const { activeTeamMemberships, broadcastOnlineStatusUpdate, resetBattleState } = await import("./socket");
       
       let changesMade = false;
       const cleanupStats = {
@@ -1994,9 +2002,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // ========================================================================
-      // STEP 2: Delete all old "forming" teams created by this user
+      // STEP 2: Delete all old "forming" AND "ready" teams created by this user
       // ========================================================================
-      const existingBattles = await database.getTeamBattlesByUser(userId, 'forming');
+      // CRITICAL FIX: Also clean "ready" battles that were abandoned
+      // This prevents stale ready state when same teams play again
+      const formingBattles = await database.getTeamBattlesByUser(userId, 'forming');
+      const readyBattles = await database.getTeamBattlesByUser(userId, 'ready');
+      const existingBattles = [...formingBattles, ...readyBattles];
       cleanupStats.removedOldTeams = existingBattles.length;
       
       for (const battle of existingBattles) {
@@ -2028,20 +2040,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`[Cleanup] ✅ Removed Team B captain ${battle.teamBCaptainId} from activeTeamMemberships`);
         }
         
-        // CRITICAL FIX: Clear ready state from memory for this battle
-        if (teamBattleReadyState.has(battle.id)) {
-          teamBattleReadyState.delete(battle.id);
-          changesMade = true;
-          console.log(`[Cleanup] ✅ Cleared ready state from memory for battle ${battle.id}`);
-        }
-        
-        // Delete the battle
-        await database.deleteTeamBattle(battle.id);
+        // CENTRALIZED: Use resetBattleState for cleanup
+        await resetBattleState({
+          battleId: battle.id,
+          reason: "cleanup",
+          deleteBattle: true, // Cleanup deletes the battle
+        });
         changesMade = true;
       }
       
       if (existingBattles.length > 0) {
-        console.log(`[Cleanup] ✅ Deleted ${existingBattles.length} old forming team(s)`);
+        console.log(`[Cleanup] ✅ Deleted ${existingBattles.length} old team(s)`);
       }
       
       // ========================================================================

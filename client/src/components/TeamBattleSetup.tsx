@@ -796,6 +796,15 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             // ================================================================
             console.log(`[TeamBattleSetup] 📨 team_ready_status notification received, refetching from API...`);
             
+            // CRITICAL FIX: Handle ready state reset when opponent leaves
+            // Show toast to explain why ready status was reset
+            if (data.reason === "opponent_left") {
+              console.log(`[TeamBattleSetup] 🔄 Ready state reset because opponent left`);
+              toast.info("⚠️ Ready status reset - opponent team left the lobby");
+              // Reset loading state since the ready flow was interrupted
+              setIsReadyLoading(false);
+            }
+            
             // Still update local state for backwards compatibility and optimistic UI
             if (
               data.teamAReady !== undefined &&

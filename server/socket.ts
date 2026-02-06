@@ -173,6 +173,114 @@ export const teamBattleReadyState: Map<
   }
 > = new Map();
 
+// ============================================================================
+// CENTRALIZED BATTLE STATE RESET FUNCTION
+// ============================================================================
+// This function consolidates all battle cleanup/reset logic into one place.
+// It prevents duplication and ensures consistent state management across:
+// - Team captain leaves/disconnects
+// - Battle ends (normal finish)
+// - Battle abandoned (mid-game exit)
+// - Cleanup endpoints
+// ============================================================================
+
+export type BattleResetReason = 
+  | "team_a_left"      // Team A captain left - battle will be deleted
+  | "team_b_left"      // Team B captain left - reset to forming
+  | "battle_end"       // Normal battle completion
+  | "abandoned"        // Mid-game abandonment
+  | "cleanup";         // Cleanup endpoint triggered
+
+export interface BattleResetOptions {
+  battleId: string;
+  reason: BattleResetReason;
+  gameSessionId?: string;
+  notifyUserIds?: number[];       // Users to notify of reset
+  deleteBattle?: boolean;         // Whether to delete the battle entirely
+  newStatus?: "forming" | "finished"; // Status to set if not deleting
+}
+
+/**
+ * Centralized function to reset battle state.
+ * Handles: in-memory cleanup, DB cleanup, and optional notifications.
+ * 
+ * @param options - Reset configuration
+ * @returns Promise<void>
+ */
+export async function resetBattleState(options: BattleResetOptions): Promise<void> {
+  const { 
+    battleId, 
+    reason, 
+    gameSessionId, 
+    notifyUserIds = [], 
+    deleteBattle = false,
+    newStatus 
+  } = options;
+  
+  console.log(`[resetBattleState] 🔄 Resetting battle ${battleId} | reason: ${reason} | delete: ${deleteBattle}`);
+  
+  // ========================================================================
+  // STEP 1: Clear in-memory ready state (always)
+  // ========================================================================
+  if (teamBattleReadyState.has(battleId)) {
+    teamBattleReadyState.delete(battleId);
+    console.log(`[resetBattleState] ✅ Cleared in-memory ready state for battle ${battleId}`);
+  }
+  
+  // ========================================================================
+  // STEP 2: Handle database operations based on deleteBattle flag
+  // ========================================================================
+  if (deleteBattle) {
+    // Delete the battle entirely from DB
+    try {
+      await database.deleteTeamBattle(battleId);
+      console.log(`[resetBattleState] ✅ Deleted battle ${battleId} from database`);
+    } catch (err) {
+      console.error(`[resetBattleState] ❌ Failed to delete battle ${battleId}:`, err);
+    }
+  } else {
+    // Reset ready timestamps in DB (set to NULL)
+    try {
+      await database.resetTeamReadyState(battleId);
+      console.log(`[resetBattleState] ✅ Reset ready timestamps for battle ${battleId}`);
+    } catch (err) {
+      console.error(`[resetBattleState] ❌ Failed to reset ready timestamps for battle ${battleId}:`, err);
+    }
+    
+    // Update battle status if specified
+    if (newStatus) {
+      try {
+        await database.updateTeamBattle(battleId, { status: newStatus });
+        console.log(`[resetBattleState] ✅ Updated battle ${battleId} status to "${newStatus}"`);
+      } catch (err) {
+        console.error(`[resetBattleState] ❌ Failed to update battle ${battleId} status:`, err);
+      }
+    }
+  }
+  
+  // ========================================================================
+  // STEP 3: Notify users of reset (if any)
+  // ========================================================================
+  if (notifyUserIds.length > 0 && gameSessionId) {
+    const notifyPayload = {
+      type: "team_ready_status" as const,
+      teamBattleId: battleId,
+      gameSessionId: gameSessionId,
+      teamAReady: false,
+      teamBReady: false,
+      updatedAt: new Date(),
+      reason: reason === "team_b_left" || reason === "team_a_left" ? "opponent_left" : reason,
+    };
+    
+    for (const userId of notifyUserIds) {
+      sendToUser(userId, notifyPayload);
+    }
+    console.log(`[resetBattleState] ✅ Notified ${notifyUserIds.length} users of ready state reset`);
+  }
+  
+  console.log(`[resetBattleState] ✅ Battle ${battleId} reset complete | reason: ${reason}`);
+}
+
 // In-memory Team Join Requests (id -> request)
 type JoinRequestStatus = "pending" | "accepted" | "rejected" | "expired" | "cancelled";
 interface JoinRequest {
@@ -594,7 +702,12 @@ export function setupWebSocketServer(server: Server) {
                 const oldTeamATeammateIds = extractTeammateIds(battle.teamATeammates);
                 const oldTeamAName = battle.teamAName || "Team A";
                 
-                await database.deleteTeamBattle(battle.id);
+                // CENTRALIZED: Use resetBattleState for cleanup
+                await resetBattleState({
+                  battleId: battle.id,
+                  reason: "team_a_left",
+                  deleteBattle: true, // Team A leaves = delete entire battle
+                });
                 teamRemoved = true;
 
                 // Notify all participants
@@ -638,10 +751,27 @@ export function setupWebSocketServer(server: Server) {
                 // IMPORTANT: capture Team B teammates BEFORE clearing them, otherwise they won't receive any updates
                 const oldTeamBTeammateIds = extractTeammateIds(battle.teamBTeammates);
                 const oldTeamBName = battle.teamBName || "Team B";
+                
+                // Clear Team B data from battle (this is specific to Team B leave)
                 updatedBattle = await database.updateTeamBattle(battle.id, {
                   teamBCaptainId: null,
                   teamBName: null,
                   teamBTeammates: [],
+                });
+                
+                // CENTRALIZED: Use resetBattleState for ready state cleanup
+                // Collect Team A members to notify
+                const teamACaptainId = battle.teamACaptainId;
+                const teamATeammates = extractTeammateIds(battle.teamATeammates);
+                const allTeamAMembers = [teamACaptainId, ...teamATeammates].filter((id): id is number => id !== undefined);
+                
+                await resetBattleState({
+                  battleId: battle.id,
+                  reason: "team_b_left",
+                  gameSessionId: disconnectGameSessionId,
+                  notifyUserIds: allTeamAMembers,
+                  deleteBattle: false,
+                  newStatus: "forming",
                 });
 
                 // Notify remaining participants
@@ -1085,18 +1215,26 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           )[0];
           
-          // PRODUCTION-SAFE: Get ready state from database and sync to client
-          const readyState = await database.getTeamReadyState(battle.id);
-          
-          // Send current ready status to client
-          sendToClient(clientId, {
-            type: "team_ready_status",
-            teamBattleId: battle.id,
-            gameSessionId: userTeam.gameSessionId,
-            teamAReady: readyState.teamAReady,
-            teamBReady: readyState.teamBReady,
-            updatedAt: readyState.updatedAt,
-          });
+          // CRITICAL FIX: Skip finished battles - don't restore stale state
+          // This prevents "play again" scenarios from seeing old ready states
+          if (battle.status === "finished") {
+            console.log(`[handleAuthenticate] Skipping finished battle ${battle.id} - not restoring state`);
+            // Don't restore any team context for finished battles
+            client.gameSessionId = undefined;
+          } else {
+            // PRODUCTION-SAFE: Get ready state from database and sync to client
+            const readyState = await database.getTeamReadyState(battle.id);
+            
+            // Send current ready status to client
+            sendToClient(clientId, {
+              type: "team_ready_status",
+              teamBattleId: battle.id,
+              gameSessionId: userTeam.gameSessionId,
+              teamAReady: readyState.teamAReady,
+              teamBReady: readyState.teamBReady,
+              updatedAt: readyState.updatedAt,
+            });
+          }
           
           // If battle status is "playing" (IN_GAME), send team_battle_started event
           // This ensures client navigates even if in-memory gameSessions is empty
@@ -3207,7 +3345,12 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
         // If captain disconnects, handle it differently
         // Team A captain disconnect - remove entire battle
         if (leavingTeam.teamSide === "A" && leavingTeam.teamBattleId) {
-          await database.deleteTeamBattle(leavingTeam.teamBattleId);
+          // CENTRALIZED: Use resetBattleState for cleanup
+          await resetBattleState({
+            battleId: leavingTeam.teamBattleId,
+            reason: "team_a_left",
+            deleteBattle: true, // Team A leaves = delete entire battle
+          });
           
           // Notify all participants that battle was cancelled
           const participantIds = new Set<number>();
@@ -3239,10 +3382,29 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
           const oldTeamBName =
             battleForNotification?.teamBName || leavingTeam.name || "Team B";
 
+          // Clear Team B data from battle (this is specific to Team B leave)
           await database.updateTeamBattle(leavingTeam.teamBattleId, {
             teamBCaptainId: null,
             teamBName: null,
             teamBTeammates: [],
+          });
+          
+          // CENTRALIZED: Use resetBattleState for ready state cleanup
+          // Get Team A members to notify
+          const teamAMembersNotify: number[] = [];
+          if (battleForNotification) {
+            if (battleForNotification.teamACaptainId) teamAMembersNotify.push(battleForNotification.teamACaptainId);
+            const teamATeammates = extractTeammateIds(battleForNotification.teamATeammates);
+            teamAMembersNotify.push(...teamATeammates);
+          }
+          
+          await resetBattleState({
+            battleId: leavingTeam.teamBattleId,
+            reason: "team_b_left",
+            gameSessionId: gameSessionId,
+            notifyUserIds: teamAMembersNotify,
+            deleteBattle: false,
+            newStatus: "forming",
           });
 
           // Notify Team B teammates (who would otherwise be dropped from any lobby updates)
@@ -3251,7 +3413,7 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
               sendToUser(teammateId, {
                 type: "team_member_removed",
                 gameSessionId: gameSessionId,
-                message: `Your captain left the lobby (${oldTeamBName}). You’ve been removed from this match. Please join/create a team again.`,
+                message: `Your captain left the lobby (${oldTeamBName}). You've been removed from this match. Please join/create a team again.`,
               });
             }
           }
@@ -3819,16 +3981,43 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
     // STEP 8: If both teams just became ready, update battle status and start countdown
     if (bothReady && !wasBothReady) {
       // ================================================================
-      // ELITE HARDENING: Guard against double countdown start
+      // DEFENSIVE INVARIANT GUARDS BEFORE COUNTDOWN
       // ================================================================
-      // Re-fetch battle to check current phase - prevents race conditions
-      // where multiple ready events could trigger multiple countdowns
+      // These guards ensure countdown CANNOT start unless the battle state
+      // is 100% valid. This is a safety net that prevents future lifecycle
+      // regressions as features grow.
       // ================================================================
+      
+      // Guard 1: Re-fetch battle to get latest state
       const freshBattle = await database.getTeamBattle(battle.id);
-      if (!freshBattle || freshBattle.status !== "forming") {
-        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - battle already in phase: ${freshBattle?.status}`);
+      
+      // Guard 2: Battle must exist and be in "forming" phase
+      if (!freshBattle) {
+        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - battle ${battle.id} not found`);
+        return;
+      }
+      if (freshBattle.status !== "forming") {
+        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - battle already in phase: ${freshBattle.status}`);
         return; // Already transitioned - don't double-start
       }
+      
+      // Guard 3: Both teams must exist (Team A always exists, Team B might not)
+      const teamAExists = Boolean(freshBattle.teamACaptainId && freshBattle.teamAName);
+      const teamBExists = Boolean(freshBattle.teamBCaptainId && freshBattle.teamBName);
+      if (!teamAExists || !teamBExists) {
+        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - incomplete teams: A=${teamAExists}, B=${teamBExists}`);
+        return;
+      }
+      
+      // Guard 4: Both teams must have ready timestamps in database
+      const teamAReadyAt = freshBattle.teamAReadyAt;
+      const teamBReadyAt = freshBattle.teamBReadyAt;
+      if (!teamAReadyAt || !teamBReadyAt) {
+        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - ready timestamps missing: A=${!!teamAReadyAt}, B=${!!teamBReadyAt}`);
+        return;
+      }
+      
+      console.log(`[handleTeamBattleReady] ✅ All invariant guards passed - proceeding with countdown`);
       
       try {
         // Update battle status to "ready" (COUNTDOWN phase) in database
@@ -5752,9 +5941,19 @@ async function endTeamBattle(gameId: string, reason?: string) {
     // Update team statuses to finished (persisted on team_battles rows)
     for (const team of gameSession.teams) {
       if (team.teamBattleId) {
+        // Update battle status to finished first
         await database.updateTeamBattle(team.teamBattleId, {
           status: "finished",
           finishedAt: new Date(),
+        });
+        
+        // CENTRALIZED: Use resetBattleState for ready state cleanup
+        // Note: We don't delete the battle or change status (already set to "finished" above)
+        await resetBattleState({
+          battleId: team.teamBattleId,
+          reason: "battle_end",
+          deleteBattle: false,
+          // Don't set newStatus since we already set it to "finished"
         });
       }
     }
@@ -6322,9 +6521,19 @@ async function declareTeamBattleWinner(
     for (const team of gameSession.teams) {
       if (team.teamBattleId) {
         const finalScore = finalScores.find((s: any) => s.teamId === team.id);
+        // Update battle status to finished first
         await database.updateTeamBattle(team.teamBattleId, {
           status: "finished",
           finishedAt: new Date(),
+        });
+        
+        // CENTRALIZED: Use resetBattleState for ready state cleanup
+        // Note: We don't delete the battle or change status (already set to "finished" above)
+        await resetBattleState({
+          battleId: team.teamBattleId,
+          reason: "battle_end",
+          deleteBattle: false,
+          // Don't set newStatus since we already set it to "finished"
         });
       }
     }

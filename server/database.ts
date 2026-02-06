@@ -198,6 +198,7 @@ export interface IDatabase {
   getTeamReadyState(
     battleId: string
   ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date | null }>;
+  resetTeamReadyState(battleId: string): Promise<void>;
 
   // Voice settings methods
   getVoiceCloneId(): Promise<string | null>;
@@ -2475,6 +2476,19 @@ class PostgreSQLDatabase implements IDatabase {
       teamBReady,
       updatedAt,
     };
+  }
+
+  // Reset ready state timestamps to NULL (used when team leaves or game is abandoned)
+  async resetTeamReadyState(battleId: string): Promise<void> {
+    await db
+      .update(teamBattles)
+      .set({
+        teamAReadyAt: null,
+        teamBReadyAt: null,
+      })
+      .where(eq(teamBattles.id, battleId));
+    
+    console.log(`[Database] ✅ Reset ready timestamps for battle ${battleId}`);
   }
 
   // Voice settings methods

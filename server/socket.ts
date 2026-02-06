@@ -1018,8 +1018,16 @@ function handleGameEvent(clientId: string, event: GameEvent) {
       handleSubmitAnswer(clientId, event);
       break;
     case "leave_game":
-      if (client.gameId && client.playerName) {
-        handlePlayerLeave(clientId, client.gameId, client.playerName);
+      if (client.gameId) {
+        // Check if this is a team battle or regular game
+        const leaveGameSession = gameSessions.get(client.gameId);
+        if (leaveGameSession?.gameType === "team_battle") {
+          // Team battle: use proper handler that cleans up "busy" status
+          handleTeamBattlePlayerDisconnect(clientId, client.gameId, client.userId);
+        } else if (client.playerName) {
+          // Regular game: use existing handler
+          handlePlayerLeave(clientId, client.gameId, client.playerName);
+        }
       }
       break;
 
@@ -6160,6 +6168,22 @@ async function handleTeamBattlePlayerDisconnect(
 
   const client = clients.get(clientId);
   if (!client) return;
+  
+  // ========================================================================
+  // CRITICAL: Remove player from "busy" tracking immediately
+  // ========================================================================
+  // This ensures the leaving player shows as "available opponent" right away.
+  // Nothing else is touched - battle continues for remaining players.
+  // ========================================================================
+  if (userId && typeof userId === 'number') {
+    activeTeamMemberships.delete(userId);
+    console.log(`[handleTeamBattlePlayerDisconnect] ✅ Removed user ${userId} from activeTeamMemberships`);
+    
+    // Broadcast so all clients see updated available opponents immediately
+    broadcastOnlineStatusUpdate().catch(err => {
+      console.error(`[handleTeamBattlePlayerDisconnect] Failed to broadcast:`, err);
+    });
+  }
 
   // Teams found
 

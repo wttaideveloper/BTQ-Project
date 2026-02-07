@@ -3911,7 +3911,7 @@ async function initializeTeamBattleReadyState(battleId: string) {
       teamBReady: readyState.teamBReady,
     };
   } catch (error) {
-    console.error(`[initializeTeamBattleReadyState] Failed to get ready state:`, error);
+    console.error(`[initializeTeamBattleReadyState] Failed to get ready state...:`, error);
     return { teamAReady: false, teamBReady: false };
   }
 }

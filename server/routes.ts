@@ -1651,10 +1651,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const onlineUserIds = getOnlineUserIds();
     
     // Filter out users who are in active teams (same logic as broadcastOnlineStatusUpdate)
-    const { isUserInActiveTeam } = await import("./socket");
-    const availableUserIds = onlineUserIds.filter(
-      (userId: number) => !isUserInActiveTeam(userId)
-    );
+    // BUT: if a user has LEFT any active game, treat them as available even if
+    // they appear in activeTeamMemberships (they should be immediately available).
+    const { isUserInActiveTeam, hasPlayerLeftAnyActiveGame } = await import("./socket");
+    const availableUserIds = onlineUserIds.filter((userId: number) => {
+      const leftCheck = hasPlayerLeftAnyActiveGame(userId);
+      if (leftCheck.left === true) {
+        // User explicitly left an active game — consider them available
+        return true;
+      }
+      return !isUserInActiveTeam(userId);
+    });
     
     // Filter out current user
     const filteredUserIds = availableUserIds.filter(

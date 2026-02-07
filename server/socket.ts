@@ -359,11 +359,10 @@ function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): boolean {
   
   // ========================================================================
   // STEP 4: Remove from activeTeamMemberships (makes player "available" again)
+  // Always attempt to delete the entry so the user becomes available immediately.
   // ========================================================================
-  if (activeTeamMemberships.has(userId)) {
-    activeTeamMemberships.delete(userId);
-    console.log(`[markPlayerAsLeft] ✅ Removed user ${userId} from activeTeamMemberships`);
-  }
+  activeTeamMemberships.delete(userId);
+  console.log(`[markPlayerAsLeft] ✅ Ensured user ${userId} removed from activeTeamMemberships`);
   
   // ========================================================================
   // STEP 5: Clear client session state (gameId + gameSessionId) for ALL

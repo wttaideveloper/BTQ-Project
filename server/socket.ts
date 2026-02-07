@@ -464,6 +464,15 @@ async function persistPlayerLeftToDB(gameId: string, userId: number): Promise<vo
       await database.updateTeamBattle(battle.id, updates);
       console.log(`[persistPlayerLeftToDB] ✅ DB updated for battle ${battle.id}`);
     }
+    
+    // Additive: mark player as LEFT in team_battle_players if that table/column exists.
+    // This is the DB-authoritative LEFT flag used by authenticate and gameplay guards.
+    try {
+      await database.markTeamBattlePlayerLeft(battle.id, userId);
+      console.log(`[persistPlayerLeftToDB] ✅ Marked user ${userId} as LEFT in team_battle_players for battle ${battle.id}`);
+    } catch (err) {
+      // Tolerant — database method logs internally if not supported.
+    }
   } catch (error) {
     console.error(`[persistPlayerLeftToDB] Error persisting LEFT for user ${userId} in gameId ${gameId}:`, error);
   }
@@ -1466,6 +1475,17 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
               // Don't restore any team context for finished battles
               client.gameSessionId = undefined;
             } else {
+              // DB Guard: If the player has previously LEFT this battle according to DB, never restore.
+              try {
+                const dbLeft = await database.getTeamBattlePlayerLeftStatus(battle.id, userId);
+                if (dbLeft === true) {
+                  console.log(`[handleAuthenticate] ⛔ DB indicates user ${userId} has LEFT battle ${battle.id} — not restoring`);
+                  client.gameSessionId = undefined;
+                  client.gameId = undefined;
+                }
+              } catch (err) {
+                // Tolerant — treat as not-left if DB helper unavailable
+              }
               // PRODUCTION-SAFE: Get ready state from database and sync to client
               const readyState = await database.getTeamReadyState(battle.id);
             
@@ -3345,9 +3365,27 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
       return;
     }
     
-    // LIFECYCLE GUARD: Reject if player has LEFT this game
+    // DB GUARD: If database indicates the player has LEFT this battle, ignore silently.
+    try {
+      const dbLeft = await database.getTeamBattlePlayerLeftStatus(
+        client.gameId,
+        client.userId
+      );
+      if (dbLeft === true) {
+        console.log(
+          `[handleSubmitTeamAnswer] ⛔ DB indicates user ${client.userId} has LEFT battle ${client.gameId} — ignoring event`
+        );
+        return;
+      }
+    } catch (err) {
+      // Tolerant: if DB helper fails, continue (will rely on in-memory guard below)
+    }
+
+    // LIFECYCLE GUARD: Reject if player has LEFT this game (in-memory)
     if (hasPlayerLeft(client.gameId, client.userId)) {
-      console.log(`[handleSubmitTeamAnswer] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`);
+      console.log(
+        `[handleSubmitTeamAnswer] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`
+      );
       sendToClient(clientId, { type: "error", message: "You have left this battle" });
       return;
     }
@@ -3449,9 +3487,8 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
     if (memberIndex === -1) return;
 
     // Store individual member answer in memory (game session)
-    const currentGameSession = event.gameId
-      ? gameSessions.get(event.gameId)
-      : null;
+    // Resolve session strictly from the authoritative client.gameId (never use event.gameId)
+    const currentGameSession = gameSessions.get(client.gameId) || null;
     let sessionTeam = null;
     if (currentGameSession && currentGameSession.teams) {
       sessionTeam = currentGameSession.teams.find((t) => t.id === team.id);
@@ -3806,12 +3843,32 @@ async function handleTeamOptionSelected(clientId: string, event: GameEvent) {
     // AUTHORITATIVE VALIDATION: client.gameId is the ONLY trusted source.
     // ====================================================================
     if (!client.gameId) {
-      console.log(`[handleTeamOptionSelected] ⛔ Rejected: no client.gameId for user ${client.userId}`);
+      console.log(
+        `[handleTeamOptionSelected] ⛔ Rejected: no client.gameId for user ${client.userId}`
+      );
       return;
     }
-    
+
+    // DB GUARD: If database indicates the player has LEFT this battle, ignore silently.
+    try {
+      const dbLeft = await database.getTeamBattlePlayerLeftStatus(
+        client.gameId,
+        client.userId
+      );
+      if (dbLeft === true) {
+        console.log(
+          `[handleTeamOptionSelected] ⛔ DB indicates user ${client.userId} has LEFT battle ${client.gameId} — ignoring event`
+        );
+        return;
+      }
+    } catch (err) {
+      // Tolerant: if DB helper fails, continue (will rely on in-memory guard below)
+    }
+
     if (hasPlayerLeft(client.gameId, client.userId)) {
-      console.log(`[handleTeamOptionSelected] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`);
+      console.log(
+        `[handleTeamOptionSelected] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`
+      );
       return;
     }
 
@@ -3910,12 +3967,32 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
     // AUTHORITATIVE VALIDATION: client.gameId is the ONLY trusted source.
     // ====================================================================
     if (!client.gameId) {
-      console.log(`[handleFinalizeTeamAnswer] ⛔ Rejected: no client.gameId for user ${client.userId}`);
+      console.log(
+        `[handleFinalizeTeamAnswer] ⛔ Rejected: no client.gameId for user ${client.userId}`
+      );
       return;
     }
-    
+
+    // DB GUARD: If database indicates the player has LEFT this battle, ignore silently.
+    try {
+      const dbLeft = await database.getTeamBattlePlayerLeftStatus(
+        client.gameId,
+        client.userId
+      );
+      if (dbLeft === true) {
+        console.log(
+          `[handleFinalizeTeamAnswer] ⛔ DB indicates user ${client.userId} has LEFT battle ${client.gameId} — ignoring event`
+        );
+        return;
+      }
+    } catch (err) {
+      // Tolerant: if DB helper fails, continue (will rely on in-memory guard below)
+    }
+
     if (hasPlayerLeft(client.gameId, client.userId)) {
-      console.log(`[handleFinalizeTeamAnswer] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`);
+      console.log(
+        `[handleFinalizeTeamAnswer] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`
+      );
       sendToClient(clientId, { type: "error", message: "You have left this battle" });
       return;
     }

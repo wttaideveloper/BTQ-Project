@@ -199,6 +199,13 @@ export interface IDatabase {
     battleId: string
   ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date | null }>;
   resetTeamReadyState(battleId: string): Promise<void>;
+  // Mark a player as LEFT for a given team battle (idempotent, additive)
+  markTeamBattlePlayerLeft(battleId: string, userId: number): Promise<void>;
+  // Get whether a player has LEFT a given team battle. Returns:
+  //  - true  => has_left = true
+  //  - false => has_left = false
+  //  - null  => no membership exists or feature not present in DB
+  getTeamBattlePlayerLeftStatus(battleId: string, userId: number): Promise<boolean | null>;
 
   // Voice settings methods
   getVoiceCloneId(): Promise<string | null>;
@@ -2395,6 +2402,39 @@ class PostgreSQLDatabase implements IDatabase {
 
   async deleteTeamBattle(id: string): Promise<void> {
     await db.delete(teamBattles).where(eq(teamBattles.id, id));
+  }
+  // Mark a player as LEFT for a given team battle (idempotent)
+  async markTeamBattlePlayerLeft(battleId: string, userId: number): Promise<void> {
+    try {
+      // Tolerant raw SQL update — if table/column doesn't exist this will throw
+      // and we intentionally catch and ignore so the runtime remains safe.
+      await sql`
+        UPDATE team_battle_players
+        SET has_left = TRUE
+        WHERE battle_id = ${battleId} AND user_id = ${userId}
+      `;
+    } catch (error: any) {
+      console.log(`[database] markTeamBattlePlayerLeft skipped:`, error?.message || error);
+    }
+  }
+
+  // Read whether a player has LEFT a given team battle.
+  // Returns true/false when determinable, or null if unknown / not present.
+  async getTeamBattlePlayerLeftStatus(battleId: string, userId: number): Promise<boolean | null> {
+    try {
+      const rows: any = await sql`
+        SELECT has_left
+        FROM team_battle_players
+        WHERE battle_id = ${battleId} AND user_id = ${userId}
+        LIMIT 1
+      `;
+      if (!rows || rows.length === 0) return null;
+      const val = rows[0].has_left;
+      return val === null || val === undefined ? null : Boolean(val);
+    } catch (error: any) {
+      console.log(`[database] getTeamBattlePlayerLeftStatus skipped:`, error?.message || error);
+      return null;
+    }
   }
 
   // Atomic ready state operations (database is source of truth)

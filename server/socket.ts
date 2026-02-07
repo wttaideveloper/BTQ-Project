@@ -363,6 +363,16 @@ function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): boolean {
   // ========================================================================
   activeTeamMemberships.delete(userId);
   console.log(`[markPlayerAsLeft] ✅ Ensured user ${userId} removed from activeTeamMemberships`);
+
+  // Broadcast availability update so lobby clients immediately see this user as available.
+  // Use the same online status broadcast used when users come online / teams change.
+  try {
+    broadcastOnlineStatusUpdate().catch((err: any) => {
+      console.error(`[markPlayerAsLeft] ❌ broadcastOnlineStatusUpdate failed:`, err);
+    });
+  } catch (err) {
+    console.error(`[markPlayerAsLeft] ❌ broadcastOnlineStatusUpdate error:`, err);
+  }
   
   // ========================================================================
   // STEP 5: Clear client session state (gameId + gameSessionId) for ALL

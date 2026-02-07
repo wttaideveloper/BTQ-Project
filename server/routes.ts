@@ -1691,6 +1691,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 });
 
+  // Get available users for invitations (explicit endpoint)
+  app.get("/api/users/available", ensureAuthenticated, async (req, res) => {
+    try {
+      // Use same logic as /api/users/online but explicit about availability semantics.
+      const onlineUserIds = getOnlineUserIds();
+      const { isUserInActiveTeam, hasPlayerLeftAnyActiveGame } = await import("./socket");
+
+      const availableUserIds = onlineUserIds.filter((userId: number) => {
+        const leftCheck = hasPlayerLeftAnyActiveGame(userId);
+        if (leftCheck.left === true) {
+          // User explicitly left an active game — consider them available
+          return true;
+        }
+        return !isUserInActiveTeam(userId);
+      });
+
+      const filteredUserIds = availableUserIds.filter(
+        (userId: number) => userId !== req.user?.id
+      );
+
+      const userPromises = filteredUserIds.map((userId: number) =>
+        database.getUser(userId).then((user) => {
+          if (!user) return null;
+          return {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            isOnline: true,
+          };
+        })
+      );
+
+      const userDetails = (await Promise.all(userPromises)).filter(Boolean);
+      console.log(`[GET /api/users/available] Returning ${userDetails.length} available users`);
+      res.json(userDetails);
+    } catch (err) {
+      console.error("Failed to fetch available users:", err);
+      res.status(500).json({ message: "Failed to fetch available users" });
+    }
+  });
+
 
 
 
@@ -2265,18 +2306,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           continue;
         }
         
-        const teams = await convertTeamBattleToTeams(battle);
-        // Filter teams that are:
-        // 1. Explicitly TEAM_BATTLE mode
-        // 2. Status is "forming"
-        // 3. Not full (< 3 members)
-        // 4. From an active session (not closed)
-        const availableTeams = teams.filter(
-          (t: any) => 
-            t.gameMode === "TEAM_BATTLE" &&
-            t.status === "forming" && 
-            (t.members?.length || 0) < 3
-        );
+      const teams = await convertTeamBattleToTeams(battle);
+      // For availability, treat players who have LEFT any active game as not counting
+      // toward team occupancy. This prevents LEFT players from making teams appear full.
+      const { hasPlayerLeftAnyActiveGame } = await import("./socket");
+
+      const normalizedTeams = teams.map((t: any) => {
+        const members = t.members || [];
+        const filteredMembers = members.filter((m: any) => {
+          const leftCheck = hasPlayerLeftAnyActiveGame(m.userId);
+          return leftCheck.left !== true;
+        });
+        return {
+          ...t,
+          members: filteredMembers,
+        };
+      });
+
+      // Filter teams that are:
+      // 1. Explicitly TEAM_BATTLE mode
+      // 2. Status is "forming"
+      // 3. Not full (< 3 members) after excluding LEFT players
+      const availableTeams = normalizedTeams.filter((t: any) =>
+        t.gameMode === "TEAM_BATTLE" &&
+        t.status === "forming" &&
+        (t.members?.length || 0) < 3
+      );
         
         if (availableTeams.length > 0) {
           console.log(`  ✅ Battle ${battle.id} (session: ${battle.gameSessionId}): ${availableTeams.length} available teams, created: ${new Date(battle.createdAt).toISOString()}`);

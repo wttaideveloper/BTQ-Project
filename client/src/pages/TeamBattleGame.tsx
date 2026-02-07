@@ -674,6 +674,28 @@ export default function TeamBattleGame() {
     }));
   };
 
+  // Defensive guard: if we're in the playing phase but the client doesn't have a
+  // playerTeam (can happen if server sends inconsistent teams after a captain
+  // leave), request authoritative state from server and show a friendly toast.
+  useEffect(() => {
+    if (gameState.phase === "playing" && !gameState.playerTeam) {
+      toast({
+        title: "Refreshing game state",
+        description: "Team information missing — retrieving authoritative state...",
+        variant: "destructive",
+      });
+
+      if (gameSessionId) {
+        sendGameEvent({
+          type: "get_game_state",
+          gameSessionId,
+          userId: user?.id,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState.phase, gameState.playerTeam, gameSessionId]);
+
   const handleMemberSelect = (answerId: string) => {
     if (!gameState.currentQuestion || !gameState.playerTeam || !user) return;
 

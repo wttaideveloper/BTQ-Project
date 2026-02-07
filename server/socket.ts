@@ -6597,17 +6597,32 @@ async function handleTeamBattlePlayerDisconnect(
         }
 
         // Send updated teams to all clients in the session
+        // Prefer in-memory `gameSession.teams` (authoritative and immediate) to avoid
+        // DB read/write races between markPlayerAsLeft and DB reads. Fall back to DB
+        // helper only if in-memory data is missing.
         const sessionIdForTeams = gameId; // gameId IS the session id for team battles
-        const updatedTeams = await getTeamsForTeamBattleSession(sessionIdForTeams);
+        let updatedTeams: any[] = [];
+        if (gameSession && Array.isArray(gameSession.teams) && gameSession.teams.length > 0) {
+          // shallow-serialize in-memory teams to avoid sharing mutable objects
+          updatedTeams = JSON.parse(JSON.stringify(gameSession.teams));
+        } else {
+          updatedTeams = await getTeamsForTeamBattleSession(sessionIdForTeams);
+        }
+
         const allClientsInSession = Array.from(clients.values()).filter(
-          (c: Client) => c.gameId === gameId || (c.userId && updatedTeams.some(team => team.members.some((m: any) => m.userId === c.userId)))
+          (c: Client) =>
+            c.gameId === gameId ||
+            (c.userId &&
+              updatedTeams.some((team) =>
+                team.members.some((m: any) => m.userId === c.userId)
+              ))
         );
 
         for (const sessionClient of allClientsInSession) {
           sendToClient(sessionClient.id, {
             type: "teams_updated",
             teams: updatedTeams,
-            gameSessionId: sessionIdForTeams
+            gameSessionId: sessionIdForTeams,
           });
         }
       } else {

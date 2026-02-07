@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { database } from "./database";
-import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser } from "./socket";
+import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser, hasPlayerLeftAnyActiveGame } from "./socket";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
@@ -2130,7 +2130,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // ========================================================================
-      // STEP 5: Broadcast online status update (if any changes were made)
+      // STEP 5: Detach user from "playing" battles they have LEFT
+      // ========================================================================
+      // When a player leaves mid-game and opens the modal again, they need
+      // to be fully detached from any in-progress "playing" battles.
+      // We don't delete or end the battle — it continues for other players.
+      // We only ensure this user is no longer associated with it.
+      // ========================================================================
+      try {
+        // Check all in-memory game sessions for this user
+        const leftCheck = hasPlayerLeftAnyActiveGame(userId);
+        if (leftCheck.left) {
+          console.log(`[Cleanup] ✅ User ${userId} already marked as LEFT in gameSession ${leftCheck.gameId} — no further action needed`);
+          changesMade = true;
+        }
+        
+        // Also check DB for "playing" battles where user is listed but has clearly left
+        // (covers edge case where server restarted and in-memory leftPlayerIds is lost)
+        const playingBattles = await database.getTeamBattlesByUser(userId, 'playing');
+        for (const battle of playingBattles) {
+          // Don't end the battle — just remove user from activeTeamMemberships
+          if (activeTeamMemberships.has(userId)) {
+            activeTeamMemberships.delete(userId);
+            changesMade = true;
+            console.log(`[Cleanup] ✅ Removed user ${userId} from activeTeamMemberships (was in playing battle ${battle.id})`);
+          }
+        }
+      } catch (playingBattleError) {
+        console.error(`[Cleanup] ⚠️ Error handling playing battles (non-critical):`, playingBattleError);
+      }
+      
+      // ========================================================================
+      // STEP 6: Broadcast online status update (if any changes were made)
       // ========================================================================
       if (changesMade) {
         try {

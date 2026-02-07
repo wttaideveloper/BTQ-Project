@@ -2406,12 +2406,18 @@ class PostgreSQLDatabase implements IDatabase {
   // Mark a player as LEFT for a given team battle (idempotent)
   async markTeamBattlePlayerLeft(battleId: string, userId: number): Promise<void> {
     try {
-      // Tolerant raw SQL update — if table/column doesn't exist this will throw
-      // and we intentionally catch and ignore so the runtime remains safe.
+      // Production DB uses team_battles.left_player_ids (JSON array of userIds).
+      // Append the userId only if not already present. Idempotent.
+      // Use a tolerant raw SQL update so this helper is safe if the column/table doesn't exist.
       await sql`
-        UPDATE team_battle_players
-        SET has_left = TRUE
-        WHERE battle_id = ${battleId} AND user_id = ${userId}
+        UPDATE team_battles
+        SET left_player_ids =
+          CASE
+            WHEN COALESCE(left_player_ids::jsonb, '[]'::jsonb) @> ${JSON.stringify([userId])}::jsonb
+              THEN left_player_ids
+            ELSE (COALESCE(left_player_ids::jsonb, '[]'::jsonb) || ${JSON.stringify([userId])}::jsonb)
+          END
+        WHERE id = ${battleId}
       `;
     } catch (error: any) {
       console.log(`[database] markTeamBattlePlayerLeft skipped:`, error?.message || error);
@@ -2422,15 +2428,18 @@ class PostgreSQLDatabase implements IDatabase {
   // Returns true/false when determinable, or null if unknown / not present.
   async getTeamBattlePlayerLeftStatus(battleId: string, userId: number): Promise<boolean | null> {
     try {
+      // Read left_player_ids JSON array from team_battles and check membership.
+      // Return true if present, false if not present, or null if battle not found.
       const rows: any = await sql`
-        SELECT has_left
-        FROM team_battle_players
-        WHERE battle_id = ${battleId} AND user_id = ${userId}
+        SELECT (COALESCE(left_player_ids::jsonb, '[]'::jsonb) @> ${JSON.stringify([userId])}::jsonb) AS present
+        FROM team_battles
+        WHERE id = ${battleId}
         LIMIT 1
       `;
       if (!rows || rows.length === 0) return null;
-      const val = rows[0].has_left;
-      return val === null || val === undefined ? null : Boolean(val);
+      const present = rows[0].present;
+      // present might already be boolean; coerce to boolean
+      return present === null || present === undefined ? null : Boolean(present);
     } catch (error: any) {
       console.log(`[database] getTeamBattlePlayerLeftStatus skipped:`, error?.message || error);
       return null;

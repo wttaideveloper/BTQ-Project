@@ -373,6 +373,48 @@ function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): boolean {
   } catch (err) {
     console.error(`[markPlayerAsLeft] ❌ broadcastOnlineStatusUpdate error:`, err);
   }
+
+  // ========================================================================
+  // STEP 6: Persistently remove user from legacy teams.members and
+  //         from the team_battles teammates arrays for this battle.
+  // ========================================================================
+  (async () => {
+    try {
+      // 1) Remove from all regular teams' members JSON
+      try {
+        await database.removeUserFromAllTeams(userId);
+      } catch (err) {
+        console.error(`[markPlayerAsLeft] ❌ removeUserFromAllTeams error:`, err);
+      }
+
+      // 2 & 3) Remove from team_battles.team_a_teammates / team_b_teammates for this battle only
+      try {
+        const battle = await database.getTeamBattle(gameId);
+        if (battle) {
+          const origA = Array.isArray(battle.teamATeammates) ? extractTeammateIds(battle.teamATeammates) : [];
+          const origB = Array.isArray(battle.teamBTeammates) ? extractTeammateIds(battle.teamBTeammates) : [];
+          const newA = origA.filter((id) => id !== userId);
+          const newB = origB.filter((id) => id !== userId);
+          const updates: any = {};
+          if (newA.length !== origA.length) updates.teamATeammates = newA;
+          if (newB.length !== origB.length) updates.teamBTeammates = newB;
+          if (Object.keys(updates).length > 0) {
+            try {
+              await database.updateTeamBattle(battle.id, updates);
+              console.log(`[markPlayerAsLeft] ✅ Removed user ${userId} from team_battles teammates for battle ${battle.id}`);
+            } catch (err) {
+              console.error(`[markPlayerAsLeft] ❌ Failed to update team_battles for ${battle.id}:`, err);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[markPlayerAsLeft] ❌ team_battles teammate cleanup error:`, err);
+      }
+    } catch (err) {
+      // top-level tolerant catch
+      console.error(`[markPlayerAsLeft] ❌ Persistent cleanup error:`, err);
+    }
+  })();
   
   // ========================================================================
   // STEP 5: Clear client session state (gameId + gameSessionId) for ALL

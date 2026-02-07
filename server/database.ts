@@ -3377,6 +3377,31 @@ class PostgreSQLDatabase implements IDatabase {
     return members;
   }
 
+  // Remove a user from all regular teams (teams.members JSON) where they appear.
+  // Idempotent: if user is not present anywhere, this does nothing.
+  async removeUserFromAllTeams(userId: number): Promise<void> {
+    try {
+      const rows: any[] = await sql`
+        SELECT id, members
+        FROM teams
+        WHERE COALESCE(members::jsonb, '[]'::jsonb) @> ${JSON.stringify([{ userId }])}::jsonb
+      `;
+      if (!rows || rows.length === 0) return;
+      for (const row of rows) {
+        try {
+          const members = Array.isArray(row.members) ? row.members : [];
+          const filtered = members.filter((m: any) => (m?.userId ?? m?.id ?? null) !== userId);
+          await this.updateTeamMembers(row.id, filtered);
+          console.log(`[database] removeUserFromAllTeams: removed user ${userId} from team ${row.id}`);
+        } catch (innerErr) {
+          console.error(`[database] removeUserFromAllTeams: failed to update team ${row.id}:`, innerErr);
+        }
+      }
+    } catch (error: any) {
+      console.error("[database] removeUserFromAllTeams skipped:", error?.message || error);
+    }
+  }
+
   async getJoinRequestsByUser(userId: number): Promise<any[]> {
     try {
       const rows = await sql`SELECT * FROM team_join_request WHERE requester_id = ${userId} ORDER BY created_at DESC`;

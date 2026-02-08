@@ -129,6 +129,7 @@ export default function TeamBattleGame() {
     isVoiceEnabled()
   );
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+  const [showRefreshLoader, setShowRefreshLoader] = useState(false);
 
 
   useEffect(() => {
@@ -220,6 +221,13 @@ export default function TeamBattleGame() {
           });
         } catch (e) {
           // Silent error handling - page might be closing
+        }
+        
+        // Show a small loader overlay to indicate we're cleaning up before refresh/navigation
+        try {
+          setShowRefreshLoader(true);
+        } catch (_) {
+          // ignore - defensive
         }
         
         // Trigger browser's default confirmation dialog
@@ -738,6 +746,9 @@ export default function TeamBattleGame() {
     
     // Mark that user is explicitly exiting - prevent automatic redirects
     isExitingRef.current = true;
+    
+    // Show full-screen loader while we perform cleanup and navigation
+    setShowRefreshLoader(true);
     
     // Helper function to add timeout to cleanup request
     const cleanupWithTimeout = async (timeoutMs: number = 8000): Promise<void> => {
@@ -1330,6 +1341,15 @@ export default function TeamBattleGame() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-primary-dark to-black text-white relative">
+      {showRefreshLoader && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-white font-semibold">Please wait…</p>
+            <p className="text-white/70 text-sm">Cleaning up and refreshing...</p>
+          </div>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
         {/* Team Scores Header - Show during game */}
         {gameState.phase === "question" && gameState.playerTeam && gameState.opposingTeam && (

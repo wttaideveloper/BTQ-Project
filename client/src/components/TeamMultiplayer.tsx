@@ -70,6 +70,7 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
   const [inviteLoadingId, setInviteLoadingId] = useState<number | null>(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [showRedirectLoader, setShowRedirectLoader] = useState(false);
 
   // Fetch online users with proper configuration
   const { data: onlineUsers = [] } = useQuery<User[]>({
@@ -390,7 +391,8 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
               title: "Battle Started!",
               description: "Redirecting to your individual game interface...",
             });
-            // Redirect to individual team battle game interface
+            // Show loader and redirect to individual team battle game interface
+            setShowRedirectLoader(true);
             setTimeout(() => {
               window.location.href = `/team-battle?gameSessionId=${gameSessionId}`;
             }, 1500);
@@ -646,6 +648,15 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black overflow-y-auto">
+      {showRedirectLoader && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-white font-semibold">Preparing game...</p>
+            <p className="text-white/70 text-sm">Redirecting to battle interface...</p>
+          </div>
+        </div>
+      )}
       {/* Animated Background Effects - using app's primary colors */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-20 left-20 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>

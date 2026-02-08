@@ -229,13 +229,11 @@ export default function TeamBattleGame() {
         } catch (_) {
           // ignore - defensive
         }
-        
-        // Trigger browser's default confirmation dialog
-        // Modern browsers ignore the custom message and show their own default message
-        // IMPORTANT: Both preventDefault() and returnValue are needed for cross-browser support
-        event.preventDefault();
-        event.returnValue = ""; // Required for Chrome/Edge
-        return ""; // Required for some browsers (Safari, Firefox)
+
+        // DO NOT call event.preventDefault() or set returnValue —
+        // we intentionally avoid the native browser confirmation dialog here
+        // because the app already uses a custom exit dialog. Allow the
+        // navigation/refresh to proceed immediately.
       }
     };
 
@@ -846,8 +844,14 @@ export default function TeamBattleGame() {
       // Silent error handling
     }
     
-    // Navigate to home after cleanup completes
-    setLocation("/");
+    // Perform a full page reload to ensure all in-memory SPA state and caches are cleared
+    // Use a timestamp query param to bypass any caches and force a fresh load
+    try {
+      window.location.replace(`${window.location.origin}/?r=${Date.now()}`);
+    } catch (e) {
+      // Fallback to SPA navigation if full reload fails
+      setLocation("/");
+    }
   };
 
   const renderWaitingPhase = () => (

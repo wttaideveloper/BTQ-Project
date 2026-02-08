@@ -1650,18 +1650,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // This ensures consistency with WebSocket broadcastOnlineStatusUpdate()
     const onlineUserIds = getOnlineUserIds();
     
-    // Filter out users who are in active teams (same logic as broadcastOnlineStatusUpdate)
-    // BUT: if a user has LEFT any active game, treat them as available even if
-    // they appear in activeTeamMemberships (they should be immediately available).
-    const { isUserInActiveTeam, hasPlayerLeftAnyActiveGame } = await import("./socket");
-    const availableUserIds = onlineUserIds.filter((userId: number) => {
-      const leftCheck = hasPlayerLeftAnyActiveGame(userId);
-      if (leftCheck.left === true) {
-        // User explicitly left an active game — consider them available
-        return true;
-      }
-      return !isUserInActiveTeam(userId);
-    });
+    // Use authoritative busy check (DB-backed) to determine availability.
+    const { isUserBusy } = await import("./socket");
+    const availabilityChecks = await Promise.all(
+      onlineUserIds.map(async (userId: number) => {
+        try {
+          const busy = await isUserBusy(userId);
+          return { userId, busy };
+        } catch {
+          return { userId, busy: false };
+        }
+      })
+    );
+    const availableUserIds = availabilityChecks.filter((c) => !c.busy).map((c) => c.userId);
     
     // Filter out current user
     const filteredUserIds = availableUserIds.filter(
@@ -1696,16 +1697,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Use same logic as /api/users/online but explicit about availability semantics.
       const onlineUserIds = getOnlineUserIds();
-      const { isUserInActiveTeam, hasPlayerLeftAnyActiveGame } = await import("./socket");
-
-      const availableUserIds = onlineUserIds.filter((userId: number) => {
-        const leftCheck = hasPlayerLeftAnyActiveGame(userId);
-        if (leftCheck.left === true) {
-          // User explicitly left an active game — consider them available
-          return true;
-        }
-        return !isUserInActiveTeam(userId);
-      });
+      const { isUserBusy } = await import("./socket");
+      const availabilityChecks = await Promise.all(
+        onlineUserIds.map(async (userId: number) => {
+          try {
+            const busy = await isUserBusy(userId);
+            return { userId, busy };
+          } catch {
+            return { userId, busy: false };
+          }
+        })
+      );
+      const availableUserIds = availabilityChecks.filter((c) => !c.busy).map((c) => c.userId);
 
       const filteredUserIds = availableUserIds.filter(
         (userId: number) => userId !== req.user?.id
@@ -2309,19 +2312,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teams = await convertTeamBattleToTeams(battle);
       // For availability, treat players who have LEFT any active game as not counting
       // toward team occupancy. This prevents LEFT players from making teams appear full.
-      const { hasPlayerLeftAnyActiveGame } = await import("./socket");
+      const { isUserBusy } = await import("./socket");
 
-      const normalizedTeams = teams.map((t: any) => {
+      const normalizedTeams = [];
+      for (const t of teams) {
         const members = t.members || [];
-        const filteredMembers = members.filter((m: any) => {
-          const leftCheck = hasPlayerLeftAnyActiveGame(m.userId);
-          return leftCheck.left !== true;
-        });
-        return {
+        const availability = await Promise.all(
+          members.map(async (m: any) => {
+            try {
+              const busy = await isUserBusy(m.userId);
+              return { member: m, busy };
+            } catch {
+              return { member: m, busy: false };
+            }
+          })
+        );
+        const filteredMembers = availability.filter((a) => a.busy).map((a) => a.member);
+        normalizedTeams.push({
           ...t,
           members: filteredMembers,
-        };
-      });
+        });
+      }
 
       // Filter teams that are:
       // 1. Explicitly TEAM_BATTLE mode

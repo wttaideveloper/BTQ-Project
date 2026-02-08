@@ -304,7 +304,7 @@ interface MarkPlayerAsLeftOptions {
   reason: string;          // descriptive reason for logging
 }
 
-function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): boolean {
+async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boolean> {
   const { clientId, gameId, userId, reason } = options;
   
   const gameSession = gameSessions.get(gameId);
@@ -442,18 +442,23 @@ function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): boolean {
   // STEP 6: Persist LEFT to DB — remove from teamATeammates/teamBTeammates
   //         This survives server restarts and ensures handleAuthenticate
   //         won't re-associate the player with the battle via DB lookup.
+  //         MUST be synchronous (await) to avoid race conditions.
   // ========================================================================
-  persistPlayerLeftToDB(gameId, userId).catch(err => {
+  try {
+    await persistPlayerLeftToDB(gameId, userId);
+  } catch (err) {
     console.error(`[markPlayerAsLeft] Failed to persist LEFT to DB:`, err);
-  });
-  
+  }
+
   // ========================================================================
-  // STEP 7: Broadcast online status update (async, fire-and-forget)
+  // STEP 7: Broadcast online status update (await to ensure cross-instance reads)
   // ========================================================================
-  broadcastOnlineStatusUpdate().catch(err => {
+  try {
+    await broadcastOnlineStatusUpdate();
+  } catch (err) {
     console.error(`[markPlayerAsLeft] Failed to broadcast online status:`, err);
-  });
-  
+  }
+
   console.log(`[markPlayerAsLeft] ✅ User ${userId} fully detached from gameId ${gameId} | reason: ${reason}`);
   return true; // player was newly marked as left
 }
@@ -543,6 +548,38 @@ export function hasPlayerLeftAnyActiveGame(userId: number): { left: boolean; gam
     }
   }
   return { left: false };
+}
+
+// Authoritative busy check (DB-backed). Returns true if user is busy.
+export async function isUserBusy(userId: number): Promise<boolean> {
+  try {
+    // Look for forming or playing battles and see if the user is a member/captain
+    const forming = await database.getTeamBattlesByStatus("forming");
+    const playing = await database.getTeamBattlesByStatus("playing");
+    const battles = [...forming, ...playing];
+
+    for (const battle of battles) {
+      const captainMatch = battle.teamACaptainId === userId || battle.teamBCaptainId === userId;
+      const teammatesA = Array.isArray(battle.teamATeammates) ? extractTeammateIds(battle.teamATeammates) : [];
+      const teammatesB = Array.isArray(battle.teamBTeammates) ? extractTeammateIds(battle.teamBTeammates) : [];
+      const teammateMatch = teammatesA.includes(userId) || teammatesB.includes(userId);
+
+      if (captainMatch || teammateMatch) {
+        // If DB explicitly marks user as LEFT for this battle, they are NOT busy
+        const dbLeft = await database.getTeamBattlePlayerLeftStatus(battle.id, userId);
+        if (dbLeft === true) {
+          return false;
+        }
+        return true;
+      }
+    }
+
+    return false;
+  } catch (err) {
+    // On error, be conservative: treat user as not busy so availability is not blocked.
+    console.error("[isUserBusy] error:", err);
+    return false;
+  }
 }
 
 // In-memory Team Join Requests (id -> request)
@@ -1726,10 +1763,21 @@ export async function broadcastOnlineStatusUpdate() {
   try {
     const onlineUsers = await database.getOnlineUsers();
 
-    // Use the activeTeamMemberships cache for quick lookups
-    const availableUsers = onlineUsers.filter(
-      (user) => user.isOnline && !activeTeamMemberships.has(user.id)
+    // Determine availability using authoritative DB-backed helper
+    const availabilityChecks = await Promise.all(
+      onlineUsers.map(async (user) => {
+        try {
+          const busy = await isUserBusy(user.id);
+          return { user, busy };
+        } catch (err) {
+          // If check fails, conservatively treat user as not busy (available)
+          return { user, busy: false };
+        }
+      })
     );
+    const availableUsers = availabilityChecks
+      .filter((c) => c.user.isOnline && !c.busy)
+      .map((c) => c.user);
 
     // Send updated online user list to all connected clients
     const allClientIds = Array.from(clients.keys());
@@ -6595,7 +6643,7 @@ async function handleTeamBattlePlayerDisconnect(
 
   if (!disconnectedTeam) {
     // Player not in any team — just do minimal cleanup
-    markPlayerAsLeft({ clientId, gameId, userId, reason: "disconnect_no_team" });
+    await markPlayerAsLeft({ clientId, gameId, userId, reason: "disconnect_no_team" });
     return;
   }
 
@@ -6612,7 +6660,7 @@ async function handleTeamBattlePlayerDisconnect(
   // This removes the player from memory maps, clears client state, broadcasts.
   // Must happen BEFORE captain/team logic so member arrays are already updated.
   // ========================================================================
-  markPlayerAsLeft({ clientId, gameId, userId, reason: "mid_game_disconnect" });
+  await markPlayerAsLeft({ clientId, gameId, userId, reason: "mid_game_disconnect" });
 
   try {
     if (isCaptainDisconnect) {
@@ -7462,7 +7510,7 @@ async function handlePlayerLeavingTeamBattle(clientId: string, event: GameEvent)
 
     if (!leavingTeam) {
       // Player not in any team — just do minimal cleanup
-      markPlayerAsLeft({ clientId, gameId: gameSessionId, userId, reason: "intentional_leave_no_team" });
+      await markPlayerAsLeft({ clientId, gameId: gameSessionId, userId, reason: "intentional_leave_no_team" });
       return;
     }
 
@@ -7474,7 +7522,7 @@ async function handlePlayerLeavingTeamBattle(clientId: string, event: GameEvent)
     // ========================================================================
     // LIFECYCLE TRANSITION: ACTIVE → LEFT (centralized, permanent)
     // ========================================================================
-    markPlayerAsLeft({ clientId, gameId: gameSessionId, userId, reason: "intentional_leave" });
+    await markPlayerAsLeft({ clientId, gameId: gameSessionId, userId, reason: "intentional_leave" });
 
     // Captain transfer (if needed) — uses REMAINING members (after removal)
     if (isCaptainLeave) {

@@ -238,45 +238,32 @@ export default function TeamBattleGame() {
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
-    
-    // Intercept mobile/browser back-button (history popstate) to show our custom
-    // exit confirmation when a battle is in progress. We push a history entry
-    // once so pressing back triggers popstate which we can catch and cancel
-    // (by re-pushing state) while showing the dialog. If the battle is finished
-    // we allow native back navigation.
-    const pushPreventState = () => {
-      try {
-        history.pushState({ teamBattlePrevent: true }, "");
-      } catch (_) {
-        // ignore - some environments may restrict pushState
-      }
-    };
 
-    // Push an initial state so back button will trigger popstate
-    pushPreventState();
-
-    const handlePopState = (event: PopStateEvent) => {
-      const currentGameState = gameStateRef.current;
-      const phase = currentGameState.phase;
-      const isFinished = phase === "finished";
-      const hasGameData = !!(currentGameState.playerTeam || currentGameState.teams?.length);
-      const hasGameSession = !!gameSessionId;
-
-      const shouldShowDialog =
-        hasGameSession &&
-        !isFinished &&
-        ((phase && phase !== "waiting") || hasGameData);
-
-      if (shouldShowDialog && !isExitingRef.current) {
-        // Show our in-app confirmation dialog and re-push state to prevent navigation.
+    // Register a global navigation protection for this team battle instance.
+    const protectionId = `team-battle-${gameSessionId}-${user?.id}`;
+    const confirmLeave = () =>
+      new Promise<boolean>((resolve) => {
+        confirmResolverRef.current = resolve;
         setShowExitConfirmation(true);
-        pushPreventState();
-      } else {
-        // Allow normal back navigation (do nothing)
-      }
-    };
+      });
 
-    window.addEventListener("popstate", handlePopState);
+    registerNavigationProtection(
+      protectionId,
+      () => {
+        const currentGameState = gameStateRef.current;
+        const phase = currentGameState.phase;
+        const isFinished = phase === "finished";
+        const hasGameData = !!(currentGameState.playerTeam || currentGameState.teams?.length);
+        const hasGameSession = !!gameSessionId;
+
+        return (
+          hasGameSession &&
+          !isFinished &&
+          ((phase && phase !== "waiting") || hasGameData)
+        );
+      },
+      confirmLeave
+    );
 
     const handleMessage = (event: MessageEvent) => {
       try {
@@ -663,7 +650,7 @@ export default function TeamBattleGame() {
     return () => {
       socket.removeEventListener("message", handleMessage);
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      window.removeEventListener("popstate", handlePopState);
+      unregisterNavigationProtection(`team-battle-${gameSessionId}-${user?.id}`);
     };
   }, [user, gameSessionId]);
 
@@ -1657,13 +1644,34 @@ export default function TeamBattleGame() {
           <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
             <Button
               variant="outline"
-              onClick={() => setShowExitConfirmation(false)}
+              onClick={() => {
+                setShowExitConfirmation(false);
+                if (confirmResolverRef.current) {
+                  try {
+                    confirmResolverRef.current(false);
+                  } finally {
+                    confirmResolverRef.current = null;
+                  }
+                }
+              }}
               className="w-full sm:w-auto bg-white/5 border-white/30 text-white hover:bg-white/10 hover:border-white/40 hover:text-white transition-all duration-200"
             >
               Cancel
             </Button>
             <Button
-              onClick={handleExitGame}
+              onClick={() => {
+                // Resolve any pending confirm promise (used by global guard)
+                setShowExitConfirmation(false);
+                if (confirmResolverRef.current) {
+                  try {
+                    confirmResolverRef.current(true);
+                  } finally {
+                    confirmResolverRef.current = null;
+                  }
+                }
+                // Always run the cleanup flow
+                handleExitGame();
+              }}
               className="w-full sm:w-auto bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold shadow-lg transition-all duration-200"
             >
               <LogOut className="h-4 w-4 mr-2" />

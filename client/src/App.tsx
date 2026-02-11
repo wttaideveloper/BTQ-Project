@@ -18,6 +18,7 @@ import GameHistory from "@/pages/GameHistory";
 import { useEffect } from "react";
 import { voiceService } from "./lib/voice-service";
 import { stopSpeaking } from "./lib/sounds";
+import NavigationGuardProvider from "@/components/NavigationGuardProvider";
 
 function Router() {
   const [location] = useLocation();
@@ -67,7 +68,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Router />
+          <NavigationGuardProvider>
+            <Router />
+          </NavigationGuardProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

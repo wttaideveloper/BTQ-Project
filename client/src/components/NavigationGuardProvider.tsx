@@ -28,6 +28,11 @@ export default function NavigationGuardProvider({
         return;
       }
 
+      // Immediately re-push a prevent-state to synchronously cancel the back navigation.
+      // This avoids a race where a quick second back press would navigate away before
+      // the confirmation dialog is shown or handled.
+      pushPreventState();
+
       try {
         const result = await active.confirmLeave();
         if (result) {
@@ -35,12 +40,10 @@ export default function NavigationGuardProvider({
           isExitingRef.current = true;
           // Do not call any extra cleanup here to avoid duplication
         } else {
-          // user canceled — re-push state to remain on page
-          pushPreventState();
+          // user canceled — nothing else to do because we already re-pushed state
         }
       } catch (err) {
-        // On error, re-push to be safe
-        pushPreventState();
+        // On error, we've already re-pushed state; nothing else to do
       }
     };
 

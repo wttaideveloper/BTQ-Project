@@ -882,9 +882,17 @@ export default function TeamBattleGame() {
         </div>
 
         {/* Exit button - more prominent */}
-        <div className="flex justify-center">
+          <div className="flex justify-center">
           <Button
-            onClick={() => setShowExitConfirmation(true)}
+            onClick={() => {
+              // If the battle has finished, perform the exit/cleanup immediately.
+              // Otherwise, show the confirmation dialog to avoid accidental mid-game leaves.
+              if (gameState.phase === "finished") {
+                handleExitGame();
+              } else {
+                setShowExitConfirmation(true);
+              }
+            }}
             className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border-0 whitespace-nowrap w-full sm:w-auto shadow-lg hover:shadow-red-500/20 transition-all duration-200"
           >
             <LogOut className="h-4 w-4 mr-2" />
@@ -1445,7 +1453,14 @@ export default function TeamBattleGame() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setShowExitConfirmation(true)}
+              onClick={() => {
+                // If game finished, skip confirmation and exit immediately.
+                if (gameState.phase === "finished") {
+                  handleExitGame();
+                } else {
+                  setShowExitConfirmation(true);
+                }
+              }}
               className="rounded-full transition-all duration-200 flex-shrink-0 h-9 w-9 sm:h-11 sm:w-11 bg-gradient-to-br from-red-500/20 to-red-600/20 text-red-400 border-2 border-red-500/40 hover:from-red-500/30 hover:to-red-600/30 hover:border-red-500/60 shadow-lg hover:shadow-red-500/20 hover:scale-105 active:scale-95"
               title="Exit game"
             >

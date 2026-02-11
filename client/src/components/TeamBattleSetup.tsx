@@ -800,7 +800,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             // Show toast to explain why ready status was reset
             if (data.reason === "opponent_left") {
               console.log(`[TeamBattleSetup] 🔄 Ready state reset because opponent left`);
-              toast.info("⚠️ Ready status reset - opponent team left the lobby");
+              toast({
+                title: "Ready status reset",
+                description: "Opponent team left the lobby",
+              });
               // Reset loading state since the ready flow was interrupted
               setIsReadyLoading(false);
             }
@@ -1225,6 +1228,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       ) || null
     );
   }, [teams, user]);
+
+  // Determine if the current user is the captain of their team
+  const isTeamCaptain = userTeam?.captainId === user?.id;
 
   // ============================================================================
   // READY STATUS CONFIRMATION - Clear loading and show toast
@@ -3573,26 +3579,30 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             </div>
           </div>
           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2">
-            <Button
-              onClick={() => {
-                setShowOpponentDisconnectedDialog(false);
-                // No special navigation needed — invite UI is already visible in the modal.
-                toast({
-                  title: "Invite a new opponent captain",
-                  description:
-                    "Pick an online player and send an Opponent Captain invite.",
-                });
-              }}
-              className="bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto"
-            >
-              Invite New Opponent
-            </Button>
+            {isTeamCaptain ? (
+              <Button
+                onClick={() => {
+                  setShowOpponentDisconnectedDialog(false);
+                  // No special navigation needed — invite UI is already visible in the modal.
+                  toast({
+                    title: "Invite a new opponent captain",
+                    description:
+                      "Pick an online player and send an Opponent Captain invite.",
+                  });
+                }}
+                className="bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto"
+              >
+                Invite New Opponent
+              </Button>
+            ) : null}
             <Button
               onClick={() => {
                 if (userTeam) {
                   handleLeaveTeam(userTeam.id);
                 }
                 setShowOpponentDisconnectedDialog(false);
+                // Navigate home after leaving the lobby
+                setLocation("/");
               }}
               disabled={leaveTeamMutation.isPending}
               className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto"

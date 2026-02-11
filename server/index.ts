@@ -62,6 +62,34 @@ app.use((req, res, next) => {
   const { database } = await import("./database");
   await database.initializeDatabase();
   
+  async function cleanupVeryOldBattles() {
+    console.log("🛡 Cleaning stale battles on startup...");
+
+    try {
+      // Cleanup stuck PLAYING battles older than 15 minutes
+      await database.db.execute(`
+        UPDATE team_battles
+        SET status = 'finished',
+            finished_at = NOW()
+        WHERE status = 'playing'
+          AND created_at < NOW() - INTERVAL '15 minutes'
+      `);
+
+      // Cleanup abandoned FORMING battles older than 30 minutes
+      await database.db.execute(`
+        UPDATE team_battles
+        SET status = 'finished',
+            finished_at = NOW()
+        WHERE status = 'forming'
+          AND created_at < NOW() - INTERVAL '30 minutes'
+      `);
+
+      console.log("✅ Stale battle cleanup completed successfully");
+    } catch (error) {
+      console.error("❌ Error during stale battle cleanup:", error);
+    }
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
@@ -105,6 +133,10 @@ app.use((req, res, next) => {
   // Serve the app on port 5001
   // this serves both the API and the client.
   const port = 5001;
+
+  // Run passive cleanup of clearly abandoned team_battles before starting the server.
+  await cleanupVeryOldBattles();
+
   server.listen(port, "localhost", () => {
     log(`serving on port ${port}`);
   });

@@ -238,6 +238,45 @@ export default function TeamBattleGame() {
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
+    
+    // Intercept mobile/browser back-button (history popstate) to show our custom
+    // exit confirmation when a battle is in progress. We push a history entry
+    // once so pressing back triggers popstate which we can catch and cancel
+    // (by re-pushing state) while showing the dialog. If the battle is finished
+    // we allow native back navigation.
+    const pushPreventState = () => {
+      try {
+        history.pushState({ teamBattlePrevent: true }, "");
+      } catch (_) {
+        // ignore - some environments may restrict pushState
+      }
+    };
+
+    // Push an initial state so back button will trigger popstate
+    pushPreventState();
+
+    const handlePopState = (event: PopStateEvent) => {
+      const currentGameState = gameStateRef.current;
+      const phase = currentGameState.phase;
+      const isFinished = phase === "finished";
+      const hasGameData = !!(currentGameState.playerTeam || currentGameState.teams?.length);
+      const hasGameSession = !!gameSessionId;
+
+      const shouldShowDialog =
+        hasGameSession &&
+        !isFinished &&
+        ((phase && phase !== "waiting") || hasGameData);
+
+      if (shouldShowDialog && !isExitingRef.current) {
+        // Show our in-app confirmation dialog and re-push state to prevent navigation.
+        setShowExitConfirmation(true);
+        pushPreventState();
+      } else {
+        // Allow normal back navigation (do nothing)
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
 
     const handleMessage = (event: MessageEvent) => {
       try {
@@ -624,6 +663,7 @@ export default function TeamBattleGame() {
     return () => {
       socket.removeEventListener("message", handleMessage);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
     };
   }, [user, gameSessionId]);
 

@@ -28,6 +28,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { setupGameSocket, sendGameEvent, closeGameSocket } from "@/lib/socket";
+import { registerNavigationProtection, unregisterNavigationProtection } from "@/lib/navigationGuard";
 import { apiRequest } from "@/lib/queryClient";
 import TeamBattleQuestionBoard, {
   SuggestionsByAnswerId,
@@ -113,6 +114,8 @@ export default function TeamBattleGame() {
   const [memberAnswers, setMemberAnswers] = useState<Record<string, string>>(
     {}
   );
+  // Resolver for the global confirm dialog used by the navigation guard
+  const confirmResolverRef = useRef<((value: boolean) => void) | null>(null);
   const [connected, setConnected] = useState(false);
   const connectedRef = useRef<boolean>(false); // Track connection state for beforeunload handler
   const [suggestions, setSuggestions] = useState<SuggestionsByAnswerId>({});

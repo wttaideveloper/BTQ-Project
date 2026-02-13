@@ -195,24 +195,24 @@ export default function TeamBattleGame() {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       // Use refs to get the most current state
       const currentGameState = gameStateRef.current;
-      
+
       // Only show dialog if we have a game session and game is in progress
       const hasGameSession = !!gameSessionId;
       const phase = currentGameState.phase;
       const isFinished = phase === "finished";
       const isWaiting = phase === "waiting";
       const hasGameData = !!(currentGameState.playerTeam || currentGameState.teams?.length);
-      
+
       // Show dialog if:
       // - We have a game session AND
       // - Game is not finished AND
       // - (Phase is defined and not "waiting", OR we have game data indicating game has started)
       // This ensures we show dialog during: ready, playing, question, results phases
-      const shouldShowDialog = 
-        hasGameSession && 
-        !isFinished && 
+      const shouldShowDialog =
+        hasGameSession &&
+        !isFinished &&
         ((phase && phase !== "waiting") || hasGameData);
-      
+
       if (shouldShowDialog) {
         // Try to notify server (non-blocking)
         try {
@@ -225,7 +225,7 @@ export default function TeamBattleGame() {
         } catch (e) {
           // Silent error handling - page might be closing
         }
-        
+
         // Show a small loader overlay to indicate we're cleaning up before refresh/navigation
         try {
           setShowRefreshLoader(true);
@@ -293,7 +293,7 @@ export default function TeamBattleGame() {
               console.log("[TeamBattleGame] Ignoring game_state_restored - user is exiting");
               break;
             }
-            
+
             if (data.team) {
               updateTeamsData([data.team]);
               // Check if team is in a finished battle - redirect to setup
@@ -327,7 +327,7 @@ export default function TeamBattleGame() {
               console.log("[TeamBattleGame] Ignoring no_active_game - user is exiting");
               break;
             }
-            
+
             toast({
               title: "No Active Battle",
               description: data.message || "No active team battle found. Redirecting to team setup.",
@@ -379,7 +379,7 @@ export default function TeamBattleGame() {
               isYourTurn: data.isYourTurn !== false, // Default to true if not specified
               answeringTeamName: data.answeringTeamName,
             }));
-            
+
             // Reset answer state for BOTH teams when new question arrives
             // This ensures clean state for both answering and waiting teams
             setSelectedAnswer(null);
@@ -463,7 +463,7 @@ export default function TeamBattleGame() {
             const playerTeamResult = data.teamResults?.find(
               (r: any) => r.teamId === resolvedPlayerTeamId
             );
-            
+
             // Only set feedback if it was actually our turn to answer
             // Use the wasYourTurn flag from server (more reliable than state)
             const wasOurTurn = data.wasYourTurn === true;
@@ -518,9 +518,8 @@ export default function TeamBattleGame() {
             // Show round results
             toast({
               title: "Round Complete",
-              description: `Your team ${
-                data.yourTeamCorrect ? "got it right" : "got it wrong"
-              }!`,
+              description: `Your team ${data.yourTeamCorrect ? "got it right" : "got it wrong"
+                }!`,
             });
             break;
 
@@ -771,17 +770,17 @@ export default function TeamBattleGame() {
   const handleExitGame = async () => {
     // Close the confirmation dialog
     setShowExitConfirmation(false);
-    
+
     // Mark that user is explicitly exiting - prevent automatic redirects
     isExitingRef.current = true;
-    
+
     // Show full-screen loader while we perform cleanup and navigation
     setShowRefreshLoader(true);
-    
+
     // Helper function to add timeout to cleanup request
     const cleanupWithTimeout = async (timeoutMs: number = 8000): Promise<void> => {
       let cleanupSucceeded = false;
-      
+
       try {
         await Promise.race([
           // Main cleanup request
@@ -800,7 +799,7 @@ export default function TeamBattleGame() {
       } catch (err) {
         // Timeout or other error - try fallback
         console.log("[TeamBattleGame] Cleanup request failed or timed out, trying fallback:", err);
-        
+
         // Fallback: Use sendBeacon if available (works even during page unload)
         // Note: This is a best-effort fallback, may not work perfectly with JSON parsing
         if (navigator.sendBeacon && !cleanupSucceeded) {
@@ -818,7 +817,7 @@ export default function TeamBattleGame() {
             console.log("[TeamBattleGame] sendBeacon also failed:", beaconErr);
           }
         }
-        
+
         // Don't throw - allow navigation to continue even if cleanup fails
         console.log("[TeamBattleGame] Cleanup timeout or error (non-critical):", err);
       }
@@ -841,7 +840,7 @@ export default function TeamBattleGame() {
         }
       }
     };
-    
+
     // Inform server we are leaving (via WebSocket - fire and forget)
     try {
       sendGameEvent({
@@ -854,7 +853,7 @@ export default function TeamBattleGame() {
     } catch (e) {
       // Silent error handling
     }
-    
+
     // CRITICAL: Clean up server-side team battle data with timeout and retry
     // Wait for cleanup to complete (with timeout) before closing socket
     try {
@@ -862,18 +861,18 @@ export default function TeamBattleGame() {
     } catch (err) {
       // Already handled in cleanupWithRetry
     }
-    
+
     // Small delay to ensure server processes the cleanup
     // This helps in production where network latency is higher
     await new Promise(resolve => setTimeout(resolve, 300));
-    
+
     // Now close WebSocket after cleanup completes
     try {
       closeGameSocket();
     } catch (e) {
       // Silent error handling
     }
-    
+
     // Perform a full page reload to ensure all in-memory SPA state and caches are cleared
     // Use a timestamp query param to bypass any caches and force a fresh load
     try {
@@ -912,7 +911,7 @@ export default function TeamBattleGame() {
         </div>
 
         {/* Exit button - more prominent */}
-          <div className="flex justify-center">
+        <div className="flex justify-center">
           <Button
             onClick={() => {
               // If the battle has finished, perform the exit/cleanup immediately.
@@ -952,7 +951,7 @@ export default function TeamBattleGame() {
         </div>
       );
     }
-    
+
     if (!gameState.playerTeam) return null;
 
     const question = gameState.currentQuestion;
@@ -961,7 +960,7 @@ export default function TeamBattleGame() {
     const timeLimit = Math.floor(serverTimeLimit / 1000); // Convert ms to seconds
     // Use timeRemaining from state if available, otherwise use timeLimit
     // This ensures we always pass a valid initial time to the child component
-    const timeRemaining = gameState.timeRemaining !== undefined 
+    const timeRemaining = gameState.timeRemaining !== undefined
       ? Math.min(gameState.timeRemaining, timeLimit)
       : timeLimit;
     const isYourTurn = gameState.isYourTurn !== false; // Default to true if not specified
@@ -1035,7 +1034,7 @@ export default function TeamBattleGame() {
       correctAnswerId && question.answers.find((a) => a.id === correctAnswerId);
     const yourAnswer =
       teamAnswer && question.answers.find((a) => a.id === teamAnswer);
-    
+
     // Determine if it was our turn
     const wasOurTurn = gameState.isYourTurn !== false;
     const resolvedPlayerTeamId =
@@ -1077,15 +1076,13 @@ export default function TeamBattleGame() {
                 <p className="font-semibold mb-1 text-accent-light">
                   Your Team's Answer
                 </p>
-                <p className={`font-medium ${
-                  lastRoundCorrect ? "text-green-300" : "text-red-300"
-                }`}>
+                <p className={`font-medium ${lastRoundCorrect ? "text-green-300" : "text-red-300"
+                  }`}>
                   {yourAnswer ? yourAnswer.text : "No answer submitted"}
                 </p>
                 {lastRoundCorrect !== null && (
-                  <p className={`text-sm mt-2 ${
-                    lastRoundCorrect ? "text-green-400" : "text-red-400"
-                  }`}>
+                  <p className={`text-sm mt-2 ${lastRoundCorrect ? "text-green-400" : "text-red-400"
+                    }`}>
                     {lastRoundCorrect ? "✓ Correct! +100 points" : "✗ Incorrect"}
                   </p>
                 )}
@@ -1196,16 +1193,13 @@ export default function TeamBattleGame() {
             ) : (
               <>
                 <div className="flex justify-center mb-3 sm:mb-4">
-                  <div className={`h-20 w-20 sm:h-24 sm:w-24 rounded-full ${
-                    isYourTeamWinner 
-                      ? 'bg-gradient-to-br from-accent via-accent-dark to-accent-light' 
+                  <div className={`h-20 w-20 sm:h-24 sm:w-24 rounded-full ${isYourTeamWinner
+                      ? 'bg-gradient-to-br from-accent via-accent-dark to-accent-light'
                       : 'bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600'
-                  } flex items-center justify-center shadow-2xl animate-pulse-slow border-4 ${
-                    isYourTeamWinner ? 'border-accent-light' : 'border-yellow-300'
-                  }`}>
-                    <Crown className={`h-10 w-10 sm:h-12 sm:w-12 ${
-                      isYourTeamWinner ? 'text-primary' : 'text-white'
-                    }`} />
+                    } flex items-center justify-center shadow-2xl animate-pulse-slow border-4 ${isYourTeamWinner ? 'border-accent-light' : 'border-yellow-300'
+                    }`}>
+                    <Crown className={`h-10 w-10 sm:h-12 sm:w-12 ${isYourTeamWinner ? 'text-primary' : 'text-white'
+                      }`} />
                   </div>
                 </div>
                 <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-accent to-accent-light bg-clip-text text-transparent">
@@ -1231,11 +1225,10 @@ export default function TeamBattleGame() {
             {yourTeam && (
               <div className="space-y-4">
                 {/* Your Team */}
-                <div className={`rounded-xl p-4 ${
-                  isYourTeamWinner && !isDraw 
-                    ? 'bg-gradient-to-r from-accent/20 to-accent-dark/20 border-2 border-accent/50' 
+                <div className={`rounded-xl p-4 ${isYourTeamWinner && !isDraw
+                    ? 'bg-gradient-to-r from-accent/20 to-accent-dark/20 border-2 border-accent/50'
                     : 'bg-black/20 border border-white/10'
-                }`}>
+                  }`}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                       {isYourTeamWinner && !isDraw && (
@@ -1279,11 +1272,10 @@ export default function TeamBattleGame() {
                 {opponentTeam && (
                   <>
                     <div className="h-px bg-white/10" />
-                    <div className={`rounded-lg sm:rounded-xl p-3 sm:p-4 ${
-                      !isYourTeamWinner && !isDraw 
-                        ? 'bg-gradient-to-r from-yellow-400/20 to-yellow-600/20 border-2 border-yellow-400/50' 
+                    <div className={`rounded-lg sm:rounded-xl p-3 sm:p-4 ${!isYourTeamWinner && !isDraw
+                        ? 'bg-gradient-to-r from-yellow-400/20 to-yellow-600/20 border-2 border-yellow-400/50'
                         : 'bg-black/20 border border-white/10'
-                    }`}>
+                      }`}>
                       <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
                         <div className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                           {!isYourTeamWinner && !isDraw && (
@@ -1335,7 +1327,19 @@ export default function TeamBattleGame() {
           {/* Buttons */}
           <div className="flex items-center justify-center gap-3 sm:gap-4">
             <Button
-              onClick={() => setLocation("/")}
+              onClick={async () => {
+                // ✅ Reset Team Battle status when returning home
+                try {
+                  await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
+                    isInTeamBattle: false,
+                  });
+                  console.log("[TeamBattleGame] Reset isInTeamBattle=false when returning home");
+                } catch (err) {
+                  console.error("[TeamBattleGame] Failed to reset Team Battle status:", err);
+                  // Continue to home anyway
+                }
+                setLocation("/");
+              }}
               className="bg-gradient-to-r from-accent to-accent-dark text-primary px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 rounded-lg sm:rounded-xl hover:from-accent-light hover:to-accent font-bold text-sm sm:text-base md:text-lg shadow-lg hover:shadow-xl transition-all duration-200 w-full sm:w-auto"
             >
               Return Home
@@ -1398,11 +1402,10 @@ export default function TeamBattleGame() {
           <div className="mb-3 sm:mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               {/* Your Team */}
-              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${
-                gameState.isYourTurn !== false 
-                  ? 'bg-accent/20 border-accent shadow-lg shadow-accent/30' 
+              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${gameState.isYourTurn !== false
+                  ? 'bg-accent/20 border-accent shadow-lg shadow-accent/30'
                   : 'bg-primary/10 border-primary/30'
-              }`}>
+                }`}>
                 <div className="flex items-center justify-between gap-2 sm:gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Your Team</div>
@@ -1424,11 +1427,10 @@ export default function TeamBattleGame() {
               <div className="text-white/50 font-bold text-lg sm:text-xl text-center flex-shrink-0">VS</div>
 
               {/* Opposing Team */}
-              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${
-                gameState.isYourTurn === false 
-                  ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/30' 
+              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${gameState.isYourTurn === false
+                  ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/30'
                   : 'bg-secondary/10 border-secondary/30'
-              }`}>
+                }`}>
                 <div className="flex items-center justify-between gap-2 sm:gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Opponent</div>
@@ -1454,7 +1456,7 @@ export default function TeamBattleGame() {
                   <span>Question {gameState.questionNumber} of {gameState.totalQuestions}</span>
                   <span className="hidden sm:inline text-white/50">•</span>
                   <span className="text-white/70">
-                    {gameState.isYourTurn !== false 
+                    {gameState.isYourTurn !== false
                       ? `Your team answers this question`
                       : `${gameState.answeringTeamName || 'Opponent'} is answering`
                     }

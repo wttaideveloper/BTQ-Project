@@ -243,9 +243,8 @@ const Home: React.FC = () => {
         <div className="max-w-7xl mx-auto text-center min-w-0">
           {/* Animated Title */}
           <div
-            className={`mb-8 transition-all duration-700 ${
-              titleEffect ? "scale-105" : "scale-100"
-            }`}
+            className={`mb-8 transition-all duration-700 ${titleEffect ? "scale-105" : "scale-100"
+              }`}
           >
             <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-6 tracking-tight">
               Faith<span className="text-accent drop-shadow-lg">IQ</span>
@@ -740,31 +739,32 @@ const Home: React.FC = () => {
                       onClick={async () => {
                         // Set loading state
                         setIsLoadingTeamBattle(true);
-                        
+
                         try {
                           // ========================================================================
                           // STEP 1: Clear all team battle related cache (client-side)
                           // ========================================================================
                           console.log("[Home] 🧹 Enter Team Battle clicked - starting cleanup");
                           console.log("[Home] Step 1: Clearing client-side cache");
-                          
+
                           queryClient.removeQueries({ queryKey: ["/api/teams"] });
                           queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
                           queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
                           queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
                           queryClient.removeQueries({ queryKey: ["/api/users/online"] });
-                          
+                          queryClient.removeQueries({ queryKey: ["/api/users/team-battle-available"] });
+
                           console.log("[Home] ✅ Step 1: Client-side cache cleared");
-                          
+
                           // ========================================================================
                           // STEP 2: Clean up server-side stale data (CRITICAL)
                           // ========================================================================
                           console.log("[Home] Step 2: Starting server-side cleanup");
-                          
+
                           try {
                             const response = await apiRequest("POST", "/api/team-battle/cleanup");
                             const result = await response.json();
-                            
+
                             if (result.success) {
                               console.log("[Home] ✅ Step 2: Server-side cleanup completed", result.stats);
                             } else {
@@ -774,23 +774,38 @@ const Home: React.FC = () => {
                             // Non-critical, continue anyway
                             console.error("[Home] ⚠️ Step 2: Cleanup request failed (non-critical, continuing):", err);
                           }
-                          
+
+                          // ========================================================================
+                          // ✅ STEP 2.5: Mark user as "in Team Battle" (NEW FIX)
+                          // ========================================================================
+                          console.log("[Home] Step 2.5: Setting user as in Team Battle");
+
+                          try {
+                            await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
+                              isInTeamBattle: true,
+                            });
+                            console.log("[Home] ✅ Step 2.5: User marked as in Team Battle");
+                          } catch (err) {
+                            console.error("[Home] ⚠️ Step 2.5: Failed to set Team Battle status (non-critical):", err);
+                          }
+
                           // ========================================================================
                           // STEP 3: Invalidate queries to force fresh refetch when modal opens
                           // ========================================================================
                           console.log("[Home] Step 3: Invalidating queries for fresh data");
-                          
+
                           queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
-                          
+                          queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
+
                           console.log("[Home] ✅ Step 3: Queries invalidated");
-                          
+
                           // ========================================================================
                           // STEP 4: Open modal after cleanup is complete
                           // ========================================================================
                           console.log("[Home] ✅ All cleanup complete - opening Team Battle modal");
                           setShowTeamBattleSetup(true);
-                          
+
                         } catch (error) {
                           // If anything fails, still open modal (non-blocking)
                           console.error("[Home] ⚠️ Error during cleanup (opening modal anyway):", error);
@@ -921,9 +936,8 @@ const Home: React.FC = () => {
                     <HelpCircle className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                     <span className="truncate">Help & FAQ</span>
                     <ChevronDown
-                      className={`ml-auto h-4 w-4 transition-transform duration-300 ${
-                        showFAQ ? "rotate-180" : ""
-                      }`}
+                      className={`ml-auto h-4 w-4 transition-transform duration-300 ${showFAQ ? "rotate-180" : ""
+                        }`}
                     />
                   </Button>
                 </CollapsibleTrigger>

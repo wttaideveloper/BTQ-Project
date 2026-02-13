@@ -167,7 +167,7 @@ const TeamBattleSetup: React.FC = () => {
     debouncedRefetch,
     refetchOnlineUsers,
   } = useTeamBattleSetup(gameSessionId);
-  
+
   const queryClient = useQueryClient();
 
   // CRITICAL FIX #2: Force refresh online users when entering team battle
@@ -175,7 +175,7 @@ const TeamBattleSetup: React.FC = () => {
   useEffect(() => {
     if (user?.id && gameSessionId) {
       // Clear cache and force refetch online users when entering team battle
-      queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
       refetchOnlineUsers();
       console.log("[TeamBattleSetup Page] Force refreshed online users on entry");
     }
@@ -248,12 +248,14 @@ const TeamBattleSetup: React.FC = () => {
       };
       setUserOnline();
 
-      // Set user as offline when component unmounts
+      // ✅ Set user as NOT in Team Battle when component unmounts
       return () => {
         try {
-          apiRequest("PATCH", `/api/users/${user.id}/online`, {
-            isOnline: false,
-          }).catch(() => {});
+          // Keep user online but remove from Team Battle
+          apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
+            isInTeamBattle: false,
+          }).catch(() => { });
+          console.log("[TeamBattleSetup Page] User removed from Team Battle on unmount");
         } catch (error) {
           // Ignore cleanup errors
         }
@@ -378,11 +380,11 @@ const TeamBattleSetup: React.FC = () => {
     });
     const offTeamBattleStarted = onEvent("team_battle_started", (data: any) => {
       console.log("[TeamBattleSetup Page] Received team_battle_started event:", data);
-      
+
       // CRITICAL: Only navigate if this session matches the current page session
       // This prevents navigation when user is on a different page/session
       const targetSessionId = data.gameSessionId || gameSessionId;
-      
+
       // Verify the session matches before navigating
       if (targetSessionId && (targetSessionId === gameSessionId || !gameSessionId)) {
         toast({
@@ -405,8 +407,8 @@ const TeamBattleSetup: React.FC = () => {
     const offOnlineUsersUpdated = onEvent("online_users_updated", () => {
       console.log("[TeamBattleSetup Page] Received online_users_updated event, invalidating cache");
       // Immediately invalidate and refetch online users list
-      queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
-      queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
+      queryClient.refetchQueries({ queryKey: ["/api/users/team-battle-available"] });
     });
 
     // Friendly lobby notifications for disconnect/leave events
@@ -463,7 +465,7 @@ const TeamBattleSetup: React.FC = () => {
       // Start fresh (keep user on this page but clear the dead session)
       try {
         sessionStorage.removeItem("teamBattleSessionId");
-      } catch {}
+      } catch { }
       generateNewSessionId();
       debouncedRefetch();
     });
@@ -971,9 +973,9 @@ const TeamBattleSetup: React.FC = () => {
   // Both teams need at least 1 member (captain) to start
   const bothTeamsReady =
     teams.length >= 2 && teams.every((team: Team) => team.members.length >= 1);
-  
+
   // Get team sizes for display
-  const teamSizes = teams.length >= 2 
+  const teamSizes = teams.length >= 2
     ? `${teams[0]?.members.length || 0}v${teams[1]?.members.length || 0}`
     : null;
 
@@ -1068,36 +1070,34 @@ const TeamBattleSetup: React.FC = () => {
 
         {/* Battle Status */}
         <Alert
-          className={`border-2 ${
-            battleStatus.color === "green"
-              ? "border-green-300 bg-green-50"
-              : battleStatus.color === "blue"
+          className={`border-2 ${battleStatus.color === "green"
+            ? "border-green-300 bg-green-50"
+            : battleStatus.color === "blue"
               ? "border-blue-300 bg-blue-50"
               : battleStatus.color === "yellow"
-              ? "border-yellow-300 bg-yellow-50"
-              : "border-purple-300 bg-purple-50"
-          }`}
+                ? "border-yellow-300 bg-yellow-50"
+                : "border-purple-300 bg-purple-50"
+            }`}
         >
           <Zap
-            className={`h-4 w-4 ${
-              battleStatus.color === "green"
-                ? "text-green-600"
-                : battleStatus.color === "blue"
+            className={`h-4 w-4 ${battleStatus.color === "green"
+              ? "text-green-600"
+              : battleStatus.color === "blue"
                 ? "text-blue-600"
                 : battleStatus.color === "yellow"
-                ? "text-yellow-600"
-                : "text-purple-600"
-            }`}
+                  ? "text-yellow-600"
+                  : "text-purple-600"
+              }`}
           />
           <AlertDescription
             className={
               battleStatus.color === "green"
                 ? "text-green-800"
                 : battleStatus.color === "blue"
-                ? "text-blue-800"
-                : battleStatus.color === "yellow"
-                ? "text-yellow-800"
-                : "text-purple-800"
+                  ? "text-blue-800"
+                  : battleStatus.color === "yellow"
+                    ? "text-yellow-800"
+                    : "text-purple-800"
             }
           >
             <strong>3v3 Battle Status:</strong> {battleStatus.message}
@@ -1132,13 +1132,13 @@ const TeamBattleSetup: React.FC = () => {
 
                       const expiresLabel = jr.expiresAt
                         ? `Expires in ${Math.max(
-                            0,
-                            Math.floor(
-                              (new Date(jr.expiresAt as any).getTime() -
-                                Date.now()) /
-                                1000
-                            )
-                          )}s`
+                          0,
+                          Math.floor(
+                            (new Date(jr.expiresAt as any).getTime() -
+                              Date.now()) /
+                            1000
+                          )
+                        )}s`
                         : "";
                       return (
                         <div
@@ -1249,11 +1249,11 @@ const TeamBattleSetup: React.FC = () => {
                       ⏳ Preparing for 3v3 Battle
                     </p>
                     <p className="text-sm text-yellow-600">
-                        {teams.length === 1
+                      {teams.length === 1
                         ? "Captain A created team, waiting for Captain B to accept invitation"
                         : teams.length >= 2
-                        ? `Battle Lobby Ready! Both captains can now invite team members. Current: ${teamSizes || 'N/A'}`
-                        : "Waiting for captains to create teams"}
+                          ? `Battle Lobby Ready! Both captains can now invite team members. Current: ${teamSizes || 'N/A'}`
+                          : "Waiting for captains to create teams"}
                     </p>
                   </div>
                 )}
@@ -1385,7 +1385,7 @@ const TeamBattleSetup: React.FC = () => {
                       {/* Show which team this is */}
                       <Badge variant="default" className="ml-2">
                         {teams.findIndex((t: Team) => t.id === userTeam.id) ===
-                        0
+                          0
                           ? "Team A"
                           : "Team B"}
                       </Badge>
@@ -1442,11 +1442,10 @@ const TeamBattleSetup: React.FC = () => {
                       </h4>
                       <div className="flex items-center gap-2">
                         <div
-                          className={`w-2 h-2 rounded-full ${
-                            userTeam.members.length >= 3
-                              ? "bg-green-500"
-                              : "bg-yellow-500"
-                          }`}
+                          className={`w-2 h-2 rounded-full ${userTeam.members.length >= 3
+                            ? "bg-green-500"
+                            : "bg-yellow-500"
+                            }`}
                         />
                         <span className="text-xs text-gray-500">
                           {userTeam.members.length >= 3
@@ -1460,30 +1459,27 @@ const TeamBattleSetup: React.FC = () => {
                       {userTeam.members.map((member: TeamMember) => (
                         <div
                           key={member.userId}
-                          className={`flex items-center justify-between p-3 rounded-lg border-l-4 ${
-                            member.role === "captain"
-                              ? "bg-yellow-50 border-yellow-400"
-                              : "bg-gray-50 border-gray-300"
-                          }`}
+                          className={`flex items-center justify-between p-3 rounded-lg border-l-4 ${member.role === "captain"
+                            ? "bg-yellow-50 border-yellow-400"
+                            : "bg-gray-50 border-gray-300"
+                            }`}
                         >
                           <div className="flex items-center gap-3">
                             <div
-                              className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold ${
-                                member.role === "captain"
-                                  ? "bg-yellow-500"
-                                  : "bg-blue-500"
-                              }`}
+                              className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold ${member.role === "captain"
+                                ? "bg-yellow-500"
+                                : "bg-blue-500"
+                                }`}
                             >
                               {member.username.charAt(0).toUpperCase()}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
                                 <span
-                                  className={`font-medium ${
-                                    member.role === "captain"
-                                      ? "text-yellow-800"
-                                      : "text-gray-900"
-                                  }`}
+                                  className={`font-medium ${member.role === "captain"
+                                    ? "text-yellow-800"
+                                    : "text-gray-900"
+                                    }`}
                                 >
                                   {member.username}
                                 </span>
@@ -1513,20 +1509,19 @@ const TeamBattleSetup: React.FC = () => {
                                 member.role === "captain"
                                   ? "default"
                                   : member.userId === user?.id
-                                  ? "secondary"
-                                  : "outline"
+                                    ? "secondary"
+                                    : "outline"
                               }
-                              className={`text-xs ${
-                                member.role === "captain"
-                                  ? "bg-yellow-500 hover:bg-yellow-600"
-                                  : ""
-                              }`}
+                              className={`text-xs ${member.role === "captain"
+                                ? "bg-yellow-500 hover:bg-yellow-600"
+                                : ""
+                                }`}
                             >
                               {member.userId === user?.id
                                 ? "You"
                                 : member.role === "captain"
-                                ? "Captain"
-                                : "Member"}
+                                  ? "Captain"
+                                  : "Member"}
                             </Badge>
                             {member.userId === user?.id && (
                               <Badge variant="outline" className="text-xs">
@@ -1550,11 +1545,10 @@ const TeamBattleSetup: React.FC = () => {
                   {/* Team Status */}
                   <div className="flex items-center gap-2">
                     <div
-                      className={`w-3 h-3 rounded-full ${
-                        userTeam.members.length >= 3
-                          ? "bg-green-500"
-                          : "bg-yellow-500"
-                      }`}
+                      className={`w-3 h-3 rounded-full ${userTeam.members.length >= 3
+                        ? "bg-green-500"
+                        : "bg-yellow-500"
+                        }`}
                     />
                     <span className="text-sm text-gray-600">
                       {userTeam.members.length >= 3
@@ -1843,9 +1837,8 @@ const TeamBattleSetup: React.FC = () => {
                     .map((invitation: TeamInvitation) => {
                       const derivedTeamId =
                         invitation.teamBattleId && invitation.teamSide
-                          ? `${
-                              invitation.teamBattleId
-                            }-team-${invitation.teamSide.toLowerCase()}`
+                          ? `${invitation.teamBattleId
+                          }-team-${invitation.teamSide.toLowerCase()}`
                           : invitation.teamId || undefined;
                       const team = derivedTeamId
                         ? teams.find((t: Team) => t.id === derivedTeamId)
@@ -1946,7 +1939,7 @@ const TeamBattleSetup: React.FC = () => {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
                           refetchOnlineUsers();
                           toast({
                             title: "Refreshing...",
@@ -2086,11 +2079,10 @@ const TeamBattleSetup: React.FC = () => {
                   teams.map((team: Team, index: number) => (
                     <div
                       key={team.id}
-                      className={`p-3 border rounded-lg ${
-                        team.members.length >= 3
-                          ? "border-green-300 bg-green-50"
-                          : "border-gray-300 bg-gray-50"
-                      }`}
+                      className={`p-3 border rounded-lg ${team.members.length >= 3
+                        ? "border-green-300 bg-green-50"
+                        : "border-gray-300 bg-gray-50"
+                        }`}
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
@@ -2137,10 +2129,10 @@ const TeamBattleSetup: React.FC = () => {
                             {team.members.find(
                               (m: TeamMember) => m.role === "captain"
                             )?.userId === user?.id && (
-                              <Badge variant="outline" className="text-xs">
-                                You
-                              </Badge>
-                            )}
+                                <Badge variant="outline" className="text-xs">
+                                  You
+                                </Badge>
+                              )}
                           </div>
                           <div className="flex items-center gap-1">
                             <Users className="h-3 w-3 text-gray-500" />
@@ -2163,28 +2155,25 @@ const TeamBattleSetup: React.FC = () => {
                           {team.members.map((member: TeamMember) => (
                             <div
                               key={member.userId}
-                              className={`flex items-center justify-between p-2 rounded text-sm border-l-2 ${
-                                member.role === "captain"
-                                  ? "bg-yellow-50 border-yellow-400"
-                                  : "bg-gray-50 border-gray-300"
-                              }`}
+                              className={`flex items-center justify-between p-2 rounded text-sm border-l-2 ${member.role === "captain"
+                                ? "bg-yellow-50 border-yellow-400"
+                                : "bg-gray-50 border-gray-300"
+                                }`}
                             >
                               <div className="flex items-center gap-2">
                                 <div
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-                                    member.role === "captain"
-                                      ? "bg-yellow-500"
-                                      : "bg-blue-500"
-                                  }`}
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${member.role === "captain"
+                                    ? "bg-yellow-500"
+                                    : "bg-blue-500"
+                                    }`}
                                 >
                                   {member.username.charAt(0).toUpperCase()}
                                 </div>
                                 <span
-                                  className={`font-medium ${
-                                    member.role === "captain"
-                                      ? "text-yellow-800"
-                                      : "text-gray-900"
-                                  }`}
+                                  className={`font-medium ${member.role === "captain"
+                                    ? "text-yellow-800"
+                                    : "text-gray-900"
+                                    }`}
                                 >
                                   {member.username}
                                 </span>
@@ -2209,11 +2198,10 @@ const TeamBattleSetup: React.FC = () => {
                                       ? "default"
                                       : "secondary"
                                   }
-                                  className={`text-xs ${
-                                    member.role === "captain"
-                                      ? "bg-yellow-500 hover:bg-yellow-600"
-                                      : ""
-                                  }`}
+                                  className={`text-xs ${member.role === "captain"
+                                    ? "bg-yellow-500 hover:bg-yellow-600"
+                                    : ""
+                                    }`}
                                 >
                                   {member.role === "captain"
                                     ? "Captain"
@@ -2318,11 +2306,10 @@ const TeamBattleSetup: React.FC = () => {
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <div
-                        className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${
-                          teams.length >= 2
-                            ? "bg-green-500 text-white"
-                            : "bg-gray-300 text-gray-600"
-                        }`}
+                        className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${teams.length >= 2
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-300 text-gray-600"
+                          }`}
                       >
                         {teams.length >= 2 ? "✓" : "○"}
                       </div>
@@ -2333,11 +2320,10 @@ const TeamBattleSetup: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <div
-                        className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${
-                          teams.every((team: Team) => team.members.length >= 1)
-                            ? "bg-green-500 text-white"
-                            : "bg-gray-300 text-gray-600"
-                        }`}
+                        className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${teams.every((team: Team) => team.members.length >= 1)
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-300 text-gray-600"
+                          }`}
                       >
                         {teams.every((team: Team) => team.members.length >= 1)
                           ? "✓"

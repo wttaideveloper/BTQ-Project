@@ -10,7 +10,7 @@ import connectPgSimple from "connect-pg-simple";
 
 declare global {
   namespace Express {
-    interface User extends SelectUser {}
+    interface User extends SelectUser { }
   }
 }
 
@@ -35,7 +35,7 @@ export function setupAuth(app: Express) {
   console.log(" Auth setup - Environment check:");
   console.log("DATABASE_URL:", process.env.DATABASE_URL ? "SET" : "NOT SET");
   console.log("SESSION_SECRET:", process.env.SESSION_SECRET ? "SET" : "NOT SET");
-  
+
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "bible-trivia-secret-key",
     resave: false,
@@ -96,10 +96,10 @@ export function setupAuth(app: Express) {
       // Log the user in automatically
       req.login(user, (err) => {
         if (err) return next(err);
-        res.status(201).json({ 
+        res.status(201).json({
           id: user.id,
           username: user.username,
-          isAdmin: user.isAdmin 
+          isAdmin: user.isAdmin
         });
       });
     } catch (err) {
@@ -112,20 +112,31 @@ export function setupAuth(app: Express) {
     passport.authenticate("local", (err: Error | null, user: SelectUser | false, info: { message: string } | undefined) => {
       if (err) return next(err);
       if (!user) return res.status(401).json({ message: info?.message || "Authentication failed" });
-      
+
       req.login(user, (err: Error | null) => {
         if (err) return next(err);
-        res.status(200).json({ 
+        res.status(200).json({
           id: user.id,
           username: user.username,
-          isAdmin: user.isAdmin 
+          isAdmin: user.isAdmin
         });
       });
     })(req, res, next);
   });
 
   // Logout user
-  app.post("/api/logout", (req, res, next) => {
+  app.post("/api/logout", async (req, res, next) => {
+    // Reset Team Battle status before logging out
+    if (req.user?.id) {
+      try {
+        await database.setUserTeamBattleStatus(req.user.id, false);
+        console.log(`[Logout] Reset isInTeamBattle=false for user ${req.user.id}`);
+      } catch (err) {
+        console.error("[Logout] Failed to reset Team Battle status:", err);
+        // Continue with logout anyway
+      }
+    }
+
     req.logout((err) => {
       if (err) return next(err);
       res.sendStatus(200);
@@ -135,7 +146,7 @@ export function setupAuth(app: Express) {
   // Get current user
   app.get("/api/user", (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
-    
+
     const user = req.user as SelectUser;
     res.json({
       id: user.id,
@@ -147,10 +158,10 @@ export function setupAuth(app: Express) {
   // Get all users (admin only)
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
-    
+
     const user = req.user as SelectUser;
     if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
-    
+
     try {
       const users = await database.getAllUsers();
       res.json(users.map((u: User) => ({
@@ -173,17 +184,17 @@ export function setupAuth(app: Express) {
   // Update user (admin only)
   app.put("/api/users/:id", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
-    
+
     const user = req.user as SelectUser;
     if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
-    
+
     try {
       const userId = parseInt(req.params.id);
       const updates = req.body;
-      
+
       // Don't allow updating password through this endpoint
       delete updates.password;
-      
+
       const updatedUser = await database.updateUser(userId, updates);
       res.json({
         id: updatedUser.id,
@@ -201,7 +212,7 @@ export function setupAuth(app: Express) {
       res.status(500).json({ message: "Failed to update user" });
     }
   });
-  
+
   // Create initial admin user if none exists
   createInitialAdmin();
 }

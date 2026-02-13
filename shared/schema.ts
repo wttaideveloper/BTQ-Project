@@ -199,6 +199,7 @@ export const users = pgTable("users", {
   email: text("email"),
   isAdmin: boolean("is_admin").default(false),
   isOnline: boolean("is_online").default(false),
+  isInTeamBattle: boolean("is_in_team_battle").default(false), // ✅ NEW: Track Team Battle availability
   lastSeen: timestamp("last_seen").defaultNow(),
   // Stats for user profile
   totalGames: integer("total_games").default(0),

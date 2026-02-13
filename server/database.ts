@@ -59,7 +59,7 @@ const sql = postgres(connectionString, {
   max: 10,
   idle_timeout: 20,
   connect_timeout: 10,
-  onnotice: () => {},
+  onnotice: () => { },
 });
 
 // Single drizzle instance
@@ -152,6 +152,10 @@ export interface IDatabase {
   getOnlineUsers(): Promise<User[]>;
   setUserOnline(userId: number, isOnline: boolean): Promise<User>;
 
+  // ✅ NEW: Team Battle availability methods
+  getTeamBattleAvailableUsers(): Promise<User[]>;
+  setUserTeamBattleStatus(userId: number, isInTeamBattle: boolean): Promise<User>;
+
   // Team methods
   getTeam(id: string): Promise<Team | undefined>;
   getTeamsByGameSession(gameSessionId: string): Promise<Team[]>;
@@ -243,7 +247,7 @@ export interface IDatabase {
 class PostgreSQLDatabase implements IDatabase {
   // Expose drizzle instance for raw queries (used in db-setup.ts)
   db = db;
-  
+
   // User methods
   async getUser(id: number): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.id, id));
@@ -348,8 +352,7 @@ class PostgreSQLDatabase implements IDatabase {
     } catch (error) {
       console.error("❌ Error fetching questions from database:", error);
       throw new Error(
-        `Failed to fetch questions: ${
-          error instanceof Error ? error.message : "Unknown error"
+        `Failed to fetch questions: ${error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -403,8 +406,7 @@ class PostgreSQLDatabase implements IDatabase {
     } catch (error) {
       console.error("Error storing question in database:", error);
       throw new Error(
-        `Failed to store question: ${
-          error instanceof Error ? error.message : "Unknown error"
+        `Failed to store question: ${error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -434,8 +436,7 @@ class PostgreSQLDatabase implements IDatabase {
     } catch (error) {
       console.error("❌ Error updating question in database:", error);
       throw new Error(
-        `Failed to update question: ${
-          error instanceof Error ? error.message : "Unknown error"
+        `Failed to update question: ${error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -456,8 +457,7 @@ class PostgreSQLDatabase implements IDatabase {
     } catch (error) {
       console.error("❌ Error deleting question from database:", error);
       throw new Error(
-        `Failed to delete question: ${
-          error instanceof Error ? error.message : "Unknown error"
+        `Failed to delete question: ${error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -595,8 +595,7 @@ class PostgreSQLDatabase implements IDatabase {
     } catch (error) {
       console.error("❌ Error in getRandomQuestionsWithHistory:", error);
       throw new Error(
-        `Failed to get random questions: ${
-          error instanceof Error ? error.message : "Unknown error"
+        `Failed to get random questions: ${error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
@@ -615,7 +614,7 @@ class PostgreSQLDatabase implements IDatabase {
     try {
       // Get all questions from database
       const allQuestions = await this.getQuestions({});
-      
+
       if (allQuestions.length === 0) {
         console.log("❌ No questions available in database");
         return [];
@@ -625,12 +624,12 @@ class PostgreSQLDatabase implements IDatabase {
       const validQuestions = allQuestions.filter(
         q => q && typeof q.id === 'string' && q.id.length > 0 && q.answers && q.answers.length > 0
       );
-      
+
       if (validQuestions.length === 0) {
         console.log("❌ No valid questions available in database");
         return [];
       }
-      
+
       console.log(`📊 Total questions: ${allQuestions.length}, Valid questions: ${validQuestions.length}`);
 
       // Filter out excluded questions
@@ -657,7 +656,7 @@ class PostgreSQLDatabase implements IDatabase {
       // If not enough questions, progressively broaden the filters
       if (filteredQuestions.length < filters.count) {
         console.log(`⚠️ Only ${filteredQuestions.length} questions match filters, need ${filters.count}. Broadening search...`);
-        
+
         // Try removing difficulty filter first
         if (filters.difficulty && filters.difficulty !== "All") {
           let broaderQuestions = availableQuestions;
@@ -666,7 +665,7 @@ class PostgreSQLDatabase implements IDatabase {
               q => q.category === filters.category
             );
           }
-          
+
           if (broaderQuestions.length >= filters.count) {
             console.log(`✅ Found ${broaderQuestions.length} questions by removing difficulty filter`);
             filteredQuestions = broaderQuestions;
@@ -693,28 +692,28 @@ class PostgreSQLDatabase implements IDatabase {
         filters.count,
         filters.userSeed
       );
-      
+
       // If we don't have enough questions, reuse questions to reach the requested count
       if (selected.length < filters.count && filteredQuestions.length > 0) {
         console.log(`⚠️ Only ${selected.length} questions available, need ${filters.count}. Reusing questions to reach count.`);
-        
+
         // Create a shuffled pool from available questions
         const shuffledPool = this.seededShuffle([...filteredQuestions], filters.userSeed || 0);
-        
+
         // Fill up to requested count by reusing from the shuffled pool
         while (selected.length < filters.count) {
           const index = selected.length % shuffledPool.length;
           selected.push(shuffledPool[index]);
         }
-        
+
         // Final shuffle to randomize the order
         selected = this.seededShuffle(selected, (filters.userSeed || 0) + Date.now());
-        
+
         console.log(`✅ Expanded to ${selected.length} questions by reusing available questions`);
       }
-      
+
       console.log(`✅ Selected ${selected.length} out of ${filters.count} requested questions`);
-      
+
       return selected;
     } catch (error) {
       console.error("❌ Error in enhanced random selection:", error);
@@ -911,8 +910,7 @@ class PostgreSQLDatabase implements IDatabase {
     const finalShuffle = this.enhancedShuffle(selectedQuestions);
 
     console.log(
-      `🎲 Final selection: ${finalShuffle.length} questions with ${
-        new Set(finalShuffle.map((q: Question) => q.category)).size
+      `🎲 Final selection: ${finalShuffle.length} questions with ${new Set(finalShuffle.map((q: Question) => q.category)).size
       } categories`
     );
     console.log(
@@ -958,9 +956,9 @@ class PostgreSQLDatabase implements IDatabase {
       Math.max(
         0,
         primaryCandidates.length +
-          secondaryCandidates.length -
-          primaryCount -
-          secondaryCount
+        secondaryCandidates.length -
+        primaryCount -
+        secondaryCount
       )
     );
 
@@ -1010,8 +1008,7 @@ class PostgreSQLDatabase implements IDatabase {
     const finalShuffle = this.enhancedShuffle(selectedQuestions);
 
     console.log(
-      `🎲 Final selection: ${finalShuffle.length} questions with ${
-        new Set(finalShuffle.map((q: Question) => q.category)).size
+      `🎲 Final selection: ${finalShuffle.length} questions with ${new Set(finalShuffle.map((q: Question) => q.category)).size
       } categories`
     );
     return finalShuffle;
@@ -1029,11 +1026,11 @@ class PostgreSQLDatabase implements IDatabase {
    */
   private fisherYatesShuffle<T>(array: T[]): T[] {
     const shuffled = [...array];
-    
+
     // Use multiple entropy sources for better randomness
     const entropy = this.generateMultipleEntropySeed();
     let currentSeed = entropy;
-    
+
     const getEnhancedRandom = () => {
       // Combine Math.random() with seeded randomness for maximum entropy
       const mathRandom = Math.random();
@@ -1199,7 +1196,7 @@ class PostgreSQLDatabase implements IDatabase {
     const userComponent = userId ? userId * 31 : 0; // Prime number for better distribution
     const randomComponent = Math.floor(Math.random() * 1000000);
     const microtime = performance.now(); // High-resolution timestamp for uniqueness
-    
+
     // Combine multiple entropy sources including high-resolution time
     return Math.floor(timestamp + userComponent + randomComponent + microtime);
   }
@@ -1213,12 +1210,12 @@ class PostgreSQLDatabase implements IDatabase {
     const randomComponent = Math.floor(Math.random() * 1000000);
     const userComponent = userSeed ? userSeed * 37 : 0; // Different prime for variety
     const processComponent = process.hrtime.bigint(); // High-resolution process time
-    
+
     // Combine all entropy sources with bit shifting for better distribution
     return Math.floor(
-      (timestamp ^ Number(processComponent)) + 
-      (microtime * 1000) + 
-      randomComponent + 
+      (timestamp ^ Number(processComponent)) +
+      (microtime * 1000) +
+      randomComponent +
       userComponent
     );
   }
@@ -1228,10 +1225,10 @@ class PostgreSQLDatabase implements IDatabase {
    */
   private seededShuffle<T>(array: T[], seed?: number): T[] {
     const shuffled = [...array];
-    
+
     // If no seed provided, use multiple entropy sources
     const actualSeed = seed ?? this.generateMultipleEntropySeed();
-    
+
     // Enhanced Linear Congruential Generator with better constants
     let currentSeed = actualSeed;
     const getSeededRandom = () => {
@@ -1253,7 +1250,7 @@ class PostgreSQLDatabase implements IDatabase {
    */
   private cryptoSecureShuffle<T>(array: T[], seed: number): T[] {
     const shuffled = [...array];
-    
+
     // Use enhanced seeded random for consistent but varied results
     let currentSeed = seed;
     const getSecureRandom = () => {
@@ -1556,7 +1553,7 @@ class PostgreSQLDatabase implements IDatabase {
           Math.round(
             (result.total_correct_answers /
               (result.total_correct_answers + result.total_incorrect_answers)) *
-              100
+            100
           ) || 0,
         avgTime: parseFloat(result.avg_time) || 0,
         category: result.category,
@@ -1626,7 +1623,7 @@ class PostgreSQLDatabase implements IDatabase {
               (result.total_correct_answers /
                 (result.total_correct_answers +
                   result.total_incorrect_answers)) *
-                100
+              100
             ) || 0,
           averageTime: Math.round(parseFloat(result.avg_time) * 100) / 100,
           gameType: "single",
@@ -1695,7 +1692,7 @@ class PostgreSQLDatabase implements IDatabase {
               (result.total_correct_answers /
                 (result.total_correct_answers +
                   result.total_incorrect_answers)) *
-                100
+              100
             ) || 0,
           averageTime: Math.round(parseFloat(result.avg_time) * 100) / 100,
           gameType: result.game_type || "multi",
@@ -1745,7 +1742,7 @@ class PostgreSQLDatabase implements IDatabase {
             Math.round(
               (entry.correctAnswers /
                 (entry.correctAnswers + entry.incorrectAnswers)) *
-                100
+              100
             ) || 0,
         })
       );
@@ -1988,6 +1985,36 @@ class PostgreSQLDatabase implements IDatabase {
       .update(users)
       .set({
         isOnline,
+        lastSeen: new Date(),
+      })
+      .where(eq(users.id, userId));
+    const updated = await this.getUser(userId);
+    if (!updated) throw new Error(`User with id ${userId} not found`);
+    return updated;
+  }
+
+  // ✅ NEW: Team Battle availability methods
+  async getTeamBattleAvailableUsers(): Promise<User[]> {
+    const result = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.isOnline, true),
+          eq(users.isInTeamBattle, true)
+        )
+      );
+    return result as User[];
+  }
+
+  async setUserTeamBattleStatus(
+    userId: number,
+    isInTeamBattle: boolean
+  ): Promise<User> {
+    await db
+      .update(users)
+      .set({
+        isInTeamBattle,
         lastSeen: new Date(),
       })
       .where(eq(users.id, userId));
@@ -2453,7 +2480,7 @@ class PostgreSQLDatabase implements IDatabase {
     teamSide: "A" | "B"
   ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date }> {
     const now = new Date();
-    
+
     // CRITICAL: Use atomic UPDATE with WHERE clause to prevent race conditions
     // Only update if the field is NULL (not already ready)
     if (teamSide === "A") {
@@ -2486,12 +2513,12 @@ class PostgreSQLDatabase implements IDatabase {
 
     const teamAReady = battle.teamAReadyAt !== null;
     const teamBReady = battle.teamBReadyAt !== null;
-    
+
     // Determine most recent update timestamp
     const updatedAt = teamAReady && teamBReady
       ? (battle.teamAReadyAt && battle.teamBReadyAt
-          ? (battle.teamAReadyAt > battle.teamBReadyAt ? battle.teamAReadyAt : battle.teamBReadyAt)
-          : now)
+        ? (battle.teamAReadyAt > battle.teamBReadyAt ? battle.teamAReadyAt : battle.teamBReadyAt)
+        : now)
       : (teamAReady ? battle.teamAReadyAt : battle.teamBReadyAt) || now;
 
     return {
@@ -2512,12 +2539,12 @@ class PostgreSQLDatabase implements IDatabase {
 
     const teamAReady = battle.teamAReadyAt !== null;
     const teamBReady = battle.teamBReadyAt !== null;
-    
+
     // Determine most recent update timestamp
     const updatedAt = teamAReady && teamBReady
       ? (battle.teamAReadyAt && battle.teamBReadyAt
-          ? (battle.teamAReadyAt > battle.teamBReadyAt ? battle.teamAReadyAt : battle.teamBReadyAt)
-          : null)
+        ? (battle.teamAReadyAt > battle.teamBReadyAt ? battle.teamAReadyAt : battle.teamBReadyAt)
+        : null)
       : (teamAReady ? battle.teamAReadyAt : teamBReady ? battle.teamBReadyAt : null);
 
     return {
@@ -2536,7 +2563,7 @@ class PostgreSQLDatabase implements IDatabase {
         teamBReadyAt: null,
       })
       .where(eq(teamBattles.id, battleId));
-    
+
     console.log(`[Database] ✅ Reset ready timestamps for battle ${battleId}`);
   }
 
@@ -2731,7 +2758,7 @@ class PostgreSQLDatabase implements IDatabase {
           .orderBy(desc(userQuestionHistory.createdAt));
         return result as UserQuestionHistory[];
       }
-      
+
       // Otherwise, filter by time period
       const cutoffTime = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
       const result = await db
@@ -2860,10 +2887,10 @@ class PostgreSQLDatabase implements IDatabase {
   private applyWordShuffling(question: Question, seed?: number): Question {
     try {
       const questionSeed = seed || (question.id.charCodeAt(0) || 0);
-      
+
       // Shuffle words in question text
       const shuffledText = this.shuffleWordsInText(question.text, questionSeed);
-      
+
       // Shuffle words in each answer text
       const shuffledAnswers = question.answers.map((answer, index) => ({
         ...answer,
@@ -3179,6 +3206,30 @@ class PostgreSQLDatabase implements IDatabase {
         );
       }
 
+      // ✅ NEW: Add is_in_team_battle column to users table
+      try {
+        console.log("Running migration: Adding is_in_team_battle column to users...");
+        await db.execute(`
+          ALTER TABLE users 
+          ADD COLUMN IF NOT EXISTS is_in_team_battle BOOLEAN DEFAULT FALSE;
+        `);
+
+        // Create index for better query performance
+        await db.execute(`
+          CREATE INDEX IF NOT EXISTS idx_users_team_battle_availability 
+          ON users(is_online, is_in_team_battle) 
+          WHERE is_online = TRUE AND is_in_team_battle = TRUE;
+        `);
+
+        console.log("✅ Migration completed: is_in_team_battle column ready");
+      } catch (migrationErr) {
+        console.error(
+          "Migration error for is_in_team_battle (non-fatal):",
+          migrationErr instanceof Error ? migrationErr.message : "Unknown error"
+        );
+        // Continue even if migration fails - column might already exist
+      }
+
       // Create initial admin user if it doesn't exist
       const adminUser = await this.getUserByUsername("admin");
       if (!adminUser) {
@@ -3318,13 +3369,13 @@ class PostgreSQLDatabase implements IDatabase {
     try {
       // Get regular teams
       const regularTeams = await db.select().from(teams).where(eq(teams.captainId, captainId));
-      
+
       // Get Team Battle teams where user is captain
       const battles = await sql`
         SELECT * FROM team_battles 
         WHERE team_a_captain_id = ${captainId} OR team_b_captain_id = ${captainId}
       `;
-      
+
       // Convert battles to virtual team IDs
       const virtualTeams: any[] = [];
       for (const battle of battles) {
@@ -3345,7 +3396,7 @@ class PostgreSQLDatabase implements IDatabase {
           });
         }
       }
-      
+
       return [...regularTeams, ...virtualTeams];
     } catch (error) {
       console.error("Error getTeamsByCaptain:", error);
@@ -3435,16 +3486,16 @@ class PostgreSQLDatabase implements IDatabase {
   async getJoinRequestsForCaptain(captainId: number): Promise<any[]> {
     try {
       console.log(`[DB] getJoinRequestsForCaptain: Getting ALL join requests for captain ${captainId}`);
-      
+
       // Get ALL forming battles where user is captain (no session filter)
       const battles = await sql`
         SELECT * FROM team_battles 
         WHERE (team_a_captain_id = ${captainId} OR team_b_captain_id = ${captainId})
         AND status = 'forming'
       `;
-      
+
       console.log(`[DB] Found ${battles.length} forming battles for captain ${captainId}`);
-      
+
       // Build team IDs for teams where user is captain
       const teamIds: string[] = [];
       for (const battle of battles) {
@@ -3455,14 +3506,14 @@ class PostgreSQLDatabase implements IDatabase {
           teamIds.push(`${battle.id}-team-b`);
         }
       }
-      
+
       console.log(`[DB] Team IDs for captain:`, teamIds);
-      
+
       if (teamIds.length === 0) {
         console.log(`[DB] No teams found, returning empty`);
         return [];
       }
-      
+
       // Get PENDING join requests that haven't expired
       // Use server time for expiry check to avoid timezone issues
       const joinRequests = await sql`
@@ -3481,12 +3532,12 @@ class PostgreSQLDatabase implements IDatabase {
         AND expires_at > NOW()
         ORDER BY created_at DESC
       `;
-      
+
       console.log(`[DB] Found ${joinRequests.length} valid join requests`);
       joinRequests.forEach(jr => {
         console.log(`  - ${jr.id}: ${jr.requester_username} -> ${jr.team_id} (expires: ${jr.expires_at})`);
       });
-      
+
       return joinRequests;
     } catch (error) {
       console.error("[DB] Error getJoinRequestsForCaptain:", error);

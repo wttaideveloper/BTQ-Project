@@ -126,7 +126,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   // Use DB-authoritative countdown when available (fallback to local state)
   const effectiveCountdown = dbCountdown !== null ? dbCountdown : countdown;
-  
+
   // Use DB-authoritative ready status when available
   const effectiveReadyStatus = battleState ? {
     teamAReady: battleState.teams.find(t => t.teamSide === "A")?.ready ?? false,
@@ -144,7 +144,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       // Sync ready status from DB to local state
       const dbTeamAReady = battleState.teams.find(t => t.teamSide === "A")?.ready ?? false;
       const dbTeamBReady = battleState.teams.find(t => t.teamSide === "B")?.ready ?? false;
-      
+
       setReadyStatus(prev => {
         // Only update if values are different to prevent infinite loops
         if (prev?.teamAReady !== dbTeamAReady || prev?.teamBReady !== dbTeamBReady) {
@@ -156,7 +156,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         }
         return prev;
       });
-      
+
       // Sync countdown from DB if available
       if (dbCountdown !== null && dbCountdown !== countdown) {
         setCountdown(dbCountdown);
@@ -181,60 +181,60 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // This implements a complete hard reset when modal opens, treating it like
   // a page refresh. All state and cache are cleared before any API calls.
   // ============================================================================
-  
+
   useEffect(() => {
     if (open) {
       console.log("[TeamBattleSetup] 🔄 PHASE 1: Starting hard reset on modal open");
-      
+
       // ========================================================================
       // STEP 1: Reset ALL local component state to initial values
       // ========================================================================
       console.log("[TeamBattleSetup] Step 1: Resetting all component state");
-      
+
       // Core session state
       setGameSessionId(null); // Will be generated fresh in Phase 3
       setHasNavigatedToGame(false);
-      
+
       // Battle state
       setReadyStatus(null);
       setCountdown(null);
       setIsReady(false);
       setIsReadyLoading(false);
-      
+
       // UI stage and navigation
       setCurrentStage("enter");
-      
+
       // Team creation state
       setTeamName("");
-      
+
       // Invitation state
       setSelectedOpponentId(null);
       setPendingInviteId(null);
       setPendingResponseId(null);
       setPendingInvitationId(null);
       setNewTeamName("");
-      
+
       // Dialog states
       setShowTeamNameDialog(false);
       setShowBackConfirmation(false);
       setShowOpponentDisconnectedDialog(false);
       setDisconnectedPlayerInfo(null);
-      
+
       // Join request state
       setJoinRequestingTeamId(null);
-      
+
       // Ref state
       shouldSendLeaveEventRef.current = false;
-      
+
       console.log("[TeamBattleSetup] ✅ Step 1: All component state reset");
-      
+
       // ========================================================================
       // STEP 2: Remove ALL Team Battle related React Query cache
       // ========================================================================
       console.log("[TeamBattleSetup] Step 2: Removing all Team Battle cache");
-      
+
       // Use removeQueries (not invalidate) to completely clear cache
-      queryClient.removeQueries({ 
+      queryClient.removeQueries({
         predicate: (query) => {
           const key = query.queryKey[0] as string;
           // Only remove Team Battle related queries
@@ -247,19 +247,19 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           );
         }
       });
-      
+
       console.log("[TeamBattleSetup] ✅ Step 2: All Team Battle cache removed");
-      
+
       // ========================================================================
       // STEP 3: Socket Safety Guard - Track current session ID
       // Old socket events will be ignored in handleMessage if they don't match
       // ========================================================================
       // This is handled in the socket message handler below
       // We'll use a ref to track the "current session" and ignore old events
-      
+
       console.log("[TeamBattleSetup] ✅ PHASE 1: Hard reset complete");
       console.log("[TeamBattleSetup] ⏳ Phase 2 (server cleanup) will be triggered next");
-      
+
     } else {
       // Modal closed - minimal cleanup
       setGameSessionId(null);
@@ -277,7 +277,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setShowBackConfirmation(false);
     }
   }, [open, queryClient]);
-  
+
   // ============================================================================
   // PHASE 2: SERVER-SIDE CLEANUP (AFTER PHASE 1)
   // ============================================================================
@@ -286,39 +286,39 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // Returns a promise that Phase 3 can await.
   // ============================================================================
   const [cleanupComplete, setCleanupComplete] = useState(false);
-  
+
   useEffect(() => {
     if (!open || !user) {
       setCleanupComplete(false);
       return;
     }
-    
+
     let isCleanupInProgress = false;
     let isMounted = true;
-    
+
     const performServerCleanup = async () => {
       // Prevent multiple simultaneous cleanup calls
       if (isCleanupInProgress) {
         console.log("[TeamBattleSetup] ⏸️ Cleanup already in progress, skipping");
         return;
       }
-      
+
       isCleanupInProgress = true;
       console.log("[TeamBattleSetup] 🧹 PHASE 2: Starting server-side cleanup");
-      
+
       try {
         // Call cleanup endpoint and await completion
         const response = await apiRequest("POST", "/api/team-battle/cleanup");
         const result = await response.json();
-        
+
         if (!isMounted) return; // Component unmounted, don't update state
-        
+
         if (result.success) {
           console.log("[TeamBattleSetup] ✅ PHASE 2: Server cleanup completed", result.stats);
         } else {
           console.warn("[TeamBattleSetup] ⚠️ PHASE 2: Server cleanup completed with warnings", result);
         }
-        
+
         // Mark cleanup as complete - this triggers Phase 3
         if (isMounted) {
           setCleanupComplete(true);
@@ -329,7 +329,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       } catch (error) {
         // Non-critical error - log but continue
         console.error("[TeamBattleSetup] ⚠️ PHASE 2: Server cleanup failed (non-critical, continuing):", error);
-        
+
         // Still mark as complete to allow Phase 3 to proceed
         if (isMounted) {
           setCleanupComplete(true);
@@ -339,10 +339,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         isCleanupInProgress = false;
       }
     };
-    
+
     // Perform cleanup immediately (Phase 1 is synchronous)
     performServerCleanup();
-    
+
     return () => {
       isMounted = false;
       isCleanupInProgress = false;
@@ -350,7 +350,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       cleanupCompleteRef.current = false; // Reset ref when modal closes
     };
   }, [open, user]);
-  
+
   // ============================================================================
   // PHASE 3: FRESH SESSION START (AFTER PHASE 2)
   // ============================================================================
@@ -360,48 +360,48 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // ============================================================================
   useEffect(() => {
     if (!open || !user || !cleanupComplete) return;
-    
+
     console.log("[TeamBattleSetup] 🆕 PHASE 3: Starting fresh session");
-    
+
     // ========================================================================
     // STEP 1: Generate NEW gameSessionId (never reuse old ones)
     // ========================================================================
     const newSessionId = createGameSession();
     const sessionStartTime = Date.now();
-    
+
     // Update session tracking refs
     currentSessionIdRef.current = newSessionId;
     sessionStartedAtRef.current = sessionStartTime;
-    
+
     console.log(`[TeamBattleSetup] ✅ Step 1: Generated new session ID: ${newSessionId} at ${sessionStartTime}`);
-    
+
     // ========================================================================
     // STEP 2: Update socket safety guard to accept events for this session
     // ========================================================================
     // Already handled above - refs are updated immediately
-    
+
     // ========================================================================
     // STEP 3: Trigger fresh data fetches (only after session is created)
     // ========================================================================
     console.log("[TeamBattleSetup] Step 3: Triggering fresh data fetches");
-    
+
     // Invalidate queries to trigger fresh fetches
     // The queries are already enabled when modal is open, so invalidating
     // will cause them to refetch with fresh data
-    queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
     queryClient.invalidateQueries({ queryKey: ["/api/team-invitations"] });
     queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
     queryClient.invalidateQueries({ queryKey: ["/api/teams/available"] });
-    
+
     // Force immediate refetch of critical data
     // Small delay only for UI polish, not correctness
     setTimeout(() => {
-      queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+      queryClient.refetchQueries({ queryKey: ["/api/users/team-battle-available"] });
       queryClient.refetchQueries({ queryKey: ["/api/team-invitations"] });
       queryClient.refetchQueries({ queryKey: ["/api/team-join-requests"] });
       queryClient.refetchQueries({ queryKey: ["/api/teams/available"] });
     }, 50); // Small delay for UI polish only
-    
+
     console.log("[TeamBattleSetup] ✅ Step 3: Fresh data fetches triggered");
     console.log("[TeamBattleSetup] ✅ PHASE 3: Fresh session started successfully");
     console.log(`[TeamBattleSetup] 🎯 Ready for user interaction with session: ${newSessionId}`);
@@ -416,18 +416,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // ============================================================================
   useEffect(() => {
     if (!open || !gameSessionId) return;
-    
+
     // Ping battle state API every 90 seconds to keep database warm
     const keepAliveInterval = setInterval(() => {
       console.log("[TeamBattleSetup] 💓 Lobby keep-alive ping...");
       refetchBattleState();
     }, 90 * 1000); // Every 90 seconds
-    
+
     return () => {
       clearInterval(keepAliveInterval);
     };
   }, [open, gameSessionId, refetchBattleState]);
-  
+
   // CRITICAL: Check battle phase on modal open - server-authoritative navigation
   // This ensures clients always check server state, not just events
   useEffect(() => {
@@ -527,7 +527,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         const data = JSON.parse(event.data);
 
         const wsSessionId: string | undefined = data.gameSessionId;
-        
+
         // ====================================================================
         // SOCKET SAFETY GUARD: Ignore events from old sessions (STRENGTHENED)
         // ====================================================================
@@ -536,7 +536,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         // 2. event.timestamp >= sessionStartedAt (if timestamp exists)
         // This prevents late socket events from old battles and cleanup broadcasts
         // from corrupting a fresh session
-        
+
         // SPECIAL CASE: allow critical UI + notification events through the guard.
         // If these get blocked, users won't see "captain left/disbanded" messages.
         const criticalEventTypes = new Set([
@@ -555,12 +555,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           "left_team_battle",
         ]);
         const isCriticalUIEvent = criticalEventTypes.has(data.type);
-        
+
         if (wsSessionId) {
           const currentSession = currentSessionIdRef.current;
           const sessionStartedAt = sessionStartedAtRef.current;
           const isCleanupComplete = cleanupCompleteRef.current;
-          
+
           // For critical events, be more lenient during Phase 3 transition
           if (isCriticalUIEvent) {
             // If we have a current session, it must match
@@ -588,19 +588,19 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring event ${data.type} from old session ${wsSessionId} (no current session yet)`);
               return;
             }
-            
+
             // If event session doesn't match current session, ignore
             if (wsSessionId !== currentSession) {
               console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring event ${data.type} from old session ${wsSessionId} (current: ${currentSession})`);
               return;
             }
-            
+
             // CRITICAL: Check timestamp if available (prevents late events from old battles)
             if (sessionStartedAt !== null && data.timestamp) {
-              const eventTimestamp = typeof data.timestamp === 'number' 
-                ? data.timestamp 
+              const eventTimestamp = typeof data.timestamp === 'number'
+                ? data.timestamp
                 : new Date(data.timestamp).getTime();
-              
+
               if (eventTimestamp < sessionStartedAt) {
                 console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring event ${data.type} from before session start (event: ${eventTimestamp}, session: ${sessionStartedAt})`);
                 return;
@@ -608,7 +608,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             }
           }
         }
-        
+
         // Events without gameSessionId are global and should be processed
         // (like online_users_updated, team_battle_ended, etc.)
         // BUT: Only process certain global events during Phase 1/2
@@ -776,7 +776,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               queryClient.refetchQueries({
                 queryKey: ["/api/teams/available"],
               });
-              
+
               // CRITICAL: Also refetch DB-authoritative battle state
               refetchBattleState();
             }
@@ -789,13 +789,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               console.log(`[TeamBattleSetup] ⚠️ Ignoring team_ready_status for different battle: ${data.teamBattleId} vs ${userTeam.teamBattleId}`);
               break;
             }
-            
+
             // ================================================================
             // DB-AUTHORITATIVE: Socket event is a NOTIFICATION only
             // Always refetch from API for authoritative state
             // ================================================================
             console.log(`[TeamBattleSetup] 📨 team_ready_status notification received, refetching from API...`);
-            
+
             // CRITICAL FIX: Handle ready state reset when opponent leaves
             // Show toast to explain why ready status was reset
             if (data.reason === "opponent_left") {
@@ -807,31 +807,31 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               // Reset loading state since the ready flow was interrupted
               setIsReadyLoading(false);
             }
-            
+
             // Still update local state for backwards compatibility and optimistic UI
             if (
               data.teamAReady !== undefined &&
               data.teamBReady !== undefined
             ) {
-              const currentTimestamp = readyStatus?.updatedAt 
-                ? (typeof readyStatus.updatedAt === 'number' 
-                    ? readyStatus.updatedAt 
-                    : new Date(readyStatus.updatedAt).getTime())
+              const currentTimestamp = readyStatus?.updatedAt
+                ? (typeof readyStatus.updatedAt === 'number'
+                  ? readyStatus.updatedAt
+                  : new Date(readyStatus.updatedAt).getTime())
                 : 0;
-              
+
               const messageTimestamp = data.updatedAt
                 ? (typeof data.updatedAt === 'number'
-                    ? data.updatedAt
-                    : new Date(data.updatedAt).getTime())
+                  ? data.updatedAt
+                  : new Date(data.updatedAt).getTime())
                 : Date.now();
-              
+
               if (messageTimestamp >= currentTimestamp) {
                 setReadyStatus({
                   teamAReady: data.teamAReady,
                   teamBReady: data.teamBReady,
                   updatedAt: messageTimestamp,
                 });
-                
+
                 // Update local isReady state based on user's team side
                 if (userTeam?.teamSide === "A" && data.teamAReady) {
                   setIsReady(true);
@@ -845,7 +845,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 }
               }
             }
-            
+
             // CRITICAL: Always refetch from API for DB-authoritative state
             // This handles cases where socket event data might be stale or lost
             refetchBattleState();
@@ -858,9 +858,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               console.log(`[TeamBattleSetup] ⚠️ Ignoring ready_status_response for different battle: ${data.teamBattleId} vs ${userTeam.teamBattleId}`);
               break;
             }
-            
+
             console.log(`[TeamBattleSetup] 📨 ready_status_response received, updating local state and refetching from API...`);
-            
+
             if (
               data.teamAReady !== undefined &&
               data.teamBReady !== undefined
@@ -868,16 +868,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               // Update local state for backwards compatibility
               const messageTimestamp = data.updatedAt
                 ? (typeof data.updatedAt === 'number'
-                    ? data.updatedAt
-                    : new Date(data.updatedAt).getTime())
+                  ? data.updatedAt
+                  : new Date(data.updatedAt).getTime())
                 : Date.now();
-              
+
               setReadyStatus({
                 teamAReady: data.teamAReady,
                 teamBReady: data.teamBReady,
                 updatedAt: messageTimestamp,
               });
-              
+
               // Update local isReady state based on user's team side
               if (userTeam?.teamSide === "A" && data.teamAReady) {
                 setIsReady(true);
@@ -890,7 +890,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 setIsReady(false);
               }
             }
-            
+
             // CRITICAL: Also refetch from API for DB-authoritative state
             refetchBattleState();
             break;
@@ -905,7 +905,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             // CRITICAL FIX: Reset countdown - this will clear any existing timer and start fresh
             // This ensures countdown stays in sync with server
             setCountdown(seconds);
-            
+
             // CRITICAL: Also refetch DB-authoritative state for phase confirmation
             refetchBattleState();
             break;
@@ -915,7 +915,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           case "team_battle_started": {
             console.log("[TeamBattleSetup Modal] Received team_battle_started event:", data);
             const targetSessionId = data.gameSessionId || wsSessionId || gameSessionId;
-            
+
             // CRITICAL: Only navigate if modal is open, we have a valid session, and haven't navigated yet
             // Note: teams query is defined later, so we'll check it in the navigation effect instead
             if (open && targetSessionId && !hasNavigatedToGame) {
@@ -1084,14 +1084,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             // CRITICAL FIX: Immediately invalidate online users cache when battle ends
             // This ensures opponents appear as available immediately after battle ends
             console.log("[TeamBattleSetup Modal] Received online_users_updated event, invalidating cache");
-            queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
             // Also invalidate teams to ensure consistency
             if (wsSessionId) {
               queryClient.invalidateQueries({ queryKey: ["/api/teams", wsSessionId] });
             }
             // Force immediate refetch with a small delay to ensure server state is ready
             setTimeout(() => {
-              queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+              queryClient.refetchQueries({ queryKey: ["/api/users/team-battle-available"] });
             }, 200);
             break;
           }
@@ -1099,13 +1099,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           case "team_battle_ended": {
             // Immediately refresh available opponents when battle ends
             console.log("[TeamBattleSetup Modal] Battle ended, refreshing available opponents");
-            queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
             if (wsSessionId) {
               queryClient.invalidateQueries({ queryKey: ["/api/teams", wsSessionId] });
             }
             // Force refetch after a delay to ensure server cleanup is complete
             setTimeout(() => {
-              queryClient.refetchQueries({ queryKey: ["/api/users/online"] });
+              queryClient.refetchQueries({ queryKey: ["/api/users/team-battle-available"] });
               if (wsSessionId) {
                 queryClient.refetchQueries({ queryKey: ["/api/teams", wsSessionId] });
               }
@@ -1126,7 +1126,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       currentSessionIdRef.current = null;
     };
   }, [user, open, queryClient, toast, gameSessionId, hasNavigatedToGame, onClose, setLocation, refetchBattleState]);
-  
+
   // Update currentSessionIdRef when gameSessionId changes (Phase 3)
   // This allows socket events to be processed for the new session
   // Note: sessionStartedAtRef is set in Phase 3, not here
@@ -1240,19 +1240,19 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // ============================================================================
   useEffect(() => {
     if (!effectiveReadyStatus || !userTeam) return;
-    
-    const userTeamReady = userTeam.teamSide === "A" 
-      ? effectiveReadyStatus.teamAReady 
+
+    const userTeamReady = userTeam.teamSide === "A"
+      ? effectiveReadyStatus.teamAReady
       : effectiveReadyStatus.teamBReady;
     const opponentTeamReady = userTeam.teamSide === "A"
       ? effectiveReadyStatus.teamBReady
       : effectiveReadyStatus.teamAReady;
-    
+
     // Check if this is a new confirmation (was loading and now confirmed)
     if (isReadyLoading && userTeamReady) {
       // Clear loading state
       setIsReadyLoading(false);
-      
+
       // Show appropriate toast based on opponent status
       if (opponentTeamReady) {
         toast({
@@ -1266,7 +1266,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         });
       }
     }
-    
+
     // Also handle when opponent becomes ready (and we were already ready)
     const prevStatus = prevReadyStatusRef.current;
     if (prevStatus && !isReadyLoading) {
@@ -1278,7 +1278,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         });
       }
     }
-    
+
     // Update previous status ref
     prevReadyStatusRef.current = {
       teamAReady: effectiveReadyStatus.teamAReady,
@@ -1294,7 +1294,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // ============================================================================
   useEffect(() => {
     if (!isReadyLoading) return;
-    
+
     const timeoutId = setTimeout(() => {
       if (isReadyLoading) {
         setIsReadyLoading(false);
@@ -1307,7 +1307,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         forceRefetchBattleState();
       }
     }, 15000); // 15 second timeout
-    
+
     return () => clearTimeout(timeoutId);
   }, [isReadyLoading, toast, forceRefetchBattleState]);
 
@@ -1517,7 +1517,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   // Ref to track if we should send leave event (only when page actually unloads)
   const shouldSendLeaveEventRef = useRef(false);
-  
+
   // SOCKET SAFETY GUARD: Track current session ID and timestamp to ignore old socket events
   // This ensures events from previous sessions don't affect the current session
   const currentSessionIdRef = useRef<string | null>(null);
@@ -1618,21 +1618,21 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     };
   }, [open, userTeam, countdown, user, gameSessionId]);
 
-  // Load real online users from the backend
+  // ✅ Load Team Battle available users (users actively in Team Battle)
   const {
     data: onlineUsers,
     isLoading,
     isError,
     refetch: refetchOnlineUsers,
   } = useQuery<OnlineUser[]>({
-    queryKey: ["/api/users/online"],
+    queryKey: ["/api/users/team-battle-available"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/users/online");
+      const res = await apiRequest("GET", "/api/users/team-battle-available");
       return await res.json();
     },
     enabled: open && cleanupComplete, // Block until cleanup completes
-    refetchInterval: 3000,
-    staleTime: 5000, // CRITICAL FIX: Reduced from default to 5000 for faster updates
+    refetchInterval: 5000, // Refresh every 5 seconds
+    staleTime: 2000, // Consider data stale after 2 seconds
   });
 
   // NOTE: Fresh data fetching is now handled in Phase 3
@@ -1651,9 +1651,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   const getInvitationTeamId = (invitation: TeamInvitation) => {
     if (invitation.teamBattleId && invitation.teamSide) {
-      return `${
-        invitation.teamBattleId
-      }-team-${invitation.teamSide.toLowerCase()}`;
+      return `${invitation.teamBattleId
+        }-team-${invitation.teamSide.toLowerCase()}`;
     }
     return invitation.teamId;
   };
@@ -1675,7 +1674,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // PRODUCTION-SAFE: Periodic sync to ensure state is always current (fallback)
   useEffect(() => {
     if (!userTeam?.teamBattleId || !open) return;
-    
+
     // Request ready status every 3 seconds as fallback
     const syncInterval = setInterval(() => {
       if (userTeam?.teamBattleId && user) {
@@ -1686,18 +1685,18 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         });
       }
     }, 3000);
-    
+
     return () => clearInterval(syncInterval);
   }, [userTeam?.teamBattleId, user, gameSessionId, open]);
 
   const handleReadyToPlay = async () => {
     if (!userTeam || !user) return;
-    
+
     // FIX: Check if already ready using DB-authoritative state first, fallback to local
-    const isAlreadyReady = userTeam.teamSide === "A" 
+    const isAlreadyReady = userTeam.teamSide === "A"
       ? (effectiveReadyStatus?.teamAReady ?? readyStatus?.teamAReady)
       : (effectiveReadyStatus?.teamBReady ?? readyStatus?.teamBReady);
-      
+
     if (isAlreadyReady) {
       toast({
         title: "Already Ready",
@@ -1706,10 +1705,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       });
       return;
     }
-    
+
     // Set loading state - button will show loader
     setIsReadyLoading(true);
-    
+
     try {
       // Send ready request to server
       sendGameEvent({
@@ -1728,7 +1727,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         updatedAt: Date.now(),
       };
       setReadyStatus(optimisticReadyStatus);
-      
+
       // CRITICAL: Multiple refetch attempts with increasing delays
       // This handles slow database wake-up (Neon cold start)
       // Each attempt gives the database more time to respond
@@ -1742,7 +1741,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           }
         }, delay);
       });
-      
+
       // Note: Toast is now shown in useEffect when ready status is confirmed
     } catch (error) {
       setIsReadyLoading(false);
@@ -2611,8 +2610,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   ? team.teamSide === "A"
                     ? effectiveReadyStatus.teamAReady
                     : team.teamSide === "B"
-                    ? effectiveReadyStatus.teamBReady
-                    : false
+                      ? effectiveReadyStatus.teamBReady
+                      : false
                   : false;
                 return (
                   <TeamDisplay
@@ -2672,8 +2671,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                       isUserTeam
                         ? "Your Team"
                         : team.teamSide
-                        ? `Team ${team.teamSide}`
-                        : "Opponent Team"
+                          ? `Team ${team.teamSide}`
+                          : "Opponent Team"
                     }
                   />
                 );
@@ -2949,12 +2948,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               {isFull
                                 ? "Team Full"
                                 : alreadyMember
-                                ? "Already in Team"
-                                : myActiveJoinRequest
-                                ? "Request Pending"
-                                : joinRequestingTeamId === team.id
-                                ? "Requesting..."
-                                : "Request to Join"}
+                                  ? "Already in Team"
+                                  : myActiveJoinRequest
+                                    ? "Request Pending"
+                                    : joinRequestingTeamId === team.id
+                                      ? "Requesting..."
+                                      : "Request to Join"}
                             </Button>
                           </div>
                         );
@@ -3032,9 +3031,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                       size="sm"
                       onClick={() => {
                         // Invalidate and refetch with proper error handling
-                        queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
                         queryClient.invalidateQueries({ queryKey: ["/api/teams", gameSessionId] });
-                        
+
                         // Force refetch with a small delay to ensure server state is ready
                         setTimeout(() => {
                           refetchOnlineUsers();
@@ -3042,7 +3041,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                             queryClient.refetchQueries({ queryKey: ["/api/teams", gameSessionId] });
                           }
                         }, 100);
-                        
+
                         toast({
                           title: "Refreshing...",
                           description: "Updating available opponents list",
@@ -3148,12 +3147,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               {pendingInvitation
                                 ? "Invited"
                                 : alreadyInvitedByMe
-                                ? "Already Invited"
-                                : pendingInviteId === player.id
-                                ? "Inviting..."
-                                : invitationCount > 0
-                                ? `Invite (${invitationCount} pending)`
-                                : "Invite as Opponent"}
+                                  ? "Already Invited"
+                                  : pendingInviteId === player.id
+                                    ? "Inviting..."
+                                    : invitationCount > 0
+                                      ? `Invite (${invitationCount} pending)`
+                                      : "Invite as Opponent"}
                             </Button>
                           </div>
                         );
@@ -3269,12 +3268,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               {pendingInvitation
                                 ? "Invited"
                                 : alreadyInvitedByMe
-                                ? "Already Invited"
-                                : pendingInviteId === player.id
-                                ? "Inviting..."
-                                : invitationCount > 0
-                                ? `Invite (${invitationCount} pending)`
-                                : "Invite to Team"}
+                                  ? "Already Invited"
+                                  : pendingInviteId === player.id
+                                    ? "Inviting..."
+                                    : invitationCount > 0
+                                      ? `Invite (${invitationCount} pending)`
+                                      : "Invite to Team"}
                             </Button>
                           </div>
                         );
@@ -3291,122 +3290,122 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             (inv: TeamInvitation) =>
               inv.status === "pending" && inv.inviteeId === user?.id
           ).length > 0 && (
-            <div className="mt-3 sm:mt-6 space-y-3 sm:space-y-4">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-blue-200">
-                <h4 className="font-heading font-bold text-base sm:text-lg text-gray-900 mb-1 flex items-center gap-2 flex-wrap">
-                  <Mail className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
-                  <span>Choose Your Team</span>
-                  <span className="ml-auto bg-blue-500 text-white text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full">
-                    {
-                      invitations.filter(
-                        (inv: TeamInvitation) =>
-                          inv.status === "pending" && inv.inviteeId === user?.id
-                      ).length
-                    }
-                  </span>
-                </h4>
-                <p className="text-xs sm:text-sm text-gray-600">
-                  You have multiple team invitations. Choose which team you'd
-                  like to join
-                </p>
-              </div>
-              {invitations
-                .filter(
-                  (inv: TeamInvitation) =>
-                    inv.status === "pending" && inv.inviteeId === user?.id
-                )
-                .map((invitation: TeamInvitation) => {
-                  const derivedTeamId = getInvitationTeamId(invitation);
-                  const team = derivedTeamId
-                    ? teams.find((t: Team) => t.id === derivedTeamId)
-                    : undefined;
-                  return (
-                    <div
-                      key={invitation.id}
-                      className="bg-white p-3 sm:p-4 md:p-5 rounded-lg sm:rounded-xl border-2 border-blue-200 shadow-sm hover:shadow-md transition-all duration-200"
-                    >
-                      <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
-                        <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
-                            {invitation.invitationType === "opponent" ? (
-                              <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                            ) : (
-                              <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1 sm:mb-2">
-                              <p className="font-bold text-sm sm:text-base text-gray-900">
-                                {invitation.invitationType === "opponent"
-                                  ? "Team Captain"
-                                  : "Team Member"}{" "}
-                                Invitation
-                              </p>
-                              <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0">
-                                {invitation.invitationType === "opponent"
-                                  ? "Captain"
-                                  : "Member"}
-                              </span>
+              <div className="mt-3 sm:mt-6 space-y-3 sm:space-y-4">
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-blue-200">
+                  <h4 className="font-heading font-bold text-base sm:text-lg text-gray-900 mb-1 flex items-center gap-2 flex-wrap">
+                    <Mail className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+                    <span>Choose Your Team</span>
+                    <span className="ml-auto bg-blue-500 text-white text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full">
+                      {
+                        invitations.filter(
+                          (inv: TeamInvitation) =>
+                            inv.status === "pending" && inv.inviteeId === user?.id
+                        ).length
+                      }
+                    </span>
+                  </h4>
+                  <p className="text-xs sm:text-sm text-gray-600">
+                    You have multiple team invitations. Choose which team you'd
+                    like to join
+                  </p>
+                </div>
+                {invitations
+                  .filter(
+                    (inv: TeamInvitation) =>
+                      inv.status === "pending" && inv.inviteeId === user?.id
+                  )
+                  .map((invitation: TeamInvitation) => {
+                    const derivedTeamId = getInvitationTeamId(invitation);
+                    const team = derivedTeamId
+                      ? teams.find((t: Team) => t.id === derivedTeamId)
+                      : undefined;
+                    return (
+                      <div
+                        key={invitation.id}
+                        className="bg-white p-3 sm:p-4 md:p-5 rounded-lg sm:rounded-xl border-2 border-blue-200 shadow-sm hover:shadow-md transition-all duration-200"
+                      >
+                        <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                          <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+                            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
+                              {invitation.invitationType === "opponent" ? (
+                                <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                              ) : (
+                                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                              )}
                             </div>
-                            <p className="text-xs sm:text-sm text-gray-700 mb-2">
-                              <span className="font-semibold text-blue-600">
-                                {invitation.inviterUsername || "Someone"}
-                              </span>{" "}
-                              invites you to join as{" "}
-                              {invitation.invitationType === "opponent"
-                                ? "opposing team captain"
-                                : "a teammate"}
-                            </p>
-                            <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 inline-block">
-                              {invitation.invitationType === "opponent"
-                                ? "👑 You'll lead your own team"
-                                : "🤝 You'll join their existing team"}
-                            </p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 mb-1 sm:mb-2">
+                                <p className="font-bold text-sm sm:text-base text-gray-900">
+                                  {invitation.invitationType === "opponent"
+                                    ? "Team Captain"
+                                    : "Team Member"}{" "}
+                                  Invitation
+                                </p>
+                                <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0">
+                                  {invitation.invitationType === "opponent"
+                                    ? "Captain"
+                                    : "Member"}
+                                </span>
+                              </div>
+                              <p className="text-xs sm:text-sm text-gray-700 mb-2">
+                                <span className="font-semibold text-blue-600">
+                                  {invitation.inviterUsername || "Someone"}
+                                </span>{" "}
+                                invites you to join as{" "}
+                                {invitation.invitationType === "opponent"
+                                  ? "opposing team captain"
+                                  : "a teammate"}
+                              </p>
+                              <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 inline-block">
+                                {invitation.invitationType === "opponent"
+                                  ? "👑 You'll lead your own team"
+                                  : "🤝 You'll join their existing team"}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto">
-                          <Button
-                            size="sm"
-                            onClick={(e) =>
-                              handleRespondToInvitation(
-                                invitation.id,
-                                "accepted",
-                                e
-                              )
-                            }
-                            disabled={pendingResponseId === invitation.id}
-                            className="flex-1 sm:flex-none text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg shadow-sm"
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            {pendingResponseId === invitation.id
-                              ? "Accepting..."
-                              : "Accept"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) =>
-                              handleRespondToInvitation(
-                                invitation.id,
-                                "declined",
-                                e
-                              )
-                            }
-                            disabled={pendingResponseId === invitation.id}
-                            className="flex-1 sm:flex-none text-xs font-semibold border-2 border-gray-300 hover:border-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg"
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            {pendingResponseId === invitation.id
-                              ? "Declining..."
-                              : "Decline"}
-                          </Button>
+                          <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto">
+                            <Button
+                              size="sm"
+                              onClick={(e) =>
+                                handleRespondToInvitation(
+                                  invitation.id,
+                                  "accepted",
+                                  e
+                                )
+                              }
+                              disabled={pendingResponseId === invitation.id}
+                              className="flex-1 sm:flex-none text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg shadow-sm"
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              {pendingResponseId === invitation.id
+                                ? "Accepting..."
+                                : "Accept"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) =>
+                                handleRespondToInvitation(
+                                  invitation.id,
+                                  "declined",
+                                  e
+                                )
+                              }
+                              disabled={pendingResponseId === invitation.id}
+                              className="flex-1 sm:flex-none text-xs font-semibold border-2 border-gray-300 hover:border-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg"
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              {pendingResponseId === invitation.id
+                                ? "Declining..."
+                                : "Decline"}
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
+                    );
+                  })}
+              </div>
+            )}
         </div>
         {/* End of scrollable content */}
       </div>
@@ -3555,7 +3554,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   const disconnectedTeam = isTeamA ? "Team A" : "Team B";
                   const userTeamSide = userTeam?.teamSide;
                   const userTeamName = userTeamSide === "A" ? "Team A" : userTeamSide === "B" ? "Team B" : "your team";
-                  
+
                   // If Team A captain left, battle is cancelled
                   if (isTeamA) {
                     return (

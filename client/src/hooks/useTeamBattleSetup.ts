@@ -119,16 +119,16 @@ export function useTeamBattleSetup(gameSessionId?: string) {
     staleTime: 10000,
   });
 
-  // Online users (for inviting)
+  // ✅ Team Battle available users (users actively in Team Battle)
   const { data: onlineUsers = [], refetch: refetchOnlineUsers } = useQuery({
-    queryKey: ["/api/users/online"],
+    queryKey: ["/api/users/team-battle-available"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/users/online");
+      const res = await apiRequest("GET", "/api/users/team-battle-available");
       return await res.json();
     },
     enabled: !!user,
-    refetchInterval: 10000, // Reduced from 30000 to 10000 for faster updates
-    staleTime: 5000, // Reduced from 15000 to 5000 for fresher data
+    refetchInterval: 5000, // Refresh every 5 seconds for real-time feel
+    staleTime: 2000, // Consider data stale after 2 seconds
   });
 
   // Join requests
@@ -179,6 +179,12 @@ export function useTeamBattleSetup(gameSessionId?: string) {
     const offJoinRequestCreated = onEvent("join_request_created", () => debouncedRefetch());
     const offJoinRequestUpdated = onEvent("join_request_updated", () => debouncedRefetch());
 
+    // ✅ NEW: Listen for Team Battle availability updates
+    const offAvailabilityUpdated = onEvent("team_battle_availability_updated", () => {
+      console.log("[useTeamBattleSetup] Team Battle availability updated, refetching");
+      refetchOnlineUsers();
+    });
+
     return () => {
       offTeamUpdated();
       offTeamCreated();
@@ -187,8 +193,9 @@ export function useTeamBattleSetup(gameSessionId?: string) {
       offInvitationSent();
       offJoinRequestCreated();
       offJoinRequestUpdated();
+      offAvailabilityUpdated();
     };
-  }, [user?.id, debouncedRefetch]);
+  }, [user?.id, debouncedRefetch, refetchOnlineUsers]);
 
   // Mutations
   const createTeamMutation = useMutation({

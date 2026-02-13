@@ -108,26 +108,6 @@ const Home: React.FC = () => {
     }
   }, []);
 
-  // ✅ Reset Team Battle availability when user lands on Home page
-  // This handles ALL navigation scenarios: browser back, refresh, logo click, etc.
-  useEffect(() => {
-    if (user?.id) {
-      const resetTeamBattleStatus = async () => {
-        try {
-          await apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
-            isInTeamBattle: false,
-          });
-          console.log("[Home] ✅ Reset isInTeamBattle=false on Home page mount");
-        } catch (err) {
-          console.error("[Home] ⚠️ Failed to reset Team Battle status:", err);
-          // Non-critical, continue anyway
-        }
-      };
-
-      resetTeamBattleStatus();
-    }
-  }, [user?.id]);
-
   // Animation effect for the title - Family Feud style flashing
   useEffect(() => {
     const interval = setInterval(() => {

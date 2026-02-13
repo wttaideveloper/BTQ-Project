@@ -38,7 +38,7 @@ const sql = postgres(connectionString, {
 
 async function runMigration() {
     try {
-        console.log('📊 Step 1: Checking current database state...');
+        console.log('📊 Step 1: Checking current database state....');
 
         // Check if column already exists
         const columnCheck = await sql`

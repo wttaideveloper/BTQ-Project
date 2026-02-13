@@ -3,7 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
-import { setupVite, log } from "./vite";
+import { log } from "./logger";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,7 +19,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
+
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
   } else {
@@ -61,7 +61,7 @@ app.use((req, res, next) => {
   // Initialize database
   const { database } = await import("./database");
   await database.initializeDatabase();
-  
+
   async function cleanupVeryOldBattles() {
     console.log("🛡 Cleaning stale battles on startup...");
 
@@ -97,7 +97,7 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     log(`Error ${status} on ${req.method} ${req.path}: ${message}`);
-    
+
     if (!res.headersSent) {
       res.status(status).json({ message });
     }
@@ -107,23 +107,24 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
+    const { setupVite } = await import("./vite");
     await setupVite(app, server);
   } else {
     // Production: serve static files from dist/public
     // Development fallback: serve from client/dist
     const isProduction = process.env.NODE_ENV === "production";
-    
+
     // Resolve the static files path based on environment
     const distPath = isProduction
       ? path.resolve(__dirname, "public")      // Production: dist/public (relative to dist/index.js)
       : path.resolve(__dirname, "..", "client", "dist"); // Development: client/dist
-    
+
     // Log the resolved path for debugging (visible in PM2 logs)
     console.log(`Serving static files from: ${distPath}`);
-    
+
     // Serve static files
     app.use(express.static(distPath));
-    
+
     // SPA fallback: serve index.html for all non-API routes
     app.get("*", (_req, res) => {
       res.sendFile(path.resolve(distPath, "index.html"));

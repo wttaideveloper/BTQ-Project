@@ -12,7 +12,7 @@ import postgres from "postgres";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
-import { log } from "./vite";
+import { log } from "./logger";
 
 /**
  * Helper function to extract user IDs from teammates array.

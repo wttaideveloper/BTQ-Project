@@ -2380,22 +2380,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
 
-      // Get all active game sessions (sessions with forming battles)
-      const activeSessions = listActiveGameSessions();
-      const activeSessionIds = new Set(activeSessions); // activeSessions is string[]
-
-      console.log(`🔍 Active sessions: ${Array.from(activeSessionIds).join(', ') || 'NONE'}`);
-
-      // Get all team battles that are still forming
+      // ✅ DATABASE-ONLY LOGIC: No in-memory session filtering
+      // Get all team battles that are still forming from database
       const allBattles = await database.getTeamBattlesByStatus("forming");
-      console.log(`📋 Found ${allBattles.length} total forming battles`);
+      console.log(`📋 Found ${allBattles.length} total forming battles from database`);
 
       const allAvailableTeams = [];
       const now = Date.now();
 
       for (const battle of allBattles) {
-        // CRITICAL: Only show teams from ACTIVE sessions
-        // This prevents old/closed session teams from appearing
+        // Filter 1: Remove stale battles (older than 30 minutes)
         const battleAge = now - new Date(battle.createdAt).getTime();
         const isStale = battleAge > 30 * 60 * 1000; // 30 minutes
 
@@ -2404,7 +2398,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           continue;
         }
 
+        // Convert battle to teams format
         const teams = await convertTeamBattleToTeams(battle);
+
         // For availability, treat players who have LEFT any active game as not counting
         // toward team occupancy. This prevents LEFT players from making teams appear full.
         const { isUserBusy } = await import("./socket");

@@ -271,7 +271,9 @@ export default function TeamBattleGame() {
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-
+        // Debug: log incoming messages for game page handlers
+        console.log("[TeamBattleGame] Message received:", data.type, data);
+      
         switch (data.type) {
           case "connection_established":
             setConnected(true);
@@ -389,10 +391,17 @@ export default function TeamBattleGame() {
             break;
 
           case "team_battle_toss_result": {
-            // Show toss winner and continue
+            // Show toss winner and continue. Resolve player's team from current state
             const winnerTeamId = data.winnerTeamId;
-            const winnerUserId = data.winnerUserId;
-            const isYourTeamWinner = gameState.playerTeam?.id === winnerTeamId;
+            const winnerUserId = data.winnerUserId || data.userId;
+            const resolvedPlayerTeamId =
+              gameState.playerTeam?.id ||
+              gameState.teams?.find((team) =>
+                team.members?.some((m) => m.userId === user?.id)
+              )?.id;
+
+            const isYourTeamWinner = resolvedPlayerTeamId === winnerTeamId;
+
             toast({
               title: "Toss Result",
               description: isYourTeamWinner
@@ -400,11 +409,48 @@ export default function TeamBattleGame() {
                 : "Opponent won the toss. Good luck!",
               duration: 3000,
             });
-            // Move to playing phase; server will send first question shortly
-            setGameState((prev) => ({
-              ...prev,
-              phase: "playing",
-            }));
+
+            // Ensure local team assignment reflects server's winner assignment:
+            setGameState((prev) => {
+              let updatedTeams = prev.teams;
+              if (prev.teams && winnerTeamId) {
+                updatedTeams = prev.teams.map((t) =>
+                  t.id === winnerTeamId ? { ...t, teamSide: "A" } : { ...t, teamSide: "B" }
+                );
+              }
+              const playerTeam = updatedTeams?.find((team) =>
+                team.members?.some((m) => m.userId === user?.id)
+              );
+              const opposingTeam = updatedTeams?.find((team) => team.id !== playerTeam?.id);
+              return {
+                ...prev,
+                phase: "playing",
+                teams: updatedTeams,
+                playerTeam: playerTeam || prev.playerTeam,
+                opposingTeam: opposingTeam || prev.opposingTeam,
+              };
+            });
+            break;
+          }
+          
+          case "team_battle_toss_feedback": {
+            // Immediate feedback on toss submission (correct/incorrect)
+            if (typeof data.isCorrect === "boolean") {
+              if (data.isCorrect) {
+                toast({
+                  title: "Correct",
+                  description: "Nice! That answer is correct.",
+                  duration: 2500,
+                });
+              } else {
+                toast({
+                  title: "Incorrect",
+                  description: "That answer was incorrect.",
+                  variant: "destructive",
+                  duration: 2500,
+                });
+              }
+            }
             break;
           }
 
@@ -795,6 +841,7 @@ export default function TeamBattleGame() {
         teamId: gameState.playerTeam.id,
         questionId: gameState.currentQuestion.id,
         answerId,
+        gameSessionId: gameSessionId || undefined,
         userId: user.id,
         username: user.username,
         timeSpent: 0,

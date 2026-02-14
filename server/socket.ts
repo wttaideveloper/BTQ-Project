@@ -3455,13 +3455,26 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
     return;
 
   try {
+    console.log(`[handleSubmitTeamAnswer] Received submit from clientId=${clientId} user=${client.userId} teamId=${event.teamId} questionId=${event.questionId} answerId=${event.answerId}`);
     // ====================================================================
     // AUTHORITATIVE VALIDATION: client.gameId is the ONLY trusted source.
     // event.gameId is NEVER used — prevents stale events from old sessions.
     // ====================================================================
     if (!client.gameId) {
-      console.log(`[handleSubmitTeamAnswer] ⛔ Rejected: no client.gameId for user ${client.userId}`);
-      return;
+      // Attempt to recover gameId from event.gameSessionId if provided and matches team
+      if (event.gameSessionId) {
+        const maybeSession = gameSessions.get(event.gameSessionId);
+        if (maybeSession && Array.isArray(maybeSession.teams) && maybeSession.teams.some((t: any) => t.id === event.teamId)) {
+          console.log(`[handleSubmitTeamAnswer] Info: setting client.gameId from event.gameSessionId for user ${client.userId}`);
+          client.gameId = event.gameSessionId;
+        } else {
+          console.log(`[handleSubmitTeamAnswer] ⛔ Rejected: invalid event.gameSessionId for user ${client.userId}`);
+          return;
+        }
+      } else {
+        console.log(`[handleSubmitTeamAnswer] ⛔ Rejected: no client.gameId for user ${client.userId}`);
+        return;
+      }
     }
     
     // DB GUARD: If database indicates the player has LEFT this battle, ignore silently.
@@ -3511,6 +3524,7 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         sessionTeam.memberAnswers[event.questionId] = {};
       }
 
+      console.log(`[handleSubmitTeamAnswer] Storing member answer for user=${client.userId} team=${sessionTeam.id} question=${event.questionId} answer=${event.answerId}`);
       sessionTeam.memberAnswers[event.questionId][client.userId.toString()] = {
         answerId: event.answerId,
         submittedAt: new Date(),
@@ -3544,9 +3558,22 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
       ) {
         const tossQ = (gameSession as any).tossQuestion;
         const correctAnswer = tossQ.answers?.find((a: any) => a.isCorrect);
-        if (correctAnswer && event.answerId === correctAnswer.id) {
+        const isCorrect = !!(correctAnswer && event.answerId === correctAnswer.id);
+        console.log(`[Toss] Submission by user=${client.userId} team=${sessionTeam.id} answer=${event.answerId} correct=${isCorrect}`);
+        // Send immediate feedback to submitting client
+        sendToClient(clientId, {
+          type: "team_battle_toss_feedback",
+          gameId: client.gameId,
+          questionId: event.questionId,
+          answerId: event.answerId,
+          isCorrect: isCorrect,
+          message: isCorrect ? "Correct!" : "Incorrect",
+        });
+
+        if (isCorrect) {
           // First correct submission wins the toss
           if (!(gameSession as any).tossWinnerTeamId) {
+            console.log(`[Toss] Finalizing toss winner due to immediate correct submission: team=${sessionTeam.id} user=${client.userId}`);
             await finalizeTossWinner(client.gameId, sessionTeam.id, client.userId);
           }
         }
@@ -3649,7 +3676,16 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
     ) {
       const tossQ = (currentGameSession as any).tossQuestion;
       const correctAnswer = tossQ.answers?.find((a: any) => a.isCorrect);
-      if (correctAnswer && event.answerId === correctAnswer.id) {
+      const isCorrect = !!(correctAnswer && event.answerId === correctAnswer.id);
+      sendToClient(clientId, {
+        type: "team_battle_toss_feedback",
+        gameId: client.gameId,
+        questionId: event.questionId,
+        answerId: event.answerId,
+        isCorrect: isCorrect,
+        message: isCorrect ? "Correct!" : "Incorrect",
+      });
+      if (isCorrect) {
         if (!(currentGameSession as any).tossWinnerTeamId) {
           await finalizeTossWinner(client.gameId, sessionTeam?.id || team.id, client.userId);
         }
@@ -5720,7 +5756,7 @@ async function startTeamBattleQuestions(gameId: string) {
 
       if (validToss) {
         // Store toss question in session and mark phase
-        gameSession.tossQuestion = validToss;
+        (gameSession as any).tossQuestion = validToss;
         (gameSession as any).phase = "toss";
         (gameSession as any).tossWinnerTeamId = undefined;
 
@@ -6462,11 +6498,13 @@ async function processTossResult(gameId: string) {
       const memberAnswers = team.memberAnswers?.[tossQuestion.id] || {};
       for (const [userIdStr, entry] of Object.entries(memberAnswers)) {
         const userId = Number(userIdStr);
-        if (entry && entry.answerId && correctAnswer && entry.answerId === correctAnswer.id) {
+        const answerId = (entry as any)?.answerId;
+        const submittedAtRaw = (entry as any)?.submittedAt;
+        if (answerId && correctAnswer && answerId === correctAnswer.id) {
           correctSubmissions.push({
             teamId: team.id,
             userId,
-            submittedAt: new Date(entry.submittedAt),
+            submittedAt: submittedAtRaw ? new Date(submittedAtRaw) : new Date(),
           });
         }
       }
@@ -6480,7 +6518,70 @@ async function processTossResult(gameId: string) {
       return;
     }
 
-    // No correct submissions -> random fallback between the two teams
+    // No correct submissions -> check if BOTH teams submitted wrong answers
+    const teamSubmissionMap: Record<string, boolean> = {};
+    for (const team of gameSession.teams) {
+      const memberAnswers = team.memberAnswers?.[tossQuestion.id] || {};
+      teamSubmissionMap[team.id] = Object.keys(memberAnswers || {}).length > 0;
+    }
+
+    const teamsSubmitted = Object.values(teamSubmissionMap).filter(Boolean).length;
+
+    if (teamsSubmitted >= 2) {
+      // Both teams tried and none were correct -> issue a new toss question (re-run toss)
+      try {
+        // Clear previous toss answers for toss question to avoid mixing
+        for (const team of gameSession.teams) {
+          if (team.memberAnswers && team.memberAnswers[tossQuestion.id]) {
+            delete team.memberAnswers[tossQuestion.id];
+          }
+        }
+
+        // Fetch a new toss question
+        const tossCandidates = await database.getRandomQuestionsWithHistory({
+          count: 1,
+          userId: undefined,
+          excludeRecentHours: 0,
+        });
+        const newToss = (tossCandidates || []).find(
+          (q: any) => q && q.id && q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0
+        );
+
+        if (newToss) {
+          (gameSession as any).tossQuestion = newToss;
+          // Broadcast new toss question
+          const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+          for (const client of gameClients) {
+            sendToClient(client.id, {
+              type: "team_battle_toss",
+              gameId,
+              question: newToss,
+              timeLimit: 10000,
+              message: "Toss question (retry): first correct answer wins the toss!",
+            });
+          }
+
+          // Reset toss timeout to give teams another chance
+          if ((gameSession as any).tossTimeout) {
+            clearTimeout((gameSession as any).tossTimeout);
+            (gameSession as any).tossTimeout = undefined;
+          }
+          (gameSession as any).tossTimeout = setTimeout(() => {
+            processTossResult(gameId).catch((err) => {
+              console.error(`[Toss] Error processing toss retry for gameId ${gameId}:`, err);
+              if ((gameSession as any)._tossResolve) (gameSession as any)._tossResolve({});
+            });
+          }, 10000);
+
+          // Do not resolve toss Promise yet - wait for retry to finish
+          return;
+        }
+      } catch (err) {
+        console.error(`[Toss] Failed to fetch retry toss question for gameId ${gameId}:`, err);
+      }
+    }
+
+    // Otherwise fallback to random winner (no submissions or only one team tried)
     const teamIds = gameSession.teams.map((t: any) => t.id);
     const randomIndex = Math.floor(Math.random() * teamIds.length);
     await finalizeTossWinner(gameId, teamIds[randomIndex], undefined);
@@ -6528,7 +6629,7 @@ async function finalizeTossWinner(gameId: string, winningTeamId: string, winning
         type: "team_battle_toss_result",
         gameId,
         winnerTeamId: winningTeamId,
-        winnerUserId: winningUserId,
+        userId: winningUserId,
         message: "Toss complete. First turn assigned.",
       });
     }

@@ -77,7 +77,7 @@ interface Question {
 }
 
 interface GameState {
-  phase: "waiting" | "ready" | "playing" | "question" | "results" | "finished";
+  phase: "waiting" | "ready" | "toss" | "playing" | "question" | "results" | "finished";
   currentQuestion?: Question;
   questionNumber?: number;
   totalQuestions?: number;
@@ -353,6 +353,60 @@ export default function TeamBattleGame() {
             });
             // Show loading state while questions are being loaded
             break;
+
+          case "team_battle_toss":
+            // Rapid-fire toss question: both teams may answer immediately
+            if (!data.question) {
+              console.error("Received team_battle_toss without question data:", data);
+              break;
+            }
+
+            setGameState((prev) => ({
+              ...prev,
+              phase: "toss",
+              currentQuestion: data.question,
+              questionNumber: 0,
+              totalQuestions: prev.totalQuestions,
+              timeRemaining: data.timeLimit ? Math.floor(data.timeLimit / 1000) : 10,
+              timeLimit: data.timeLimit || 10000,
+              isYourTurn: true, // Both teams can answer
+            }));
+
+            // Reset answer state for toss
+            setSelectedAnswer(null);
+            setHasSubmitted(false);
+            setTeamAnswer(null);
+            setMemberAnswers({});
+            setSuggestions({});
+            setWaitingForResults(false);
+            setCorrectAnswerId(null);
+            setLastRoundCorrect(null);
+            toast({
+              title: "Toss Question",
+              description: "First correct answer wins the toss — hurry!",
+              duration: 3000,
+            });
+            break;
+
+          case "team_battle_toss_result": {
+            // Show toss winner and continue
+            const winnerTeamId = data.winnerTeamId;
+            const winnerUserId = data.winnerUserId;
+            const isYourTeamWinner = gameState.playerTeam?.id === winnerTeamId;
+            toast({
+              title: "Toss Result",
+              description: isYourTeamWinner
+                ? "Your team won the toss and will answer first."
+                : "Opponent won the toss. Good luck!",
+              duration: 3000,
+            });
+            // Move to playing phase; server will send first question shortly
+            setGameState((prev) => ({
+              ...prev,
+              phase: "playing",
+            }));
+            break;
+          }
 
           case "team_battle_question":
             // Validate question data before setting state
@@ -734,6 +788,23 @@ export default function TeamBattleGame() {
   const handleMemberSelect = (answerId: string) => {
     if (!gameState.currentQuestion || !gameState.playerTeam || !user) return;
 
+    // If we're in toss phase submit immediately as an individual submission (race)
+    if (gameState.phase === "toss") {
+      sendGameEvent({
+        type: "submit_team_answer",
+        teamId: gameState.playerTeam.id,
+        questionId: gameState.currentQuestion.id,
+        answerId,
+        userId: user.id,
+        username: user.username,
+        timeSpent: 0,
+      });
+      // Show selection locally
+      setSelectedAnswer(answerId);
+      setHasSubmitted(true);
+      return;
+    }
+
     sendGameEvent({
       type: "team_option_selected",
       teamId: gameState.playerTeam.id,
@@ -1005,6 +1076,64 @@ export default function TeamBattleGame() {
             </Card>
           </div>
         )}
+      </div>
+    );
+  };
+
+  const renderTossPhase = () => {
+    // Reuse question board UI but indicate it's a toss/race
+    if (!gameState.currentQuestion) {
+      return (
+        <div className="max-w-xl mx-auto p-6">
+          <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <div className="h-16 w-16 rounded-full bg-gradient-to-b from-yellow-400 to-yellow-600 flex items-center justify-center shadow-lg animate-pulse">
+                <Clock className="h-8 w-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-center">Toss Question</h2>
+              <p className="text-white/70 text-center text-sm">
+                Rapid-fire: first correct answer wins the toss.
+              </p>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    if (!gameState.playerTeam) return null;
+
+    const question = gameState.currentQuestion;
+    const serverTimeLimit = gameState.timeLimit || 10000;
+    const timeLimit = Math.floor(serverTimeLimit / 1000);
+    const timeRemaining = gameState.timeRemaining !== undefined
+      ? Math.min(gameState.timeRemaining, timeLimit)
+      : timeLimit;
+
+    return (
+      <div className="max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative bg-gradient-to-br from-secondary to-secondary-dark text-white w-full min-w-0 overflow-x-hidden">
+        <div className="mb-3 text-center">
+          <Badge className="bg-yellow-500 text-black font-bold px-3 py-1">TOSS RACE</Badge>
+        </div>
+        <TeamBattleQuestionBoard
+          question={{ id: question.id, text: question.text }}
+          answers={question.answers.map((a) => ({ id: a.id, text: a.text }))}
+          timeRemaining={timeRemaining}
+          timeLimit={timeLimit}
+          score={gameState.playerTeam.score}
+          totalQuestions={gameState.totalQuestions || 1}
+          currentQuestionIndex={0}
+          category={question.category}
+          difficultyLabel={question.difficulty}
+          isCaptain={isTeamCaptain()}
+          isQuestionLocked={Boolean(teamAnswer)}
+          suggestions={suggestions}
+          onMemberSelect={handleMemberSelect}
+          onCaptainSubmit={handleCaptainSubmit}
+          isPaused={false}
+          isReadOnly={false} // both teams can answer
+          answeringTeamName={gameState.answeringTeamName}
+          selectedAnswerId={selectedAnswer}
+        />
       </div>
     );
   };
@@ -1595,6 +1724,7 @@ export default function TeamBattleGame() {
         </div>
       )}
       {gameState.phase === "question" && renderQuestionPhase()}
+      {gameState.phase === "toss" && renderTossPhase()}
       {/* Results phase removed - goes directly to next question */}
       {gameState.phase === "finished" && renderFinishedPhase()}
 

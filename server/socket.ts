@@ -3535,6 +3535,23 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         });
       }
 
+      // If we're in toss phase and this is the toss question, check for immediate correct submission
+      if (
+        gameSession &&
+        (gameSession as any).phase === "toss" &&
+        (gameSession as any).tossQuestion &&
+        event.questionId === (gameSession as any).tossQuestion.id
+      ) {
+        const tossQ = (gameSession as any).tossQuestion;
+        const correctAnswer = tossQ.answers?.find((a: any) => a.isCorrect);
+        if (correctAnswer && event.answerId === correctAnswer.id) {
+          // First correct submission wins the toss
+          if (!(gameSession as any).tossWinnerTeamId) {
+            await finalizeTossWinner(client.gameId, sessionTeam.id, client.userId);
+          }
+        }
+      }
+
       // Check if all team members have answered
       const allAnswered =
         sessionTeam.members.length ===
@@ -3621,6 +3638,22 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         ).length,
         totalMembers: team.members.length,
       });
+    }
+
+    // If we're in toss phase and this is the toss question, check for immediate correct submission
+    if (
+      currentGameSession &&
+      (currentGameSession as any).phase === "toss" &&
+      (currentGameSession as any).tossQuestion &&
+      event.questionId === (currentGameSession as any).tossQuestion.id
+    ) {
+      const tossQ = (currentGameSession as any).tossQuestion;
+      const correctAnswer = tossQ.answers?.find((a: any) => a.isCorrect);
+      if (correctAnswer && event.answerId === correctAnswer.id) {
+        if (!(currentGameSession as any).tossWinnerTeamId) {
+          await finalizeTossWinner(client.gameId, sessionTeam?.id || team.id, client.userId);
+        }
+      }
     }
 
     // Check if all team members have answered
@@ -5667,11 +5700,74 @@ async function startTeamBattleQuestions(gameId: string) {
       console.log(`[TeamBattle] Excluding ${allExcludedQuestionIds.length} questions recently seen by any team member`);
     }
     
+    // Use the first user ID for tracking purposes (needed for toss and question selection)
+    const primaryUserId = allUserIds.length > 0 ? allUserIds[0] : undefined;
+    
+    // -----------------------
+    // NEW: Toss question phase
+    // -----------------------
+    try {
+      // Fetch one toss question (history-aware)
+      const tossCandidates = await database.getRandomQuestionsWithHistory({
+        count: 1,
+        userId: primaryUserId,
+        excludeRecentHours: 0,
+      });
+
+      const validToss = (tossCandidates || []).find(
+        (q: any) => q && q.id && q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0
+      );
+
+      if (validToss) {
+        // Store toss question in session and mark phase
+        gameSession.tossQuestion = validToss;
+        (gameSession as any).phase = "toss";
+        (gameSession as any).tossWinnerTeamId = undefined;
+
+        // Broadcast toss question to all players in this game
+        const gameClients = Array.from(clients.values()).filter((c) => {
+          if (!c.gameId) return false;
+          return c.gameId === gameId;
+        });
+
+        for (const client of gameClients) {
+          sendToClient(client.id, {
+            type: "team_battle_toss",
+            gameId,
+            question: validToss,
+            timeLimit: 10000, // 10s rapid-fire
+            message: "Toss question: first correct team wins the toss!",
+          });
+        }
+
+        // Create a promise that will be resolved when toss completes (winner decided)
+        let tossResolve: ((value?: any) => void) | undefined;
+        const tossPromise = new Promise((resolve) => {
+          tossResolve = resolve;
+        });
+        (gameSession as any)._tossResolve = tossResolve;
+        (gameSession as any)._tossPromise = tossPromise;
+
+        // Set timeout fallback to process toss after timeLimit
+        (gameSession as any).tossTimeout = setTimeout(() => {
+          // Determine winner after timeout
+          processTossResult(gameId).catch((err) => {
+            console.error(`[Toss] Error processing toss for gameId ${gameId}:`, err);
+            if ((gameSession as any)._tossResolve) (gameSession as any)._tossResolve({});
+          });
+        }, 10000);
+
+        // Wait for toss to finish before continuing to generate main questions
+        await tossPromise;
+      }
+    } catch (err) {
+      console.error(`[TeamBattle] Failed to initialize toss question for gameId ${gameId}:`, err);
+      // Non-fatal: continue to generate questions without toss
+    }
+
     // Get questions for the battle using history-aware selection
     // Exclude questions seen by ANY team member in the last 48 hours
     // Total 10 questions: Team A gets 5 (odd: 1,3,5,7,9), Team B gets 5 (even: 2,4,6,8,10)
-    // Use the first user ID for tracking purposes
-    const primaryUserId = allUserIds.length > 0 ? allUserIds[0] : undefined;
     const questions = await database.getRandomQuestionsWithHistory({
       count: 10,
       userId: primaryUserId,
@@ -6339,6 +6435,113 @@ async function processTeamBattleAnswers(gameId: string) {
     setTimeout(() => {
       sendTeamBattleQuestion(gameId);
     }, 2000); // 2 seconds to show results before next question (reduced from 3)
+  }
+}
+
+// -----------------------
+// Toss handling helpers
+// -----------------------
+async function processTossResult(gameId: string) {
+  const gameSession = gameSessions.get(gameId);
+  if (!gameSession || !gameSession.teams) return;
+
+  try {
+    const tossQuestion = (gameSession as any).tossQuestion;
+    if (!tossQuestion || !tossQuestion.answers) {
+      // Nothing to process - pick random fallback
+      const randomWinner = gameSession.teams[0]?.id || gameSession.teams[1]?.id;
+      await finalizeTossWinner(gameId, randomWinner, undefined);
+      return;
+    }
+
+    // Collect all individual submissions for toss question across teams
+    const correctAnswer = tossQuestion.answers.find((a: any) => a.isCorrect);
+    const correctSubmissions: Array<{ teamId: string; userId: number; submittedAt: Date }> = [];
+
+    for (const team of gameSession.teams) {
+      const memberAnswers = team.memberAnswers?.[tossQuestion.id] || {};
+      for (const [userIdStr, entry] of Object.entries(memberAnswers)) {
+        const userId = Number(userIdStr);
+        if (entry && entry.answerId && correctAnswer && entry.answerId === correctAnswer.id) {
+          correctSubmissions.push({
+            teamId: team.id,
+            userId,
+            submittedAt: new Date(entry.submittedAt),
+          });
+        }
+      }
+    }
+
+    if (correctSubmissions.length > 0) {
+      // Find earliest correct submission
+      correctSubmissions.sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
+      const winner = correctSubmissions[0];
+      await finalizeTossWinner(gameId, winner.teamId, winner.userId);
+      return;
+    }
+
+    // No correct submissions -> random fallback between the two teams
+    const teamIds = gameSession.teams.map((t: any) => t.id);
+    const randomIndex = Math.floor(Math.random() * teamIds.length);
+    await finalizeTossWinner(gameId, teamIds[randomIndex], undefined);
+  } catch (err) {
+    console.error(`[Toss] processTossResult error for gameId ${gameId}:`, err);
+  } finally {
+    // Resolve any pending toss promise so startTeamBattleQuestions can continue
+    if ((gameSession as any)?._tossResolve) {
+      try {
+        (gameSession as any)._tossResolve({});
+      } catch (e) {}
+      (gameSession as any)._tossResolve = undefined;
+    }
+  }
+}
+
+async function finalizeTossWinner(gameId: string, winningTeamId: string, winningUserId?: number | undefined) {
+  const gameSession = gameSessions.get(gameId);
+  if (!gameSession || !gameSession.teams) return;
+
+  try {
+    // Set toss winner in session
+    (gameSession as any).tossWinnerTeamId = winningTeamId;
+    (gameSession as any).phase = "playing";
+
+    // Clear toss timeout if present
+    if ((gameSession as any).tossTimeout) {
+      clearTimeout((gameSession as any).tossTimeout);
+      (gameSession as any).tossTimeout = undefined;
+    }
+
+    // Assign teamSide in-memory so existing ordering logic uses it
+    for (const team of gameSession.teams) {
+      if (team.id === winningTeamId) {
+        team.teamSide = "A";
+      } else {
+        team.teamSide = "B";
+      }
+    }
+
+    // Notify all clients of toss result
+    const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+    for (const client of gameClients) {
+      sendToClient(client.id, {
+        type: "team_battle_toss_result",
+        gameId,
+        winnerTeamId: winningTeamId,
+        winnerUserId: winningUserId,
+        message: "Toss complete. First turn assigned.",
+      });
+    }
+
+    // Resolve any pending toss promise so startTeamBattleQuestions can continue
+    if ((gameSession as any)?._tossResolve) {
+      try {
+        (gameSession as any)._tossResolve({});
+      } catch (e) {}
+      (gameSession as any)._tossResolve = undefined;
+    }
+  } catch (err) {
+    console.error(`[Toss] finalizeTossWinner error for gameId ${gameId}:`, err);
   }
 }
 

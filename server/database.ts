@@ -1995,16 +1995,23 @@ class PostgreSQLDatabase implements IDatabase {
 
   // ✅ NEW: Team Battle availability methods
   async getTeamBattleAvailableUsers(): Promise<User[]> {
-    const result = await db
+    const { getOnlineUserIds } = await import("./socket");
+
+    // 1️⃣ Get all users who entered Team Battle (DB truth)
+    const teamBattleUsers = await db
       .select()
       .from(users)
-      .where(
-        and(
-          eq(users.isOnline, true),
-          eq(users.isInTeamBattle, true)
-        )
-      );
-    return result as User[];
+      .where(eq(users.isInTeamBattle, true));
+
+    // 2️⃣ Get real-time online users from WebSocket memory
+    const onlineUserIds = getOnlineUserIds();
+
+    // 3️⃣ Return only users who are both:
+    //     - in Team Battle (DB)
+    //     - currently connected (Socket)
+    return teamBattleUsers.filter(user =>
+      onlineUserIds.includes(user.id)
+    ) as User[];
   }
 
   async setUserTeamBattleStatus(

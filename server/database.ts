@@ -2005,6 +2005,15 @@ class PostgreSQLDatabase implements IDatabase {
 
     // 2️⃣ Get real-time online users from WebSocket memory
     const onlineUserIds = getOnlineUserIds();
+    console.log("🟢 Online User IDs (socket):", onlineUserIds);
+
+    console.log("🟡 TeamBattle DB Users:",
+      teamBattleUsers.map(u => ({
+        id: u.id,
+        username: u.username,
+        isInTeamBattle: u.isInTeamBattle
+      }))
+    );
 
     // 3️⃣ Return only users who are both:
     //     - in Team Battle (DB)

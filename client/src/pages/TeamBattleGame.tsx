@@ -394,13 +394,22 @@ export default function TeamBattleGame() {
             // Show toss winner and continue. Resolve player's team from current state
             const winnerTeamId = data.winnerTeamId;
             const winnerUserId = data.winnerUserId || data.userId;
-            const resolvedPlayerTeamId =
-              gameState.playerTeam?.id ||
-              gameState.teams?.find((team) =>
-                team.members?.some((m) => m.userId === user?.id)
-              )?.id;
 
-            const isYourTeamWinner = resolvedPlayerTeamId === winnerTeamId;
+            // Determine if this client belongs to the winning team:
+            // 1) Prefer checking team membership (if teams are available)
+            // 2) Fallback to comparing winnerUserId to current user
+            let isYourTeamWinner = false;
+            if (winnerTeamId && gameState.teams && gameState.teams.length > 0 && user) {
+              const winningTeamInState = gameState.teams.find((t) => t.id === winnerTeamId);
+              if (winningTeamInState) {
+                isYourTeamWinner = winningTeamInState.members?.some((m: any) => m.userId === user.id) === true;
+              } else {
+                // If winnerTeamId not found in state yet, fallback to winnerUserId compare
+                isYourTeamWinner = winnerUserId === user?.id;
+              }
+            } else {
+              isYourTeamWinner = winnerUserId === user?.id;
+            }
 
             toast({
               title: "Toss Result",

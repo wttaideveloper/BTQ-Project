@@ -1762,27 +1762,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/team-battle-available", ensureAuthenticated, async (req, res) => {
     try {
       console.log("[GET /api/users/team-battle-available] Fetching users in Team Battle...");
+
       const users = await database.getTeamBattleAvailableUsers();
       console.log(`[GET /api/users/team-battle-available] Found ${users.length} users with isInTeamBattle=true`);
 
-      // Log each user for debugging
-      users.forEach(user => {
-        console.log(`  - User ${user.id} (${user.username}): isOnline=${user.isOnline}, isInTeamBattle=${user.isInTeamBattle}`);
-      });
+      const { getOnlineUserIds } = await import("./socket");
+      const onlineUserIds = getOnlineUserIds();
 
-      // Filter out current user
       const filteredUsers = users.filter(user => user.id !== req.user?.id);
 
-      // Return only necessary fields
       const userDetails = filteredUsers.map(user => ({
         id: user.id,
         username: user.username,
         email: user.email,
-        isOnline: user.isOnline,
+        isOnline: onlineUserIds.includes(user.id), // ✅ real-time truth
         isInTeamBattle: user.isInTeamBattle,
       }));
 
-      console.log(`[GET /api/users/team-battle-available] Returning ${userDetails.length} users (after filtering current user)`);
+      console.log(`[GET /api/users/team-battle-available] Returning ${userDetails.length} users`);
+
       res.json(userDetails);
     } catch (err) {
       console.error("[GET /api/users/team-battle-available] ERROR:", err);

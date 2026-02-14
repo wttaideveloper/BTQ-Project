@@ -434,22 +434,14 @@ export default function TeamBattleGame() {
           }
           
           case "team_battle_toss_feedback": {
-            // Immediate feedback on toss submission (correct/incorrect)
+            // Use the same feedback/modal flow as regular questions
             if (typeof data.isCorrect === "boolean") {
-              if (data.isCorrect) {
-                toast({
-                  title: "Correct",
-                  description: "Nice! That answer is correct.",
-                  duration: 2500,
-                });
-              } else {
-                toast({
-                  title: "Incorrect",
-                  description: "That answer was incorrect.",
-                  variant: "destructive",
-                  duration: 2500,
-                });
-              }
+              const correctId = data.correctAnswerId || gameState.currentQuestion?.answers.find((a: any) => a.isCorrect)?.id || null;
+              setCorrectAnswerId(correctId);
+              setLastRoundCorrect(!!data.isCorrect);
+              // mark that we've submitted locally
+              setHasSubmitted(true);
+              // show modal via lastRoundCorrect effect
             }
             break;
           }
@@ -870,6 +862,22 @@ export default function TeamBattleGame() {
 
     // Set selected answer for highlighting
     setSelectedAnswer(answerId);
+    // If we're in toss phase, submit as an individual rapid-fire answer instead of finalize
+    if (gameState.phase === "toss") {
+      if (!user) return;
+      sendGameEvent({
+        type: "submit_team_answer",
+        teamId: gameState.playerTeam.id,
+        questionId: gameState.currentQuestion.id,
+        answerId,
+        gameSessionId: gameSessionId || undefined,
+        userId: user.id,
+        username: user.username,
+        timeSpent: 0,
+      });
+      setHasSubmitted(true);
+      return;
+    }
 
     sendGameEvent({
       type: "finalize_team_answer",
@@ -1102,6 +1110,7 @@ export default function TeamBattleGame() {
           onCaptainSubmit={handleCaptainSubmit}
           isPaused={false}
           isReadOnly={!isYourTurn}
+          isToss={gameState.phase === "toss"}
           answeringTeamName={gameState.answeringTeamName}
           selectedAnswerId={selectedAnswer}
         />
@@ -1178,6 +1187,7 @@ export default function TeamBattleGame() {
           onCaptainSubmit={handleCaptainSubmit}
           isPaused={false}
           isReadOnly={false} // both teams can answer
+          isToss={true}
           answeringTeamName={gameState.answeringTeamName}
           selectedAnswerId={selectedAnswer}
         />

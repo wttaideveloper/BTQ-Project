@@ -113,6 +113,7 @@ interface GameEvent {
   opposingCaptainInvitationSent?: boolean;
   memberName?: string;
   question?: any;
+  correctAnswerId?: string;
   winner?: any;
   answersReceived?: number;
   questionNumber?: number;
@@ -3502,7 +3503,26 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
       return;
     }
 
-    const gameSession = gameSessions.get(client.gameId) || null;
+    const gameSession = client.gameId ? gameSessions.get(client.gameId) || null : null;
+    console.log(`[handleSubmitTeamAnswer] PHASE BEFORE SUBMIT for gameId=${client.gameId}:`, (gameSession as any)?.phase);
+
+    // If the session is in toss phase, route to toss handler and return immediately.
+    if (gameSession && (gameSession as any).phase === "toss") {
+      const sessionTeam = gameSession.teams?.find((t: any) => t.id === event.teamId);
+      if (sessionTeam) {
+        try {
+          await handleTossSubmission(clientId, client, gameSession, sessionTeam, event);
+        } catch (err) {
+          console.error(`[handleSubmitTeamAnswer] Error in handleTossSubmission at top-level:`, err);
+        }
+        return;
+      } else {
+        // No matching team in game session for this toss; ignore to be safe.
+        console.log(`[handleSubmitTeamAnswer] ⏭️ Toss phase active but sessionTeam not found for teamId=${event.teamId}`);
+        return;
+      }
+    }
+
     const isTeamBattle = gameSession?.gameType === "team_battle";
 
     // Team-battle path: use in-memory teams derived from team_battles
@@ -3511,6 +3531,16 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         (t: any) => t.id === event.teamId
       );
       if (!sessionTeam) return;
+
+      // STRICT ISOLATION: If we're currently in toss phase, handle toss submission separately and return
+      if ((gameSession as any).phase === "toss") {
+        try {
+          await handleTossSubmission(clientId, client, gameSession, sessionTeam, event);
+        } catch (err) {
+          console.error(`[handleSubmitTeamAnswer] Error in handleTossSubmission:`, err);
+        }
+        return; // MUST return to prevent normal question pipeline
+      }
 
       // Update member's individual answer
       const memberIndex = sessionTeam.members.findIndex(
@@ -3567,8 +3597,24 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
           questionId: event.questionId,
           answerId: event.answerId,
           isCorrect: isCorrect,
+          correctAnswerId: correctAnswer?.id,
           message: isCorrect ? "Correct!" : "Incorrect",
         });
+      if (client.userId) {
+        try {
+          sendToUser(client.userId, {
+            type: "team_battle_toss_feedback",
+            gameId: client.gameId,
+            questionId: event.questionId,
+            answerId: event.answerId,
+            isCorrect: isCorrect,
+            correctAnswerId: correctAnswer?.id,
+            message: isCorrect ? "Correct!" : "Incorrect",
+          });
+        } catch (e) {
+          console.error(`[Toss] Failed to send toss feedback to all connections for user ${client.userId}:`, e);
+        }
+      }
 
         if (isCorrect) {
           // First correct submission wins the toss
@@ -3683,8 +3729,25 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         questionId: event.questionId,
         answerId: event.answerId,
         isCorrect: isCorrect,
+        correctAnswerId: correctAnswer?.id,
         message: isCorrect ? "Correct!" : "Incorrect",
       });
+      // Also send to all connections of this user (in case clientId isn't the active one)
+      if (client.userId) {
+        try {
+          sendToUser(client.userId, {
+            type: "team_battle_toss_feedback",
+            gameId: client.gameId,
+            questionId: event.questionId,
+            answerId: event.answerId,
+            isCorrect: isCorrect,
+            correctAnswerId: correctAnswer?.id,
+            message: isCorrect ? "Correct!" : "Incorrect",
+          });
+        } catch (e) {
+          console.error(`[Toss] Failed to send toss feedback to all connections for user ${client.userId}:`, e);
+        }
+      }
       if (isCorrect) {
         if (!(currentGameSession as any).tossWinnerTeamId) {
           await finalizeTossWinner(client.gameId, sessionTeam?.id || team.id, client.userId);
@@ -4053,8 +4116,8 @@ async function handleTeamOptionSelected(clientId: string, event: GameEvent) {
       }
     }
 
-    const gameSession = gameSessions.get(client.gameId) || null;
-    const isTeamBattle = gameSession?.gameType === "team_battle";
+    const gameSession = client.gameId ? gameSessions.get(client.gameId) || null : null;
+    const isTeamBattle = (gameSession as any)?.gameType === "team_battle";
 
     if (isTeamBattle && gameSession && gameSession.teams) {
       const sessionTeam = gameSession.teams.find(
@@ -4131,6 +4194,12 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
   if (!client || !client.userId || !event.teamId || !event.finalAnswer) return;
 
   try {
+    const gameSession = client.gameId ? gameSessions.get(client.gameId) || null : null;
+    if (gameSession && (gameSession as any).phase === "toss") {
+      // Silently ignore finalize attempts during toss phase (do not send error)
+      console.log(`[handleFinalizeTeamAnswer] Silently ignoring finalize during toss phase for client ${client.userId}`);
+      return;
+    }
     // ====================================================================
     // AUTHORITATIVE VALIDATION: client.gameId is the ONLY trusted source.
     // ====================================================================
@@ -4165,8 +4234,7 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
       return;
     }
 
-    const gameSession = gameSessions.get(client.gameId) || null;
-    const isTeamBattle = gameSession?.gameType === "team_battle";
+    const isTeamBattle = (gameSession as any)?.gameType === "team_battle";
 
     if (isTeamBattle && gameSession && gameSession.teams) {
       const sessionTeam = gameSession.teams.find(
@@ -5980,13 +6048,26 @@ async function startTeamBattleQuestions(gameId: string) {
       });
     }
 
+    // Before sending any normal questions, ensure toss phase is completed.
+    // If toss was initialized and still active, wait for its promise to resolve.
+    const session = gameSessions.get(gameId);
+    if (session && (session as any).phase === "toss" && (session as any)._tossPromise) {
+      console.log(`[startTeamBattleQuestions] Waiting for toss to complete for gameId: ${gameId}`);
+      try {
+        await (session as any)._tossPromise;
+        console.log(`[startTeamBattleQuestions] Toss completed for gameId: ${gameId}`);
+      } catch (err) {
+        console.error(`[startTeamBattleQuestions] Error waiting for tossPromise for gameId ${gameId}:`, err);
+      }
+    }
+
     // Send first question to the appropriate team (Team A for question 1)
     // CRITICAL FIX: Double-check questions are loaded before sending
     // Add a small delay to ensure all clients are ready and have received team_battle_started
     setTimeout(() => {
-      const session = gameSessions.get(gameId);
-      if (session && session.questions && session.questions.length > 0) {
-        console.log(`[startTeamBattleQuestions] Questions loaded (${session.questions.length}), sending first question for gameId: ${gameId}`);
+      const s = gameSessions.get(gameId);
+      if (s && s.questions && s.questions.length > 0) {
+        console.log(`[startTeamBattleQuestions] Questions loaded (${s.questions.length}), sending first question for gameId: ${gameId}`);
         sendTeamBattleQuestion(gameId);
       } else {
         console.error(`[startTeamBattleQuestions] Questions not loaded for gameId: ${gameId}, retrying...`);
@@ -6038,6 +6119,12 @@ function sendTeamBattleQuestion(gameId: string) {
 
   if (!gameSession.questions) {
     console.error(`[TeamBattle] Questions not initialized for gameId: ${gameId}`);
+    return;
+  }
+
+  // Prevent sending normal questions while toss phase is active
+  if ((gameSession as any).phase === "toss") {
+    console.log(`[TeamBattle] sendTeamBattleQuestion skipped because toss phase is active for gameId: ${gameId}`);
     return;
   }
 
@@ -6477,6 +6564,77 @@ async function processTeamBattleAnswers(gameId: string) {
 // -----------------------
 // Toss handling helpers
 // -----------------------
+async function handleTossSubmission(
+  clientId: string,
+  client: Client,
+  gameSession: any,
+  sessionTeam: any,
+  event: GameEvent
+) {
+  try {
+    const tossQuestion = (gameSession as any).tossQuestion;
+    const qid = event.questionId as string;
+    if (!tossQuestion || qid !== tossQuestion.id) {
+      // Not a toss question submission
+      return;
+    }
+
+    // Initialize tossMemberAnswers storage
+    if (!sessionTeam.tossMemberAnswers) sessionTeam.tossMemberAnswers = {};
+    if (!sessionTeam.tossMemberAnswers[qid]) sessionTeam.tossMemberAnswers[qid] = {};
+
+    // Store temporary toss answer (isolated from normal memberAnswers)
+    sessionTeam.tossMemberAnswers[qid][client.userId!.toString()] = {
+      answerId: event.answerId,
+      submittedAt: new Date(),
+      timeSpent: event.timeSpent || 0,
+    };
+
+    // Evaluate correctness
+    const correctAnswer = tossQuestion.answers?.find((a: any) => a.isCorrect);
+    const isCorrect = !!(correctAnswer && event.answerId === correctAnswer.id);
+
+    // Send feedback only to submitting user (and all their connections)
+    const payload: GameEvent = {
+      type: "team_battle_toss_feedback",
+      gameId: client.gameId,
+      questionId: event.questionId,
+      answerId: event.answerId,
+      isCorrect,
+      correctAnswerId: correctAnswer?.id,
+      message: isCorrect ? "Correct!" : "Incorrect",
+    };
+
+    sendToClient(clientId, payload);
+    if (client.userId) {
+      sendToUser(client.userId, payload);
+    }
+
+    // If correct and toss not yet decided -> finalize winner
+    if (isCorrect && !(gameSession as any).tossWinnerTeamId) {
+      console.log(`[Toss] finalize from handleTossSubmission: team=${sessionTeam.id} user=${client.userId}`);
+      await finalizeTossWinner(client.gameId!, sessionTeam.id, client.userId);
+      return;
+    }
+
+    // If both teams have submitted and none correct -> trigger retry processing
+    const teamsSubmitted = gameSession.teams.filter((t: any) => {
+      const answers = (t as any).tossMemberAnswers?.[qid] || {};
+      return Object.keys(answers).length > 0;
+    }).length;
+
+    if (teamsSubmitted >= 2) {
+      // Let processTossResult handle retry/new toss flow (reads tossMemberAnswers)
+      await processTossResult(gameSession.id);
+      return;
+    }
+
+    // Otherwise just wait for timeout or other submissions
+  } catch (err) {
+    console.error(`[handleTossSubmission] Error:`, err);
+  }
+}
+
 async function processTossResult(gameId: string) {
   const gameSession = gameSessions.get(gameId);
   if (!gameSession || !gameSession.teams) return;
@@ -6495,7 +6653,11 @@ async function processTossResult(gameId: string) {
     const correctSubmissions: Array<{ teamId: string; userId: number; submittedAt: Date }> = [];
 
     for (const team of gameSession.teams) {
-      const memberAnswers = team.memberAnswers?.[tossQuestion.id] || {};
+      // Prefer toss-specific temporary answers to avoid mixing with normal answers
+      const memberAnswers =
+        (team as any).tossMemberAnswers?.[tossQuestion.id] ||
+        team.memberAnswers?.[tossQuestion.id] ||
+        {};
       for (const [userIdStr, entry] of Object.entries(memberAnswers)) {
         const userId = Number(userIdStr);
         const answerId = (entry as any)?.answerId;
@@ -6532,6 +6694,9 @@ async function processTossResult(gameId: string) {
       try {
         // Clear previous toss answers for toss question to avoid mixing
         for (const team of gameSession.teams) {
+          if ((team as any).tossMemberAnswers && (team as any).tossMemberAnswers[tossQuestion.id]) {
+            delete (team as any).tossMemberAnswers[tossQuestion.id];
+          }
           if (team.memberAnswers && team.memberAnswers[tossQuestion.id]) {
             delete team.memberAnswers[tossQuestion.id];
           }
@@ -6603,8 +6768,15 @@ async function finalizeTossWinner(gameId: string, winningTeamId: string, winning
   if (!gameSession || !gameSession.teams) return;
 
   try {
+    // Atomic guard: if already decided, skip
+    if ((gameSession as any).tossWinnerTeamId) {
+      console.log(`[Toss] finalizeTossWinner called but toss already decided for gameId ${gameId}`);
+      return;
+    }
+
     // Set toss winner in session
     (gameSession as any).tossWinnerTeamId = winningTeamId;
+    // Mark phase transition only after assigning sides
     (gameSession as any).phase = "playing";
 
     // Clear toss timeout if present
@@ -6834,14 +7006,22 @@ async function autoFinalizeTeamAnswer(teamId: string, questionId: string) {
   try {
     // Get team from game session for memberAnswers
     let sessionTeam: any | null = null;
+    let parentGameSession: any | null = null;
     for (const [, gameSession] of Array.from(gameSessions)) {
       if (gameSession.gameType === "team_battle" && gameSession.teams) {
         const found = gameSession.teams.find((t: any) => t.id === teamId);
         if (found) {
           sessionTeam = found;
+          parentGameSession = gameSession as any;
           break;
         }
       }
+    }
+
+    // Safety: Do not auto-finalize during toss phase or for toss question ids
+    if (parentGameSession && (parentGameSession as any).phase === "toss") {
+      console.log(`[autoFinalizeTeamAnswer] Skipping auto-finalize because gameId=${parentGameSession.id} is in toss phase`);
+      return;
     }
 
     if (
@@ -7024,7 +7204,7 @@ async function handleTeamBattlePlayerDisconnect(
           gameSession.currentQuestionIndex !== undefined && 
           gameSession.currentQuestionIndex < (gameSession.questions?.length || 0);
 
-        if (currentQuestion && isBattleActive) {
+        if (currentQuestion && isBattleActive && (gameSession as any).phase !== "toss") {
           const questionId = currentQuestion.id;
           const memberAnswers = disconnectedTeam.memberAnswers?.[questionId] || {};
           const teamAlreadyFinalized = disconnectedTeam.finalAnswers?.some(

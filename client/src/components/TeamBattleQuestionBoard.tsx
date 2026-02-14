@@ -43,6 +43,7 @@ interface TeamBattleQuestionBoardProps {
   isReadOnly?: boolean;
   answeringTeamName?: string;
   selectedAnswerId?: string | null; // Track selected answer for highlighting
+  isToss?: boolean;
 }
 
 const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
@@ -64,6 +65,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   isReadOnly = false,
   answeringTeamName,
   selectedAnswerId = null,
+  isToss = false,
 }) => {
   const [displayTime, setDisplayTime] = useState(timeRemaining);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -300,6 +302,11 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
 
   const handleClick = (answerId: string) => {
     if (isQuestionLocked || isReadOnly) return;
+    // During toss phase, every click should be a direct submit (rapid-fire)
+    if (isToss) {
+      onMemberSelect(answerId);
+      return;
+    }
     if (isCaptain) {
       onCaptainSubmit(answerId);
     } else {
@@ -469,7 +476,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
                   </div>
                 )}
 
-                {isCaptain && !isReadOnly && (
+                {isCaptain && !isReadOnly && !isToss && (
                   <div className="mt-2 flex justify-end">
                     <span className="text-[11px] uppercase tracking-wide text-white/70 bg-white/10 rounded-full px-2 py-0.5">
                       Tap to submit for team

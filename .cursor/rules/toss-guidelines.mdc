@@ -1,0 +1,17 @@
+---
+alwaysApply: true
+description: "Project-specific guidance: toss phase must be isolated from normal question pipeline."
+globs: server/socket.ts
+---
+# Toss Phase Isolation Rule
+
+When `phase === "toss"` the server MUST:
+
+- Route all `submit_team_answer` events to `[server/socket.ts](mdc:server/socket.ts)` -> `handleTossSubmission`.
+- Prevent any normal question pipeline code from executing.
+- Never emit `team_answer_finalized` or `team_battle_question_results`.
+- Store toss answers in a temporary per-team map `tossMemberAnswers`.
+- Only call `finalizeTossWinner` when a correct submission is received.
+
+This rule helps maintain a clear separation between toss and normal game logic.
+

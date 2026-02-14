@@ -2079,6 +2079,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const battle = await database.createTeamBattle(teamBattleData);
 
+      // ✅ VERIFICATION: Log battle ID and confirm it exists in DB
+      console.log(`🆔 Team Battle Created - ID: ${battle.id}, Session: ${battle.gameSessionId}`);
+
+      // Verify the battle was actually saved to database
+      try {
+        const verifyBattle = await database.getTeamBattle(battle.id);
+        if (verifyBattle) {
+          console.log(`✅ VERIFIED: Battle ${battle.id} exists in database`);
+          console.log(`   - Status: ${verifyBattle.status}`);
+          console.log(`   - Team A: ${verifyBattle.teamAName} (Captain: ${verifyBattle.teamACaptainId})`);
+          console.log(`   - Created: ${verifyBattle.createdAt}`);
+        } else {
+          console.error(`❌ ERROR: Battle ${battle.id} NOT FOUND in database after creation!`);
+        }
+      } catch (verifyErr) {
+        console.error(`❌ ERROR verifying battle in database:`, verifyErr);
+      }
+
       // CRITICAL FIX: Add team creator to activeTeamMemberships
       activeTeamMemberships.set(req.user.id, `${battle.id}-team-a`);
       console.log(`[POST /api/teams] Added user ${req.user.id} to activeTeamMemberships for team ${battle.id}-team-a`);

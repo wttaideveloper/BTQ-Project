@@ -63,6 +63,7 @@ const Home: React.FC = () => {
   const [showFAQ, setShowFAQ] = useState(false);
   const [titleEffect, setTitleEffect] = useState(false);
   const [isLoadingTeamBattle, setIsLoadingTeamBattle] = useState(false);
+  const [isLoadingRapidFire, setIsLoadingRapidFire] = useState(false);
   const { user, logoutMutation } = useAuth();
   const queryClient = useQueryClient();
 
@@ -670,7 +671,7 @@ const Home: React.FC = () => {
                     </div>
                     <Button
                       onClick={async () => {
-                        setIsLoadingTeamBattle(true);
+                        setIsLoadingRapidFire(true);
                         try {
                           queryClient.removeQueries({ queryKey: ["/api/teams"] });
                           queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
@@ -693,14 +694,18 @@ const Home: React.FC = () => {
                           setShowTeamBattleSetup(true);
                         } finally {
                           setTimeout(() => {
-                            setIsLoadingTeamBattle(false);
+                            setIsLoadingRapidFire(false);
                           }, 300);
                         }
                       }}
-                      disabled={isLoadingTeamBattle}
+                      disabled={isLoadingRapidFire}
                       className="w-full sm:w-auto ml-3 bg-accent hover:bg-accent/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      <Zap className="mr-2 h-4 w-4 flex-shrink-0" />
+                      {isLoadingRapidFire ? (
+                        <Loader2 className="mr-2 h-4 w-4 flex-shrink-0 animate-spin" />
+                      ) : (
+                        <Zap className="mr-2 h-4 w-4 flex-shrink-0" />
+                      )}
                       <span className="hidden sm:inline">Enter Rapid Fire</span>
                       <span className="sm:hidden">Rapid Fire</span>
                     </Button>

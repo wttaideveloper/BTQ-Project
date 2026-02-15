@@ -2538,10 +2538,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           </div>
           <div className="relative z-10 text-center mt-2 sm:mt-3 md:mt-4">
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-heading font-extrabold text-white mb-1 sm:mb-2 tracking-tight">
-              Team Battle Setup
+              {isRapidFire ? "Rapid Fire Setup" : "Team Battle Setup"}
             </h1>
             <p className="text-white/90 text-xs sm:text-sm md:text-base font-medium px-2">
-              Configure your team battle with the same game settings
+              {isRapidFire
+                ? "Quick, timed rounds — configure rapid-fire settings and jump in fast."
+                : "Configure your team battle with the same game settings"}
             </p>
           </div>
         </div>
@@ -2560,9 +2562,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </h3>
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-sm sm:text-base text-blue-800">Team Battle</p>
+                <p className="font-semibold text-sm sm:text-base text-blue-800">
+                  {isRapidFire ? "Rapid Fire" : "Team Battle"}
+                </p>
                 <p className="text-xs sm:text-sm text-blue-700/80">
-                  Two teams compete using the selected configuration
+                  {isRapidFire
+                    ? "Fast-paced solo rounds where speed matters."
+                    : "Two teams compete using the selected configuration"}
                 </p>
               </div>
             </div>
@@ -2750,10 +2756,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-heading font-bold text-lg sm:text-xl text-gray-900">
-                      Enter Team Battle
+                      {isRapidFire ? "Enter Rapid Fire" : "Enter Team Battle"}
                     </h3>
                     <p className="text-xs sm:text-sm text-gray-600">
-                      Choose how you'd like to participate
+                      {isRapidFire
+                        ? "Start a quick solo rapid-fire round or join a fast lobby."
+                        : "Choose how you'd like to participate"}
                     </p>
                   </div>
                 </div>

@@ -33,6 +33,7 @@ export interface TeamBattleSetupProps {
   gameType: "question" | "time";
   category: string;
   difficulty: string;
+  isRapidFire?: boolean;
 }
 
 type OnlineUser = {
@@ -91,6 +92,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   gameType,
   category,
   difficulty,
+  isRapidFire = false,
 }) => {
   if (!open) return null;
 
@@ -1207,7 +1209,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const { data: allAvailableTeams = [] } = useQuery<Team[]>({
     queryKey: ["/api/teams/available"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/teams/available");
+      const gameTypeParam = isRapidFire ? "rapid_fire" : "team_battle";
+      const res = await apiRequest("GET", `/api/teams/available?gameType=${encodeURIComponent(gameTypeParam)}`);
       const data = await res.json();
       return data;
     },
@@ -1625,9 +1628,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     isError,
     refetch: refetchOnlineUsers,
   } = useQuery<OnlineUser[]>({
-    queryKey: ["/api/users/team-battle-available"],
+    queryKey: ["/api/users/team-battle-available", isRapidFire ? "rapid_fire" : "team_battle"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/users/team-battle-available");
+      const gameTypeParam = isRapidFire ? "rapid_fire" : "team_battle";
+      const res = await apiRequest("GET", `/api/users/team-battle-available?gameType=${encodeURIComponent(gameTypeParam)}`);
       return await res.json();
     },
     enabled: open && cleanupComplete, // Block until cleanup completes
@@ -1768,10 +1772,15 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const createTeamMutation = useMutation({
     mutationFn: async (data: { name: string }) => {
       const sessionId = gameSessionId || createGameSession();
-      const res = await apiRequest("POST", "/api/teams", {
+      // Include rapid-fire gameType if component was opened in that mode
+      const payload: any = {
         ...data,
         gameSessionId: sessionId,
-      });
+      };
+      if (isRapidFire) {
+        payload.gameType = "rapid_fire";
+      }
+      const res = await apiRequest("POST", "/api/teams", payload);
       return await res.json();
     },
     onSuccess: (createdTeam: Team) => {
@@ -2157,7 +2166,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const sendJoinRequestMutation = useMutation({
     mutationFn: async (data: { teamId: string }) => {
       setJoinRequestingTeamId(data.teamId);
-      const res = await apiRequest("POST", "/api/team-join-requests", data);
+      const payload: any = { teamId: data.teamId };
+      // Include gameType so server can validate mode isolation
+      payload.gameType = isRapidFire ? "rapid_fire" : "team_battle";
+      const res = await apiRequest("POST", "/api/team-join-requests", payload);
       return await res.json();
     },
     onSuccess: () => {

@@ -85,6 +85,26 @@ function ensureAdmin(req: Request, res: Response, next: NextFunction) {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
+  // TEMP: log whether 'current_team_battle_mode' column exists on startup
+  (async () => {
+    try {
+      const conn = postgres(process.env.DATABASE_URL || "");
+      const exists = await conn`
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'users' AND column_name = 'current_team_battle_mode'
+        LIMIT 1
+      `;
+      if (Array.isArray(exists) && exists.length > 0) {
+        console.log("[Startup Check] Column 'current_team_battle_mode' exists on users table");
+      } else {
+        console.warn("[Startup Check] Column 'current_team_battle_mode' DOES NOT exist on users table");
+      }
+      await conn.end();
+    } catch (err) {
+      console.error("[Startup Check] Failed to check 'current_team_battle_mode' column:", err);
+    }
+  })();
+
   // Set up authentication
   setupAuth(app);
 
@@ -401,6 +421,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log('[POST /api/team-join-requests] Step 1: Called');
       const { teamId } = req.body;
+      const requestedGameType = req.body?.gameType as string | undefined;
       const user = req.user as Express.User;
       console.log('[POST /api/team-join-requests] Step 2: User', user.username, 'ID:', user.id, 'requesting team:', teamId);
 
@@ -417,6 +438,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Team not found" });
       }
       console.log('[POST /api/team-join-requests] Team found:', team.name, 'teamId:', team.id);
+
+      // Validate gameType matches requested mode (prevents cross-mode joining)
+      if (requestedGameType && team.gameType && requestedGameType !== team.gameType) {
+        console.error('[POST /api/team-join-requests] Game type mismatch:', { requestedGameType, teamGameType: team.gameType });
+        return res.status(400).json({ message: "Team game type does not match your current mode" });
+      }
 
       console.log('[POST /api/team-join-requests] Step 4: Checking capacity');
       // Check if team is full
@@ -1762,25 +1789,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/team-battle-available", ensureAuthenticated, async (req, res) => {
     try {
       console.log("[GET /api/users/team-battle-available] Fetching users in Team Battle...");
-
-      const users = await database.getTeamBattleAvailableUsers();
-      console.log(`[GET /api/users/team-battle-available] Found ${users.length} users with isInTeamBattle=true`);
-
+  
+      const gameType = req.query.gameType as string | undefined;
+      console.log("Requested gameType:", gameType);
+  
+      const users = await database.getTeamBattleAvailableUsers(gameType);
+  
+      console.log(`[GET /api/users/team-battle-available] Found ${users.length} users`);
+  
       const { getOnlineUserIds } = await import("./socket");
       const onlineUserIds = getOnlineUserIds();
-
+  
       const filteredUsers = users.filter(user => user.id !== req.user?.id);
-
+  
       const userDetails = filteredUsers.map(user => ({
         id: user.id,
         username: user.username,
         email: user.email,
-        isOnline: onlineUserIds.includes(user.id), // ✅ real-time truth
+        isOnline: onlineUserIds.includes(user.id),
         isInTeamBattle: user.isInTeamBattle,
       }));
-
+  
       console.log(`[GET /api/users/team-battle-available] Returning ${userDetails.length} users`);
-
+  
       res.json(userDetails);
     } catch (err) {
       console.error("[GET /api/users/team-battle-available] ERROR:", err);
@@ -1792,7 +1823,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/users/:id/team-battle-status", ensureAuthenticated, async (req, res) => {
     try {
       const userId = parseInt(req.params.id);
-      const { isInTeamBattle } = req.body;
+      const { isInTeamBattle, gameType } = req.body;
 
       console.log(`[PATCH /api/users/${userId}/team-battle-status] Setting isInTeamBattle=${isInTeamBattle} for user ${userId}`);
 
@@ -1802,8 +1833,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(403)
           .json({ message: "Cannot update other user's Team Battle status" });
       }
+      // Determine mode to set: when entering (true), use provided gameType or default to 'team_battle'
+      // when leaving (false), clear current_team_battle_mode (set to NULL)
+      let modeToSet: string | null | undefined = undefined;
+      if (isInTeamBattle === true) {
+        modeToSet = gameType ? (gameType === "question" ? "team_battle" : gameType) : "team_battle";
+      } else if (isInTeamBattle === false) {
+        modeToSet = null;
+      }
 
-      const user = await database.setUserTeamBattleStatus(userId, isInTeamBattle);
+      const user = await database.setUserTeamBattleStatus(userId, isInTeamBattle, modeToSet);
       console.log(`[PATCH /api/users/${userId}/team-battle-status] SUCCESS: Updated user ${user.username} (${user.id}), isInTeamBattle=${user.isInTeamBattle}`);
 
       // Broadcast status change to all Team Battle users
@@ -1909,7 +1948,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: battle.teamAName,
         captainId: battle.teamACaptainId,
         gameSessionId: battle.gameSessionId,
-        gameMode: "TEAM_BATTLE",
+        // Reflect the underlying battle.gameType so callers can distinguish modes
+        gameType: battle.gameType,
+        gameMode: (battle.gameType === "rapid_fire" ? "RAPID_FIRE" : "TEAM_BATTLE"),
         members: teamAMembers,
         score: battle.teamAScore || 0,
         correctAnswers: battle.teamACorrectAnswers || 0,
@@ -1960,7 +2001,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: battle.teamBName,
         captainId: battle.teamBCaptainId,
         gameSessionId: battle.gameSessionId,
-        gameMode: "TEAM_BATTLE",
+        // Reflect the underlying battle.gameType so callers can distinguish modes
+        gameType: battle.gameType,
+        gameMode: (battle.gameType === "rapid_fire" ? "RAPID_FIRE" : "TEAM_BATTLE"),
         members: teamBMembers,
         score: battle.teamBScore || 0,
         correctAnswers: battle.teamBCorrectAnswers || 0,
@@ -1983,7 +2026,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get game configuration from game session or use defaults
-      let gameType = "question";
+      // Default to explicit team_battle for normal team battle flows
+      let gameType = "team_battle";
       let category = "General";
       let difficulty = "medium";
 
@@ -1992,15 +2036,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           req.body.gameSessionId
         );
         if (gameSession) {
+          // Map realtime sessions to team_battle by default
           gameType =
             gameSession.gameType === "realtime"
-              ? "question"
-              : gameSession.gameType;
+              ? "team_battle"
+              : gameSession.gameType || "team_battle";
           category = gameSession.category || category;
           difficulty = gameSession.difficulty || difficulty;
         }
       } catch (err) {
         console.log("Could not fetch game session, using defaults:", err);
+      }
+      // Allow client to explicitly request a gameType (e.g., rapid_fire)
+      if (req.body && req.body.gameType) {
+        // Defensive: treat legacy "question" as "team_battle"
+        gameType = req.body.gameType === "question" ? "team_battle" : req.body.gameType;
       }
 
       // Clean up any old "forming" AND "ready" teams created by this captain
@@ -2391,6 +2441,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get ALL available teams across all game sessions for join-as-member
   app.get("/api/teams/available", ensureAuthenticated, async (req, res) => {
     try {
+      const requestedGameType = (req.query.gameType as string) || undefined;
+      if (requestedGameType) {
+        console.log(`[GET /api/teams/available] Filtering available teams by gameType=${requestedGameType}`);
+      }
       // Set no-cache headers to prevent stale data
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
@@ -2404,7 +2458,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allAvailableTeams = [];
       const now = Date.now();
 
-      for (const battle of allBattles) {
+    for (const battle of allBattles) {
+        // Normalize stored gameType: treat NULL or legacy "question" as "team_battle"
+        const storedType = (battle.gameType || "").toString();
+        const normalizedBattleType = (!storedType || storedType === "question") ? "team_battle" : storedType;
+        // If the client requested a specific gameType, skip battles that don't match
+        if (requestedGameType && normalizedBattleType !== requestedGameType) {
+          console.log(`  ⏭️ Skipping battle ${battle.id} due to gameType mismatch (battle=${normalizedBattleType} requested=${requestedGameType})`);
+          continue;
+        }
         // Filter 1: Remove stale battles (older than 30 minutes)
         const battleAge = now - new Date(battle.createdAt).getTime();
         const isStale = battleAge > 30 * 60 * 1000; // 30 minutes

@@ -40,6 +40,7 @@ import {
   HelpCircle,
   ChevronDown,
   Loader2,
+  Zap,
 } from "lucide-react";
 import GameSetup, { GameConfig } from "@/components/GameSetup";
 import TeamBattleSetup from "@/components/TeamBattleSetup";
@@ -57,6 +58,7 @@ const Home: React.FC = () => {
   const [showGameSetup, setShowGameSetup] = useState(false);
   const [gameSetupKey, setGameSetupKey] = useState(0);
   const [showTeamBattleSetup, setShowTeamBattleSetup] = useState(false);
+  const [showRapidTeamBattleSetup, setShowRapidTeamBattleSetup] = useState(false);
   const [showWelcomeTutorial, setShowWelcomeTutorial] = useState(false);
   const [showFAQ, setShowFAQ] = useState(false);
   const [titleEffect, setTitleEffect] = useState(false);
@@ -116,6 +118,7 @@ const Home: React.FC = () => {
         try {
           await apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
             isInTeamBattle: false,
+            gameType: null,
           });
           console.log("[Home] ✅ Reset isInTeamBattle=false on Home page mount");
         } catch (err) {
@@ -624,6 +627,42 @@ const Home: React.FC = () => {
                     >
                       <Play className="mr-2 h-4 w-4 flex-shrink-0" /> Start
                     </Button>
+                    <Button
+                      onClick={async () => {
+                        setIsLoadingTeamBattle(true);
+                        try {
+                          queryClient.removeQueries({ queryKey: ["/api/teams"] });
+                          queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
+                          queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
+                          queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
+                          queryClient.removeQueries({ queryKey: ["/api/users/online"] });
+                          queryClient.removeQueries({ queryKey: ["/api/users/team-battle-available"] });
+
+                          try {
+                            const response = await apiRequest("POST", "/api/team-battle/cleanup");
+                            await response.json();
+                          } catch (err) {
+                            // ignore cleanup errors
+                          }
+
+                          setShowTeamBattleSetup(true);
+                          setShowRapidTeamBattleSetup(true);
+                        } catch (error) {
+                          console.error("[Home] Rapid Fire entry error:", error);
+                          setShowTeamBattleSetup(true);
+                        } finally {
+                          setTimeout(() => {
+                            setIsLoadingTeamBattle(false);
+                          }, 300);
+                        }
+                      }}
+                      disabled={isLoadingTeamBattle}
+                      className="w-full sm:w-auto ml-3 bg-accent hover:bg-accent/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0 disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                      <Zap className="mr-2 h-4 w-4 flex-shrink-0" />
+                      <span className="hidden sm:inline">Enter Rapid Fire</span>
+                      <span className="sm:hidden">Rapid Fire</span>
+                    </Button>
                   </div>
                 </div>
 
@@ -803,6 +842,7 @@ const Home: React.FC = () => {
                           try {
                             await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
                               isInTeamBattle: true,
+                              gameType: showRapidTeamBattleSetup ? "rapid_fire" : "team_battle",
                             });
                             console.log("[Home] ✅ Step 2.5: User marked as in Team Battle");
                           } catch (err) {
@@ -987,10 +1027,14 @@ const Home: React.FC = () => {
       {showTeamBattleSetup && (
         <TeamBattleSetup
           open={showTeamBattleSetup}
-          onClose={() => setShowTeamBattleSetup(false)}
+          onClose={() => {
+            setShowTeamBattleSetup(false);
+            setShowRapidTeamBattleSetup(false);
+          }}
           gameType={gameType}
           category={category}
           difficulty={difficulty}
+          isRapidFire={showRapidTeamBattleSetup}
         />
       )}
 

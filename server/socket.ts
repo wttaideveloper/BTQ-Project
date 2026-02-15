@@ -123,6 +123,7 @@ interface GameEvent {
   timeLimit?: number;
   yourTeam?: any;
   username?: string;
+  points?: number;
   teamBattleId?: string;
   teamSide?: "A" | "B";
   teamAReady?: boolean;
@@ -238,8 +239,46 @@ export async function resetBattleState(options: BattleResetOptions): Promise<voi
   if (deleteBattle) {
     // Delete the battle entirely from DB
     try {
+      // Fetch battle participants before deletion so we can clear their mode
+      let battleRecord = null;
+      try {
+        battleRecord = await database.getTeamBattle(battleId);
+      } catch (err) {
+        // proceed even if fetch fails
+      }
+
       await database.deleteTeamBattle(battleId);
       console.log(`[resetBattleState] ✅ Deleted battle ${battleId} from database`);
+
+      // If we have battle participants, clear their team battle status/mode
+      if (battleRecord) {
+        const participantIds: number[] = [];
+        if (battleRecord.teamACaptainId) participantIds.push(battleRecord.teamACaptainId);
+        if (battleRecord.teamBCaptainId) participantIds.push(battleRecord.teamBCaptainId);
+        const aTeammates = Array.isArray(battleRecord.teamATeammates) ? battleRecord.teamATeammates : [];
+        const bTeammates = Array.isArray(battleRecord.teamBTeammates) ? battleRecord.teamBTeammates : [];
+        for (const t of aTeammates) {
+          const tt: any = t;
+          const id = typeof tt === "number" ? tt : (tt && (tt.id ?? tt.userId)) ?? null;
+          if (typeof id === "number") participantIds.push(id);
+        }
+        for (const t of bTeammates) {
+          const tt: any = t;
+          const id = typeof tt === "number" ? tt : (tt && (tt.id ?? tt.userId)) ?? null;
+          if (typeof id === "number") participantIds.push(id);
+        }
+
+        // Deduplicate and clear DB status for these users
+        const uniqueIds = Array.from(new Set(participantIds));
+        for (const uid of uniqueIds) {
+          try {
+            await database.setUserTeamBattleStatus(uid, false, null);
+          } catch (err) {
+            console.error(`[resetBattleState] Failed to clear user ${uid} team battle status:`, err);
+          }
+        }
+        console.log(`[resetBattleState] Cleared team battle status for ${uniqueIds.length} participants of deleted battle ${battleId}`);
+      }
     } catch (err) {
       console.error(`[resetBattleState] ❌ Failed to delete battle ${battleId}:`, err);
     }
@@ -3523,6 +3562,22 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
       }
     }
 
+    // Rapid-fire mode: route to rapid-fire submission handler (isolation from normal flow)
+    if (gameSession && (gameSession as any).mode === "rapid_fire") {
+      const sessionTeam = gameSession.teams?.find((t: any) => t.id === event.teamId);
+      if (sessionTeam) {
+        try {
+          await handleRapidFireSubmission(clientId, client, gameSession, sessionTeam, event);
+        } catch (err) {
+          console.error(`[handleSubmitTeamAnswer] Error in handleRapidFireSubmission at top-level:`, err);
+        }
+        return; // MUST return to prevent normal question pipeline
+      } else {
+        console.log(`[handleSubmitTeamAnswer] ⏭️ Rapid-fire active but sessionTeam not found for teamId=${event.teamId}`);
+        return;
+      }
+    }
+
     const isTeamBattle = gameSession?.gameType === "team_battle";
 
     // Team-battle path: use in-memory teams derived from team_battles
@@ -5692,6 +5747,11 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       questions: [],
       teams: readyTeams,
     });
+    // If this battle was created as rapid_fire, mark session mode
+    if (battle && (battle as any).gameType === "rapid_fire") {
+      const session = gameSessions.get(gameId);
+      if (session) (session as any).mode = "rapid_fire";
+    }
 
     // Update all team members' client gameId and gameSessionId and notify battle start
     // CRITICAL FIX: Get all clients for all players, including those that may connect later
@@ -5750,7 +5810,19 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     // Start delivering questions after ensuring all clients are notified
     // Use a longer delay to ensure all clients have received team_battle_started
     setTimeout(() => {
-      startTeamBattleQuestions(gameId);
+      try {
+        if (battle && (battle as any).gameType === "rapid_fire") {
+          const s = gameSessions.get(gameId);
+          if (s) (s as any).mode = "rapid_fire";
+          startRapidFireQuestions(gameId);
+        } else {
+          startTeamBattleQuestions(gameId);
+        }
+      } catch (err) {
+        console.error(`[handleStartTeamBattle] Error starting questions for gameId ${gameId}:`, err);
+        // Fallback to normal flow
+        startTeamBattleQuestions(gameId);
+      }
     }, 3000); // Increased from 2000 to 3000 to give more time for clients to connect
   } catch (error) {
     // Silent error handling
@@ -6815,6 +6887,241 @@ async function finalizeTossWinner(gameId: string, winningTeamId: string, winning
     }
   } catch (err) {
     console.error(`[Toss] finalizeTossWinner error for gameId ${gameId}:`, err);
+  }
+}
+
+// -----------------------
+// Rapid-fire helpers (separate from normal team battle)
+// -----------------------
+async function startRapidFireQuestions(gameId: string) {
+  const gameSession = gameSessions.get(gameId);
+  if (!gameSession) return;
+
+  try {
+    // Mark mode and phase for this session
+    (gameSession as any).mode = "rapid_fire";
+    (gameSession as any).phase = "rapid_fire";
+
+    // Choose primary user if available for history-aware selection
+    const allUserIds = (gameSession.players || []).map((p: any) => p.userId).filter(Boolean);
+    const primaryUserId = allUserIds.length > 0 ? allUserIds[0] : undefined;
+
+    // Load questions (history-aware) - 10 by default
+    const questions = await database.getRandomQuestionsWithHistory({
+      count: 10,
+      userId: primaryUserId,
+      excludeRecentHours: 0,
+    });
+
+    const validQuestions = (questions || []).filter(
+      (q: any) => q && q.id && q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0
+    );
+
+    gameSession.questions = validQuestions;
+    gameSession.currentQuestionIndex = 0;
+
+    // Initialize rapid-fire awarded map and timeouts
+    (gameSession as any)._rapidAwardedMap = {};
+    (gameSession as any)._rapidQuestionTimeout = undefined;
+
+    // Send first rapid-fire question after a short delay
+    setTimeout(() => {
+      sendRapidFireQuestion(gameId);
+    }, 500);
+  } catch (err) {
+    console.error(`[RapidFire] Failed to initialize rapid-fire for gameId ${gameId}:`, err);
+  }
+}
+
+function sendRapidFireQuestion(gameId: string) {
+  const gameSession = gameSessions.get(gameId);
+  if (!gameSession) return;
+
+  // Only operate in rapid_fire mode
+  if ((gameSession as any).mode !== "rapid_fire") return;
+
+  const currentIndex = gameSession.currentQuestionIndex || 0;
+  const question = gameSession.questions ? gameSession.questions[currentIndex] : null;
+  if (!question) {
+    console.warn(`[RapidFire] No question available for gameId ${gameId} index ${currentIndex}`);
+    return;
+  }
+
+  // Reset per-team rapid answer storage for this question
+  for (const team of gameSession.teams || []) {
+    if (!(team as any).rapidMemberAnswers) (team as any).rapidMemberAnswers = {};
+    (team as any).rapidMemberAnswers[question.id] = {};
+  }
+
+  // Reset awarded flag for this question
+  if (!(gameSession as any)._rapidAwardedMap) (gameSession as any)._rapidAwardedMap = {};
+  (gameSession as any)._rapidAwardedMap[question.id] = false;
+
+  // Broadcast rapid-fire question to all clients in the game
+  const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+  for (const client of gameClients) {
+    sendToClient(client.id, {
+      type: "team_battle_rapid_question",
+      gameId,
+      question,
+      timeLimit: 10000,
+      message: "Rapid-fire: first correct answer wins the point!",
+    });
+  }
+
+  // Set timeout to process result if nobody answers correctly in time
+  if ((gameSession as any)._rapidQuestionTimeout) {
+    clearTimeout((gameSession as any)._rapidQuestionTimeout);
+  }
+  (gameSession as any)._rapidQuestionTimeout = setTimeout(() => {
+    processRapidFireResult(gameId, question.id).catch((err) => {
+      console.error(`[RapidFire] Error processing rapid-fire timeout for gameId ${gameId}:`, err);
+    });
+  }, 10000);
+}
+
+async function processRapidFireResult(gameId: string, questionId: string) {
+  const gameSession = gameSessions.get(gameId);
+  if (!gameSession) return;
+
+  try {
+    // If question already awarded, nothing to do
+    if ((gameSession as any)._rapidAwardedMap?.[questionId]) {
+      return;
+    }
+
+    // No correct submissions within time limit -> broadcast no-award and advance
+    const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+    for (const client of gameClients) {
+      sendToClient(client.id, {
+        type: "rapid_fire_no_award",
+        gameId,
+        questionId,
+        message: "No correct answers - moving to next question.",
+      });
+    }
+
+    // Advance index and send next question if available
+    gameSession.currentQuestionIndex = (gameSession.currentQuestionIndex || 0) + 1;
+    const nextQuestion = gameSession.questions ? gameSession.questions[gameSession.currentQuestionIndex] : null;
+    if (nextQuestion) {
+      // Small delay to show result
+      setTimeout(() => sendRapidFireQuestion(gameId), 1000);
+    } else {
+      // No more questions - end or mark finished (reuse endTeamBattle behavior)
+      // For now, end the team battle gracefully using existing endTeamBattle
+      endTeamBattle(gameId, "rapid_fire_complete");
+    }
+  } catch (err) {
+    console.error(`[RapidFire] processRapidFireResult error for gameId ${gameId}:`, err);
+  } finally {
+    if ((gameSession as any)?._rapidQuestionTimeout) {
+      clearTimeout((gameSession as any)._rapidQuestionTimeout);
+      (gameSession as any)._rapidQuestionTimeout = undefined;
+    }
+  }
+}
+
+async function handleRapidFireSubmission(
+  clientId: string,
+  client: Client,
+  gameSession: any,
+  sessionTeam: any,
+  event: GameEvent
+) {
+  try {
+    const qid = event.questionId as string;
+    const question = (gameSession.questions || []).find((q: any) => q.id === qid);
+    if (!question) {
+      // Not a rapid-fire question
+      return;
+    }
+
+    // Initialize rapidMemberAnswers
+    if (!sessionTeam.rapidMemberAnswers) sessionTeam.rapidMemberAnswers = {};
+    if (!sessionTeam.rapidMemberAnswers[qid]) sessionTeam.rapidMemberAnswers[qid] = {};
+
+    // Prevent multiple submissions from same user for same question
+    if (sessionTeam.rapidMemberAnswers[qid][client.userId!.toString()]) {
+      // Ignore duplicates
+      return;
+    }
+
+    // Store temporary rapid answer
+    sessionTeam.rapidMemberAnswers[qid][client.userId!.toString()] = {
+      answerId: event.answerId,
+      submittedAt: new Date(),
+      timeSpent: event.timeSpent || 0,
+    };
+
+    // Evaluate correctness
+    const correctAnswer = question.answers?.find((a: any) => a.isCorrect);
+    const isCorrect = !!(correctAnswer && event.answerId === correctAnswer.id);
+
+    // Send feedback only to submitting user (and all their connections)
+    const payload: GameEvent = {
+      type: "rapid_fire_feedback",
+      gameId: client.gameId,
+      questionId: event.questionId,
+      answerId: event.answerId,
+      isCorrect,
+      correctAnswerId: correctAnswer?.id,
+      message: isCorrect ? "Correct!" : "Incorrect",
+    };
+
+    sendToClient(clientId, payload);
+    if (client.userId) {
+      try {
+        sendToUser(client.userId, payload);
+      } catch (e) {
+        console.error(`[RapidFire] Failed to send feedback to all connections for user ${client.userId}:`, e);
+      }
+    }
+
+    // Atomic award: if correct and not yet awarded -> award immediately
+    if (isCorrect) {
+      if (!(gameSession as any)._rapidAwardedMap) (gameSession as any)._rapidAwardedMap = {};
+      if (!(gameSession as any)._rapidAwardedMap[qid]) {
+        // Mark awarded immediately to prevent races
+        (gameSession as any)._rapidAwardedMap[qid] = true;
+
+        // Clear per-question timeout
+        if ((gameSession as any)._rapidQuestionTimeout) {
+          clearTimeout((gameSession as any)._rapidQuestionTimeout);
+          (gameSession as any)._rapidQuestionTimeout = undefined;
+        }
+
+        // Award points to the team (simple in-memory update; DB persistence can be added later)
+        const points = 10; // configurable
+        const teamObj = gameSession.teams.find((t: any) => t.id === sessionTeam.id);
+        if (teamObj) {
+          teamObj.teamScore = (teamObj.teamScore || 0) + points;
+          teamObj.correctAnswers = (teamObj.correctAnswers || 0) + 1;
+        }
+
+        // Notify all clients about award
+        const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameSession.id);
+        for (const c of gameClients) {
+          sendToClient(c.id, {
+            type: "rapid_fire_awarded",
+            gameId: gameSession.id,
+            questionId: qid,
+            teamId: sessionTeam.id,
+            userId: client.userId,
+            points,
+            message: "Rapid-fire: first correct answer awarded",
+          });
+        }
+
+        // Advance to next question after short delay
+        gameSession.currentQuestionIndex = (gameSession.currentQuestionIndex || 0) + 1;
+        setTimeout(() => {
+          sendRapidFireQuestion(gameSession.id);
+        }, 1200);
+      }
+    }
+  } catch (err) {
+    console.error(`[handleRapidFireSubmission] Error:`, err);
   }
 }
 

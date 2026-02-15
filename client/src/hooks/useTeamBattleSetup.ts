@@ -63,7 +63,7 @@ export interface OnlineUser {
   lastSeen?: Date;
 }
 
-export function useTeamBattleSetup(gameSessionId?: string) {
+export function useTeamBattleSetup(gameSessionId?: string, gameType?: string) {
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -120,10 +120,11 @@ export function useTeamBattleSetup(gameSessionId?: string) {
   });
 
   // ✅ Team Battle available users (users actively in Team Battle)
+  const gameTypeParam = gameType || "team_battle";
   const { data: onlineUsers = [], refetch: refetchOnlineUsers } = useQuery({
-    queryKey: ["/api/users/team-battle-available"],
+    queryKey: ["/api/users/team-battle-available", gameTypeParam],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/users/team-battle-available");
+      const res = await apiRequest("GET", `/api/users/team-battle-available?gameType=${encodeURIComponent(gameTypeParam)}`);
       return await res.json();
     },
     enabled: !!user,
@@ -200,6 +201,15 @@ export function useTeamBattleSetup(gameSessionId?: string) {
   // Mutations
   const createTeamMutation = useMutation({
     mutationFn: async (data: { name: string; gameSessionId: string }) => {
+      if (!user) throw new Error("User not found");
+  
+      // 🟢 STEP 1: Mark user as in team battle with mode
+      await apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
+        isInTeamBattle: true,
+        currentTeamBattleMode: "rapid_fire", // change dynamically if needed
+      });
+  
+      // 🟢 STEP 2: Create the team
       const res = await apiRequest("POST", "/api/teams", data);
       return await res.json();
     },

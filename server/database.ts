@@ -1994,45 +1994,133 @@ class PostgreSQLDatabase implements IDatabase {
   }
 
   // ✅ NEW: Team Battle availability methods
-  async getTeamBattleAvailableUsers(): Promise<User[]> {
+  async getTeamBattleAvailableUsers(requestedGameType?: string): Promise<User[]> {
     const { getOnlineUserIds } = await import("./socket");
 
-    // 1️⃣ Get all users who entered Team Battle (DB truth)
-    const teamBattleUsers = await db
-      .select()
-      .from(users)
-      .where(eq(users.isInTeamBattle, true));
-
-    // 2️⃣ Get real-time online users from WebSocket memory
+    // 1️⃣ Get real-time online users from WebSocket memory
     const onlineUserIds = getOnlineUserIds();
     console.log("🟢 Online User IDs (socket):", onlineUserIds);
+    if (!onlineUserIds || onlineUserIds.length === 0) {
+      console.log("[DB] No online users currently connected");
+      return [];
+    }
 
-    console.log("🟡 TeamBattle DB Users:",
-      teamBattleUsers.map(u => ({
-        id: u.id,
-        username: u.username,
-        isInTeamBattle: u.isInTeamBattle
-      }))
-    );
+    // 2️⃣ Collect all participant IDs who are already assigned to ANY forming team_battle
+    //    (we will exclude these users from available list)
+    const formingBattles = await this.getTeamBattlesByStatus("forming");
+    const participantIds = new Set<number>();
+    for (const b of formingBattles) {
+      // Normalize stored type: treat NULL or legacy 'question' as 'team_battle'
+      const storedType = (b.gameType || "").toString();
+      const normalizedBattleType = (!storedType || storedType === "question") ? "team_battle" : storedType;
 
-    // 3️⃣ Return only users who are both:
-    //     - in Team Battle (DB)
-    //     - currently connected (Socket)
-    return teamBattleUsers.filter(user =>
-      onlineUserIds.includes(user.id)
-    ) as User[];
+      // If requestedGameType provided, only exclude participants from battles of that mode
+      if (requestedGameType && normalizedBattleType !== requestedGameType) {
+        // skip this battle's participants
+        continue;
+      }
+
+      if (b.teamACaptainId) participantIds.add(b.teamACaptainId);
+      if (b.teamBCaptainId) participantIds.add(b.teamBCaptainId);
+      const aTeammates = Array.isArray(b.teamATeammates) ? b.teamATeammates : [];
+      const bTeammates = Array.isArray(b.teamBTeammates) ? b.teamBTeammates : [];
+      for (const t of aTeammates) {
+        const tt: any = t;
+        const id = typeof tt === "number" ? tt : (tt && (tt.id ?? tt.userId)) ?? null;
+        if (typeof id === "number") participantIds.add(id);
+      }
+      for (const t of bTeammates) {
+        const tt: any = t;
+        const id = typeof tt === "number" ? tt : (tt && (tt.id ?? tt.userId)) ?? null;
+        if (typeof id === "number") participantIds.add(id);
+      }
+    }
+    const excludedIds = Array.from(participantIds);
+    console.log(`[DB] Excluding ${excludedIds.length} users who are already in forming battles${requestedGameType ? ` of mode=${requestedGameType}` : ""}`);
+
+    // 3️⃣ Query users who:
+    //    - have is_in_team_battle = true
+    //    - are online (id in onlineUserIds)
+    //    - are NOT in excludedIds (not already in a forming team)
+    // Respect requestedGameType only via logging here (users are free to join requested mode)
+    if (requestedGameType) {
+      console.log(`[DB] getTeamBattleAvailableUsers requestedGameType=${requestedGameType}`);
+      console.log("Filtering users by mode:", requestedGameType);
+    }
+
+    // Build SQL conditionally depending on whether there are excluded IDs
+    let teamBattleUsers: any[] = [];
+    if (excludedIds.length > 0) {
+      if (requestedGameType) {
+        teamBattleUsers = await sql`
+          SELECT id, username, email,
+            is_in_team_battle AS "isInTeamBattle",
+            is_online AS "isOnline",
+            last_seen AS "lastSeen"
+          FROM users
+          WHERE is_in_team_battle = true
+            AND current_team_battle_mode = ${requestedGameType}
+            AND id = ANY(${onlineUserIds})
+            AND NOT (id = ANY(${excludedIds}))
+        `;
+      } else {
+        teamBattleUsers = await sql`
+          SELECT id, username, email,
+            is_in_team_battle AS "isInTeamBattle",
+            is_online AS "isOnline",
+            last_seen AS "lastSeen"
+          FROM users
+          WHERE is_in_team_battle = true
+            AND id = ANY(${onlineUserIds})
+            AND NOT (id = ANY(${excludedIds}))
+        `;
+      }
+    } else {
+      if (requestedGameType) {
+        teamBattleUsers = await sql`
+          SELECT id, username, email,
+            is_in_team_battle AS "isInTeamBattle",
+            is_online AS "isOnline",
+            last_seen AS "lastSeen"
+          FROM users
+          WHERE is_in_team_battle = true
+            AND current_team_battle_mode = ${requestedGameType}
+            AND id = ANY(${onlineUserIds})
+        `;
+      } else {
+        teamBattleUsers = await sql`
+          SELECT id, username, email,
+            is_in_team_battle AS "isInTeamBattle",
+            is_online AS "isOnline",
+            last_seen AS "lastSeen"
+          FROM users
+          WHERE is_in_team_battle = true
+            AND id = ANY(${onlineUserIds})
+        `;
+      }
+    }
+
+    console.log(`[DB] Returning ${teamBattleUsers.length} available users (is_in_team_battle && online && not in forming team)`);
+    return teamBattleUsers as User[];
   }
 
   async setUserTeamBattleStatus(
     userId: number,
-    isInTeamBattle: boolean
+    isInTeamBattle: boolean,
+    mode?: string | null
   ): Promise<User> {
+    const updatePayload: any = {
+      isInTeamBattle,
+      lastSeen: new Date(),
+    };
+    // Set current_team_battle_mode when provided (nullable)
+    if (typeof mode !== "undefined") {
+      updatePayload.currentTeamBattleMode = mode;
+    }
+
     await db
       .update(users)
-      .set({
-        isInTeamBattle,
-        lastSeen: new Date(),
-      })
+      .set(updatePayload)
       .where(eq(users.id, userId));
     const updated = await this.getUser(userId);
     if (!updated) throw new Error(`User with id ${userId} not found`);

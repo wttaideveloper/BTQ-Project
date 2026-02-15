@@ -1527,6 +1527,7 @@ export default function TeamBattleGame() {
                 try {
                   await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
                     isInTeamBattle: false,
+                    gameType: null,
                   });
                   console.log("[TeamBattleGame] Reset isInTeamBattle=false when returning home");
                 } catch (err) {

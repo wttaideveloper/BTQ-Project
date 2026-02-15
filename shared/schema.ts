@@ -201,6 +201,8 @@ export const users = pgTable("users", {
   isOnline: boolean("is_online").default(false),
   isInTeamBattle: boolean("is_in_team_battle").default(false), // ✅ NEW: Track Team Battle availability
   lastSeen: timestamp("last_seen").defaultNow(),
+  // New: strict per-user current team battle mode for isolation ('team_battle'|'rapid_fire')
+  currentTeamBattleMode: text("current_team_battle_mode").$type<string | null>(),
   // Stats for user profile
   totalGames: integer("total_games").default(0),
   wins: integer("wins").default(0),

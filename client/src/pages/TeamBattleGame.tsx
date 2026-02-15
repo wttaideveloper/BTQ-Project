@@ -133,6 +133,7 @@ export default function TeamBattleGame() {
   );
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [showRefreshLoader, setShowRefreshLoader] = useState(false);
+  const [currentRapidQuestion, setCurrentRapidQuestion] = useState<Question | null>(null);
 
 
   useEffect(() => {
@@ -455,6 +456,39 @@ export default function TeamBattleGame() {
             break;
           }
 
+          case "team_battle_rapid_question":
+            // Server streams rapid-fire questions one-by-one via socket
+            if (!data.question) {
+              console.error("Received team_battle_rapid_question without question data:", data);
+              break;
+            }
+
+            // Set a dedicated rapid question state (do NOT rely on preloaded questions array)
+            setCurrentRapidQuestion(data.question);
+
+            // Ensure game phase/state reflects playing rapid-fire
+            setGameState((prev) => ({
+              ...prev,
+              phase: "playing",
+              questionNumber: data.questionNumber || prev.questionNumber,
+              totalQuestions: data.totalQuestions || prev.totalQuestions,
+              timeRemaining: data.timeLimit ? Math.floor(data.timeLimit / 1000) : prev.timeRemaining,
+              timeLimit: data.timeLimit || prev.timeLimit,
+              isYourTurn: data.isYourTurn !== false,
+              answeringTeamName: data.answeringTeamName,
+            }));
+
+            // Reset local answer state for new rapid question
+            setSelectedAnswer(null);
+            setHasSubmitted(false);
+            setTeamAnswer(null);
+            setMemberAnswers({});
+            setSuggestions({});
+            setWaitingForResults(false);
+            setCorrectAnswerId(null);
+            setLastRoundCorrect(null);
+            break;
+
           case "team_battle_question":
             // Validate question data before setting state
             if (!data.question) {
@@ -610,6 +644,9 @@ export default function TeamBattleGame() {
                 isYourTurn: data.wasYourTurn !== false,
               };
             });
+
+            // Clear any rapid question when results arrive
+            setCurrentRapidQuestion(null);
 
             // Show feedback modal briefly, then next question will come from server
             break;
@@ -1141,6 +1178,66 @@ export default function TeamBattleGame() {
             </Card>
           </div>
         )}
+      </div>
+    );
+  };
+
+  const renderRapidQuestionPhase = () => {
+    // Rapid-fire questions come one-by-one via socket and are stored in currentRapidQuestion
+    if (!currentRapidQuestion) {
+      return (
+        <div className="max-w-xl mx-auto p-6">
+          <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <div className="h-16 w-16 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg animate-pulse">
+                <Clock className="h-8 w-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-center">Preparing Battle</h2>
+              <p className="text-white/70 text-center text-sm">
+                Waiting for the next rapid-fire question...
+              </p>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    if (!gameState.playerTeam) return null;
+
+    const question = currentRapidQuestion;
+    const serverTimeLimit = gameState.timeLimit || question.timeLimit || 10000;
+    const timeLimit = Math.floor(serverTimeLimit / 1000);
+    const timeRemaining = gameState.timeRemaining !== undefined
+      ? Math.min(gameState.timeRemaining, timeLimit)
+      : timeLimit;
+    const isYourTurn = gameState.isYourTurn !== false;
+
+    return (
+      <div className="max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative bg-gradient-to-br from-secondary to-secondary-dark text-white w-full min-w-0 overflow-x-hidden">
+        <div className="mb-3 text-center">
+          <Badge className="bg-yellow-500 text-black font-bold px-3 py-1">RAPID FIRE</Badge>
+        </div>
+        <TeamBattleQuestionBoard
+          question={{ id: question.id, text: question.text }}
+          answers={question.answers.map((a) => ({ id: a.id, text: a.text }))}
+          timeRemaining={timeRemaining}
+          timeLimit={timeLimit}
+          score={gameState.playerTeam.score}
+          totalQuestions={gameState.totalQuestions || 1}
+          currentQuestionIndex={(gameState.questionNumber || 1) - 1}
+          category={question.category}
+          difficultyLabel={question.difficulty}
+          isCaptain={isTeamCaptain()}
+          isQuestionLocked={Boolean(teamAnswer)}
+          suggestions={suggestions}
+          onMemberSelect={handleMemberSelect}
+          onCaptainSubmit={handleCaptainSubmit}
+          isPaused={false}
+          isReadOnly={!isYourTurn}
+          isToss={false}
+          answeringTeamName={gameState.answeringTeamName}
+          selectedAnswerId={selectedAnswer}
+        />
       </div>
     );
   };
@@ -1770,7 +1867,7 @@ export default function TeamBattleGame() {
         </header>
       </div>
       {gameState.phase === "waiting" && renderWaitingPhase()}
-      {gameState.phase === "playing" && (
+      {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && (
         <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6">
           <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-6 sm:py-8 md:py-10">
             <div className="flex flex-col items-center justify-center space-y-4 sm:space-y-6">
@@ -1790,6 +1887,7 @@ export default function TeamBattleGame() {
           </Card>
         </div>
       )}
+      {gameState.phase === "playing" && currentRapidQuestion && renderRapidQuestionPhase()}
       {gameState.phase === "question" && renderQuestionPhase()}
       {gameState.phase === "toss" && renderTossPhase()}
       {/* Results phase removed - goes directly to next question */}

@@ -1768,6 +1768,33 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     }
   }, [userTeam, opponentAccepted]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+  
+    const enterBattleMode = async () => {
+      try {
+        await apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
+          isInTeamBattle: true,
+          gameType: isRapidFire ? "rapid_fire" : "team_battle",
+        });
+  
+        console.log("✅ User entered battle mode:", isRapidFire ? "rapid_fire" : "team_battle");
+      } catch (err) {
+        console.error("Failed to set battle mode:", err);
+      }
+    };
+  
+    enterBattleMode();
+  
+    return () => {
+      apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
+        isInTeamBattle: false,
+      }).catch(() => {});
+  
+      console.log("❌ User exited battle mode");
+    };
+  }, [user?.id, isRapidFire]);
+
   // Create team mutation
   const createTeamMutation = useMutation({
     mutationFn: async (data: { name: string }) => {

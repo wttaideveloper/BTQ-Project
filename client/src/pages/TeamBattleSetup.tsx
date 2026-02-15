@@ -101,7 +101,7 @@ interface TeamJoinRequest {
   expiresAt?: string | Date | null;
 }
 
-const TeamBattleSetup: React.FC = () => {
+const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = false }) => {
   const { user } = useAuth();
   const [_, setLocation] = useLocation();
   const { toast } = useToast();
@@ -237,36 +237,35 @@ const TeamBattleSetup: React.FC = () => {
   // Set user as online when component mounts
   useEffect(() => {
     if (user?.id) {
-      const setUserOnline = async () => {
+      const setUserOnlineAndAvailable = async () => {
         try {
           await apiRequest("PATCH", `/api/users/${user.id}/online`, {
             isOnline: true,
           });
+  
+          // 🔥 ADD THIS
+          await apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
+            isInTeamBattle: true,
+            gameType: isRapidFire ? "rapid_fire" : "team_battle",
+          });
+  
+          console.log("User set as available for battle");
         } catch (error) {
-          // Ignore online status errors
+          console.error(error);
         }
       };
-      setUserOnline();
-
-      // ✅ Set user as NOT in Team Battle when component unmounts
+  
+      setUserOnlineAndAvailable();
+  
       return () => {
-        try {
-          // Keep user online but remove from Team Battle
-          apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
-            isInTeamBattle: false,
-          }).catch(() => { });
-          console.log("[TeamBattleSetup Page] User removed from Team Battle on unmount");
-        } catch (error) {
-          // Ignore cleanup errors
-        }
-
-        if (refetchTimeoutRef.current) {
-          clearTimeout(refetchTimeoutRef.current);
-        }
+        apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
+          isInTeamBattle: false,
+        }).catch(() => {});
+  
+        console.log("User removed from Team Battle on unmount");
       };
     }
   }, [user?.id]);
-
   // onlineUsers provided by hook
 
   // WebSocket connection - ensure socket is initialized

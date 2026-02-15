@@ -1994,115 +1994,148 @@ class PostgreSQLDatabase implements IDatabase {
   }
 
   // ✅ NEW: Team Battle availability methods
-  async getTeamBattleAvailableUsers(requestedGameType?: string): Promise<User[]> {
-    const { getOnlineUserIds } = await import("./socket");
+// ✅ Team Battle availability
+async getTeamBattleAvailableUsers(requestedGameType?: string): Promise<User[]> {
+  const { getOnlineUserIds } = await import("./socket");
 
-    // 1️⃣ Get real-time online users from WebSocket memory
-    const onlineUserIds = getOnlineUserIds();
-    console.log("🟢 Online User IDs (socket):", onlineUserIds);
-    if (!onlineUserIds || onlineUserIds.length === 0) {
-      console.log("[DB] No online users currently connected");
-      return [];
-    }
+  // 1️⃣ Get real-time online users
+  const onlineUserIds = getOnlineUserIds().map(id => Number(id));
+  console.log("🟢 Online User IDs (converted):", onlineUserIds);
+// 🔍 DEBUG: Check DB values before filtering
+const debugUsers = await sql`
+  SELECT id, is_in_team_battle, current_team_battle_mode
+  FROM users
+  WHERE id = ANY(${onlineUserIds})
+`;
 
-    // 2️⃣ Collect all participant IDs who are already assigned to ANY forming team_battle
-    //    (we will exclude these users from available list)
+console.log("🧪 DEBUG USERS BEFORE FILTER:", debugUsers);
+
+  console.log("🧪 Type check:", typeof onlineUserIds[0]);
+  console.log("🟢 Online User IDs (socket):", onlineUserIds);
+  console.log("🧪 onlineUserIds raw:", onlineUserIds);
+console.log("🧪 typeof first:", typeof onlineUserIds[0]);
+
+  if (!onlineUserIds || onlineUserIds.length === 0) {
+    console.log("[DB] No online users currently connected");
+    return [];
+  }
+
+  // 2️⃣ Exclusion logic ONLY for normal team_battle
+  let excludedIds: number[] = [];
+
+  if (requestedGameType === "team_battle") {
     const formingBattles = await this.getTeamBattlesByStatus("forming");
     const participantIds = new Set<number>();
-    for (const b of formingBattles) {
-      // Normalize stored type: treat NULL or legacy 'question' as 'team_battle'
-      const storedType = (b.gameType || "").toString();
-      const normalizedBattleType = (!storedType || storedType === "question") ? "team_battle" : storedType;
 
-      // If requestedGameType provided, only exclude participants from battles of that mode
-      if (requestedGameType && normalizedBattleType !== requestedGameType) {
-        // skip this battle's participants
-        continue;
-      }
+    for (const b of formingBattles) {
+      const storedType = (b.gameType || "").toString();
+      const normalizedBattleType =
+        !storedType || storedType === "question"
+          ? "team_battle"
+          : storedType;
+
+      if (normalizedBattleType !== "team_battle") continue;
 
       if (b.teamACaptainId) participantIds.add(b.teamACaptainId);
       if (b.teamBCaptainId) participantIds.add(b.teamBCaptainId);
+
       const aTeammates = Array.isArray(b.teamATeammates) ? b.teamATeammates : [];
       const bTeammates = Array.isArray(b.teamBTeammates) ? b.teamBTeammates : [];
-      for (const t of aTeammates) {
-        const tt: any = t;
-        const id = typeof tt === "number" ? tt : (tt && (tt.id ?? tt.userId)) ?? null;
-        if (typeof id === "number") participantIds.add(id);
-      }
+
+        for (const t of aTeammates) {
+          const tt: any = t;
+          const id =
+            typeof tt === "number"
+              ? tt
+              : (tt && (tt.id ?? tt.userId)) ?? null;
+          if (typeof id === "number") participantIds.add(id);
+        }
+
       for (const t of bTeammates) {
         const tt: any = t;
-        const id = typeof tt === "number" ? tt : (tt && (tt.id ?? tt.userId)) ?? null;
+        const id =
+          typeof tt === "number"
+            ? tt
+            : (tt && (tt.id ?? tt.userId)) ?? null;
         if (typeof id === "number") participantIds.add(id);
       }
     }
-    const excludedIds = Array.from(participantIds);
-    console.log(`[DB] Excluding ${excludedIds.length} users who are already in forming battles${requestedGameType ? ` of mode=${requestedGameType}` : ""}`);
 
-    // 3️⃣ Query users who:
-    //    - have is_in_team_battle = true
-    //    - are online (id in onlineUserIds)
-    //    - are NOT in excludedIds (not already in a forming team)
-    // Respect requestedGameType only via logging here (users are free to join requested mode)
-    if (requestedGameType) {
-      console.log(`[DB] getTeamBattleAvailableUsers requestedGameType=${requestedGameType}`);
-      console.log("Filtering users by mode:", requestedGameType);
-    }
-
-    // Build SQL conditionally depending on whether there are excluded IDs
-    let teamBattleUsers: any[] = [];
-    if (excludedIds.length > 0) {
-      if (requestedGameType) {
-        teamBattleUsers = await sql`
-          SELECT id, username, email,
-            is_in_team_battle AS "isInTeamBattle",
-            is_online AS "isOnline",
-            last_seen AS "lastSeen"
-          FROM users
-          WHERE is_in_team_battle = true
-            AND current_team_battle_mode = ${requestedGameType}
-            AND id = ANY(${onlineUserIds})
-            AND NOT (id = ANY(${excludedIds}))
-        `;
-      } else {
-        teamBattleUsers = await sql`
-          SELECT id, username, email,
-            is_in_team_battle AS "isInTeamBattle",
-            is_online AS "isOnline",
-            last_seen AS "lastSeen"
-          FROM users
-          WHERE is_in_team_battle = true
-            AND id = ANY(${onlineUserIds})
-            AND NOT (id = ANY(${excludedIds}))
-        `;
-      }
-    } else {
-      if (requestedGameType) {
-        teamBattleUsers = await sql`
-          SELECT id, username, email,
-            is_in_team_battle AS "isInTeamBattle",
-            is_online AS "isOnline",
-            last_seen AS "lastSeen"
-          FROM users
-          WHERE is_in_team_battle = true
-            AND current_team_battle_mode = ${requestedGameType}
-            AND id = ANY(${onlineUserIds})
-        `;
-      } else {
-        teamBattleUsers = await sql`
-          SELECT id, username, email,
-            is_in_team_battle AS "isInTeamBattle",
-            is_online AS "isOnline",
-            last_seen AS "lastSeen"
-          FROM users
-          WHERE is_in_team_battle = true
-            AND id = ANY(${onlineUserIds})
-        `;
-      }
-    }
-
-    console.log(`[DB] Returning ${teamBattleUsers.length} available users (is_in_team_battle && online && not in forming team)`);
-    return teamBattleUsers as User[];
+    excludedIds = Array.from(participantIds);
+    console.log(
+      `[DB] Excluding ${excludedIds.length} users (team_battle mode only)`
+    );
+  } else {
+    console.log("🚀 Rapid Fire mode → NO exclusion applied");
   }
+
+  // 3️⃣ Build query
+  let teamBattleUsers: any[] = [];
+
+  if (excludedIds.length > 0) {
+    if (requestedGameType) {
+      teamBattleUsers = await sql`
+        SELECT id,
+               username,
+               email,
+               is_in_team_battle AS "isInTeamBattle",
+               is_online AS "isOnline",
+               last_seen AS "lastSeen"
+        FROM users
+        WHERE is_in_team_battle = true
+          AND current_team_battle_mode = ${requestedGameType}
+          AND id = ANY(${onlineUserIds})
+          AND NOT (id = ANY(${excludedIds}))
+      `;
+    } else {
+      teamBattleUsers = await sql`
+        SELECT id,
+               username,
+               email,
+               is_in_team_battle AS "isInTeamBattle",
+               is_online AS "isOnline",
+               last_seen AS "lastSeen"
+        FROM users
+        WHERE is_in_team_battle = true
+          AND id = ANY(${onlineUserIds})
+          AND NOT (id = ANY(${excludedIds}))
+      `;
+    }
+  } else {
+    if (requestedGameType) {
+      teamBattleUsers = await sql`
+        SELECT id,
+               username,
+               email,
+               is_in_team_battle AS "isInTeamBattle",
+               is_online AS "isOnline",
+               last_seen AS "lastSeen"
+        FROM users
+        WHERE is_in_team_battle = true
+          AND current_team_battle_mode = ${requestedGameType}
+          AND id = ANY(${onlineUserIds})
+      `;
+    } else {
+      teamBattleUsers = await sql`
+        SELECT id,
+               username,
+               email,
+               is_in_team_battle AS "isInTeamBattle",
+               is_online AS "isOnline",
+               last_seen AS "lastSeen"
+        FROM users
+        WHERE is_in_team_battle = true
+          AND id = ANY(${onlineUserIds})
+      `;
+    }
+  }
+
+  console.log(
+    `[DB] Returning ${teamBattleUsers.length} available users`
+  );
+
+  return teamBattleUsers as User[];
+}
 
   async setUserTeamBattleStatus(
     userId: number,

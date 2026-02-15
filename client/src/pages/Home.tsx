@@ -627,6 +627,47 @@ const Home: React.FC = () => {
                     >
                       <Play className="mr-2 h-4 w-4 flex-shrink-0" /> Start
                     </Button>
+                    {/* Rapid Fire button removed from Single Player card — moved to its own section below */}
+                  </div>
+                </div>
+
+                {/* Rapid Fire Card */}
+                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-accent/50 transition-all duration-300 hover:shadow-2xl hover:shadow-accent/20">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
+                        <Zap className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-xl font-bold text-white">Rapid Fire</h3>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-white/60 hover:text-accent hover:scale-110 cursor-help transition-all duration-200" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-sm p-4 bg-gradient-to-br from-slate-900 to-slate-800 border border-accent/30 shadow-xl rounded-lg">
+                              <div className="flex items-center gap-2 mb-3">
+                                <div className="w-6 h-6 bg-accent/20 rounded-full flex items-center justify-center">
+                                  <Zap className="h-3 w-3 text-accent" />
+                                </div>
+                                <h4 className="font-semibold text-white text-sm">Rapid Fire Mode</h4>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                                  <p className="text-gray-300 text-xs leading-relaxed">Fast-paced timed questions</p>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                                  <p className="text-gray-300 text-xs leading-relaxed">Compete quickly and earn bonus points</p>
+                                </div>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <p className="text-white/70 text-sm">Jump straight into a timed challenge and test your speed.</p>
+                      </div>
+                    </div>
                     <Button
                       onClick={async () => {
                         setIsLoadingTeamBattle(true);

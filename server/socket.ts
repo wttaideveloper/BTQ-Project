@@ -1689,17 +1689,32 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
                 const playerTeam = activeBattleSession.teams?.find((t: any) => t.id === userTeam.id);
                 const isYourTurn = playerTeam && playerTeam.id === answeringTeam?.id;
               
-                sendToClient(clientId, {
-                  type: "team_battle_question",
-                  gameId: activeBattleSession.id,
-                  question: currentQuestion,
-                  questionNumber: questionNumber,
-                  totalQuestions: activeBattleSession.questions.length,
-                  teamId: userTeam.id,
-                  timeLimit: 15000,
-                  isYourTurn: isYourTurn || false,
-                  answeringTeamName: answeringTeam?.name,
-                });
+                // Choose event type based on session mode/gameType to avoid emitting both pipelines
+                if ((activeBattleSession as any).mode === "rapid_fire" || (activeBattleSession as any).gameType === "rapid_fire") {
+                  sendToClient(clientId, {
+                    type: "team_battle_rapid_question",
+                    gameId: activeBattleSession.id,
+                    question: currentQuestion,
+                    questionNumber: questionNumber,
+                    totalQuestions: activeBattleSession.questions.length,
+                    teamId: userTeam.id,
+                    timeLimit: 10000,
+                    isYourTurn: isYourTurn || false,
+                    answeringTeamName: answeringTeam?.name,
+                  });
+                } else {
+                  sendToClient(clientId, {
+                    type: "team_battle_question",
+                    gameId: activeBattleSession.id,
+                    question: currentQuestion,
+                    questionNumber: questionNumber,
+                    totalQuestions: activeBattleSession.questions.length,
+                    teamId: userTeam.id,
+                    timeLimit: 15000,
+                    isYourTurn: isYourTurn || false,
+                    answeringTeamName: answeringTeam?.name,
+                  });
+                }
               }
             }
           }
@@ -6189,6 +6204,18 @@ function sendTeamBattleQuestion(gameId: string) {
     return;
   }
 
+  // If this session is configured for rapid-fire, delegate to the rapid pipeline
+  if ((gameSession as any).mode === "rapid_fire" || (gameSession as any).gameType === "rapid_fire") {
+    console.log(`[TeamBattle] sendTeamBattleQuestion redirected to rapid pipeline for gameId: ${gameId}`);
+    try {
+      // Ensure we use the rapid pipeline which emits only team_battle_rapid_question
+      sendRapidFireQuestion(gameId);
+    } catch (err) {
+      console.error(`[TeamBattle] Failed to send rapid-fire question for gameId ${gameId}:`, err);
+    }
+    return;
+  }
+
   if (!gameSession.questions) {
     console.error(`[TeamBattle] Questions not initialized for gameId: ${gameId}`);
     return;
@@ -6318,16 +6345,29 @@ function sendTeamBattleQuestion(gameId: string) {
     for (const client of gameClients) {
       const player = gameSession.players.find((p) => p.userId === client.userId);
       if (player) {
-        sendToClient(client.id, {
-          type: "team_battle_question",
-          gameId: gameId,
-          question: currentQuestion,
-          questionNumber: questionNumber,
-          totalQuestions: gameSession.questions.length,
-          teamId: player.teamId,
-          timeLimit: 15000,
-          isYourTurn: true,
-        });
+        if ((gameSession as any).mode === "rapid_fire" || (gameSession as any).gameType === "rapid_fire") {
+          sendToClient(client.id, {
+            type: "team_battle_rapid_question",
+            gameId: gameId,
+            question: currentQuestion,
+            questionNumber: questionNumber,
+            totalQuestions: gameSession.questions.length,
+            teamId: player.teamId,
+            timeLimit: 10000,
+            isYourTurn: true,
+          });
+        } else {
+          sendToClient(client.id, {
+            type: "team_battle_question",
+            gameId: gameId,
+            question: currentQuestion,
+            questionNumber: questionNumber,
+            totalQuestions: gameSession.questions.length,
+            teamId: player.teamId,
+            timeLimit: 15000,
+            isYourTurn: true,
+          });
+        }
       }
     }
     return;
@@ -8070,18 +8110,34 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
               const opposingTeam = retrySession.teams?.find((team: any) => team.id !== answeringTeam?.id);
               const isYourTurn = userTeam && userTeam.id === answeringTeam?.id;
               
-              sendToClient(clientId, {
-                type: "team_battle_question",
-                gameId: retrySession.id,
-                question: currentQuestion,
-                questionNumber: questionNumber,
-                totalQuestions: retrySession.questions.length,
-                teamId: userTeam.id,
-                timeLimit: 15000,
-                isYourTurn: isYourTurn || false,
-                answeringTeamName: answeringTeam?.name,
-                opposingTeamName: opposingTeam?.name,
-              });
+              // Choose event type based on session mode/gameType to avoid emitting both pipelines
+              if ((retrySession as any).mode === "rapid_fire" || (retrySession as any).gameType === "rapid_fire") {
+                sendToClient(clientId, {
+                  type: "team_battle_rapid_question",
+                  gameId: retrySession.id,
+                  question: currentQuestion,
+                  questionNumber: questionNumber,
+                  totalQuestions: retrySession.questions.length,
+                  teamId: userTeam.id,
+                  timeLimit: 10000,
+                  isYourTurn: isYourTurn || false,
+                  answeringTeamName: answeringTeam?.name,
+                  opposingTeamName: opposingTeam?.name,
+                });
+              } else {
+                sendToClient(clientId, {
+                  type: "team_battle_question",
+                  gameId: retrySession.id,
+                  question: currentQuestion,
+                  questionNumber: questionNumber,
+                  totalQuestions: retrySession.questions.length,
+                  teamId: userTeam.id,
+                  timeLimit: 15000,
+                  isYourTurn: isYourTurn || false,
+                  answeringTeamName: answeringTeam?.name,
+                  opposingTeamName: opposingTeam?.name,
+                });
+              }
             }
           }
         }, 2000); // Wait 2 seconds for questions to load
@@ -8121,18 +8177,33 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
           const isYourTurn = userTeam && userTeam.id === answeringTeam?.id;
           
           // Send current question if battle is active
-          sendToClient(clientId, {
-            type: "team_battle_question",
-            gameId: battleSession.id,
-            question: currentQuestion,
-            questionNumber: questionNumber,
-            totalQuestions: battleSession.questions.length,
-            teamId: userTeam.id,
-            timeLimit: 15000,
-            isYourTurn: isYourTurn || false,
-            answeringTeamName: answeringTeam?.name,
-            opposingTeamName: opposingTeam?.name,
-          });
+          if ((battleSession as any).mode === "rapid_fire" || (battleSession as any).gameType === "rapid_fire") {
+            sendToClient(clientId, {
+              type: "team_battle_rapid_question",
+              gameId: battleSession.id,
+              question: currentQuestion,
+              questionNumber: questionNumber,
+              totalQuestions: battleSession.questions.length,
+              teamId: userTeam.id,
+              timeLimit: 10000,
+              isYourTurn: isYourTurn || false,
+              answeringTeamName: answeringTeam?.name,
+              opposingTeamName: opposingTeam?.name,
+            });
+          } else {
+            sendToClient(clientId, {
+              type: "team_battle_question",
+              gameId: battleSession.id,
+              question: currentQuestion,
+              questionNumber: questionNumber,
+              totalQuestions: battleSession.questions.length,
+              teamId: userTeam.id,
+              timeLimit: 15000,
+              isYourTurn: isYourTurn || false,
+              answeringTeamName: answeringTeam?.name,
+              opposingTeamName: opposingTeam?.name,
+            });
+          }
         }
       }
     }

@@ -107,6 +107,7 @@ export default function TeamBattleGame() {
 
   const [gameState, setGameState] = useState<GameState>({ phase: "waiting" });
   const gameStateRef = useRef<GameState>(gameState);
+  const isRapidFireRef = useRef<boolean>(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const isExitingRef = useRef<boolean>(false); // Track if user is explicitly exiting
@@ -465,6 +466,8 @@ export default function TeamBattleGame() {
 
             // Set a dedicated rapid question state (do NOT rely on preloaded questions array)
             setCurrentRapidQuestion(data.question);
+            // Mark local flag that we're in rapid-fire pipeline
+            isRapidFireRef.current = true;
 
             // Ensure game phase/state reflects playing rapid-fire
             setGameState((prev) => ({
@@ -498,6 +501,11 @@ export default function TeamBattleGame() {
                 description: "Received invalid question data. Please wait...",
                 variant: "destructive",
               });
+              break;
+            }
+            // Ignore normal question events when in Rapid Fire mode to prevent state overrides
+            if (isRapidFireRef.current) {
+              console.warn("[TeamBattleGame] Ignoring team_battle_question because rapid-fire mode is active");
               break;
             }
 
@@ -629,6 +637,21 @@ export default function TeamBattleGame() {
               const opposingTeam = updatedTeams?.find(
                 (team) => team.id !== playerTeam?.id
               );
+
+              // If we're in rapid-fire mode, avoid switching to the normal "question"
+              // phase to prevent turn/state being overridden by non-rapid logic.
+              if (isRapidFireRef.current) {
+                return {
+                  ...prev,
+                  teams: updatedTeams,
+                  playerTeam: playerTeam || prev.playerTeam,
+                  opposingTeam: opposingTeam || prev.opposingTeam,
+                  // Keep playing phase for rapid-fire flow
+                  phase: "playing",
+                  // Do not set currentQuestion (rapid uses currentRapidQuestion)
+                  isYourTurn: data.wasYourTurn !== false,
+                };
+              }
 
               return {
                 ...prev,
@@ -831,6 +854,13 @@ export default function TeamBattleGame() {
       playerTeam: data.playerTeam,
       opposingTeam: data.opposingTeam,
     }));
+    // If server provides a gameType, keep a local flag to isolate rapid-fire pipelines
+    try {
+      const gameType = data?.gameState?.gameType;
+      isRapidFireRef.current = gameType === "rapid_fire";
+    } catch (_) {
+      // defensive: leave existing value
+    }
   };
 
   const updateTeamsData = (teams: Team[]) => {

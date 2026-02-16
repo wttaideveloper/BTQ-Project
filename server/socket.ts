@@ -6979,7 +6979,8 @@ function sendRapidFireQuestion(gameId: string) {
   const currentIndex = gameSession.currentQuestionIndex || 0;
   const question = gameSession.questions ? gameSession.questions[currentIndex] : null;
   if (!question) {
-    console.warn(`[RapidFire] No question available for gameId ${gameId} index ${currentIndex}`);
+    console.log(`[RapidFire] No more questions available for gameId ${gameId} at index ${currentIndex}. Ending battle.`);
+    endTeamBattle(gameId, "rapid_fire_complete");
     return;
   }
 

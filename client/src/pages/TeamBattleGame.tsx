@@ -469,6 +469,39 @@ export default function TeamBattleGame() {
             break;
           }
 
+          case "rapid_fire_awarded": {
+            // Update scores based on server broadcast
+            if (data.teams) {
+              setGameState((prev) => {
+                const updatedTeams = data.teams;
+                const newPlayerTeam = updatedTeams.find((t: any) => t.id === prev.playerTeam?.id);
+                const newOpposingTeam = updatedTeams.find((t: any) => t.id === prev.opposingTeam?.id);
+
+                return {
+                  ...prev,
+                  teams: updatedTeams,
+                  playerTeam: newPlayerTeam ? { ...prev.playerTeam, ...newPlayerTeam } : prev.playerTeam,
+                  opposingTeam: newOpposingTeam ? { ...prev.opposingTeam, ...newOpposingTeam } : prev.opposingTeam,
+                };
+              });
+            }
+
+            // Show toast if someone else won the point (since we didn't get rapid_fire_feedback)
+            if (user && data.userId !== user.id) {
+              const winnerTeamId = data.teamId;
+              const isMyTeam = gameState.playerTeam?.id === winnerTeamId;
+              const teamName = isMyTeam ? (gameState.playerTeam?.name || "Your team") : (gameState.opposingTeam?.name || "Opponent");
+
+              toast({
+                title: "Rapid Fire Result",
+                description: `${teamName} answered correctly! +${data.points} points.`,
+                duration: 2000,
+                variant: isMyTeam ? "default" : "destructive", // Green for us, Red for them (destructive usually red)
+              });
+            }
+            break;
+          }
+
           case "team_battle_rapid_question":
             // Server streams rapid-fire questions one-by-one via socket
             if (!data.question) {
@@ -703,8 +736,9 @@ export default function TeamBattleGame() {
             setGameState((prev) => {
               // If we never received any questions and we're still in playing phase, something went wrong
               // Don't change to finished - stay in playing to show loading
-              if (!prev.currentQuestion && prev.phase === "playing") {
-                console.warn("[TeamBattle] Received team_battle_ended but no questions were loaded. Staying in playing phase.");
+              // EXCEPTION: Rapid fire mode doesn't rely on 'currentQuestion' state, so check ref
+              if (!prev.currentQuestion && prev.phase === "playing" && !isRapidFireRef.current) {
+                console.warn("[TeamBattleGame] Received team_battle_ended but no questions were loaded. Staying in playing phase.");
                 return prev; // Don't change phase - keep showing loading
               }
               return {
@@ -1769,8 +1803,8 @@ export default function TeamBattleGame() {
         </div>
       )}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
-        {/* Team Scores Header - Show during game */}
-        {gameState.phase === "question" && gameState.playerTeam && gameState.opposingTeam && (
+        {/* Team Scores Header - Show during game (normal or rapid fire) */}
+        {((gameState.phase === "question") || (gameState.phase === "playing" && currentRapidQuestion)) && gameState.playerTeam && gameState.opposingTeam && (
           <div className="mb-3 sm:mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               {/* Your Team */}

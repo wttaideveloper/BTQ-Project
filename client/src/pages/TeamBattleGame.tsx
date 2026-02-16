@@ -275,7 +275,7 @@ export default function TeamBattleGame() {
         const data = JSON.parse(event.data);
         // Debug: log incoming messages for game page handlers
         console.log("[TeamBattleGame] Message received:", data.type, data);
-      
+
         switch (data.type) {
           case "connection_established":
             setConnected(true);
@@ -443,7 +443,7 @@ export default function TeamBattleGame() {
             });
             break;
           }
-          
+
           case "team_battle_toss_feedback": {
             // Use the same feedback/modal flow as regular questions
             if (typeof data.isCorrect === "boolean") {
@@ -453,6 +453,18 @@ export default function TeamBattleGame() {
               // mark that we've submitted locally
               setHasSubmitted(true);
               // show modal via lastRoundCorrect effect
+            }
+            break;
+          }
+
+          case "rapid_fire_feedback": {
+            if (typeof data.isCorrect === "boolean") {
+              const activeQuestion = currentRapidQuestion || gameState.currentQuestion;
+              const correctId = data.correctAnswerId || activeQuestion?.answers.find((a: any) => a.isCorrect)?.id || null;
+
+              setCorrectAnswerId(correctId);
+              setLastRoundCorrect(!!data.isCorrect);
+              setHasSubmitted(true);
             }
             break;
           }
@@ -900,6 +912,23 @@ export default function TeamBattleGame() {
   }, [gameState.phase, gameState.playerTeam, gameSessionId]);
 
   const handleMemberSelect = (answerId: string) => {
+    // Handle rapid fire submission (race condition like toss)
+    if (isRapidFireRef.current && currentRapidQuestion && gameState.playerTeam && user) {
+      sendGameEvent({
+        type: "submit_team_answer",
+        teamId: gameState.playerTeam.id,
+        questionId: currentRapidQuestion.id,
+        answerId,
+        gameSessionId: gameSessionId || undefined,
+        userId: user.id,
+        username: user.username,
+        timeSpent: 0,
+      });
+      setSelectedAnswer(answerId);
+      setHasSubmitted(true);
+      return;
+    }
+
     if (!gameState.currentQuestion || !gameState.playerTeam || !user) return;
 
     // If we're in toss phase submit immediately as an individual submission (race)
@@ -933,6 +962,23 @@ export default function TeamBattleGame() {
   };
 
   const handleCaptainSubmit = (answerId: string) => {
+    // Handle rapid fire submission for captain (race condition like toss)
+    if (isRapidFireRef.current && currentRapidQuestion && gameState.playerTeam && user) {
+      sendGameEvent({
+        type: "submit_team_answer",
+        teamId: gameState.playerTeam.id,
+        questionId: currentRapidQuestion.id,
+        answerId,
+        gameSessionId: gameSessionId || undefined,
+        userId: user.id,
+        username: user.username,
+        timeSpent: 0,
+      });
+      setSelectedAnswer(answerId);
+      setHasSubmitted(true);
+      return;
+    }
+
     if (!gameState.currentQuestion || !gameState.playerTeam) return;
     if (!isTeamCaptain()) return;
 
@@ -1263,8 +1309,10 @@ export default function TeamBattleGame() {
           onMemberSelect={handleMemberSelect}
           onCaptainSubmit={handleCaptainSubmit}
           isPaused={false}
-          isReadOnly={!isYourTurn}
-          isToss={false}
+
+          isReadOnly={false} // Rapid fire allows race condition (both teams answer)
+          isToss={true} // Use toss behavior: click = immediate submit
+
           answeringTeamName={gameState.answeringTeamName}
           selectedAnswerId={selectedAnswer}
         />
@@ -1516,8 +1564,8 @@ export default function TeamBattleGame() {
               <>
                 <div className="flex justify-center mb-3 sm:mb-4">
                   <div className={`h-20 w-20 sm:h-24 sm:w-24 rounded-full ${isYourTeamWinner
-                      ? 'bg-gradient-to-br from-accent via-accent-dark to-accent-light'
-                      : 'bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600'
+                    ? 'bg-gradient-to-br from-accent via-accent-dark to-accent-light'
+                    : 'bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600'
                     } flex items-center justify-center shadow-2xl animate-pulse-slow border-4 ${isYourTeamWinner ? 'border-accent-light' : 'border-yellow-300'
                     }`}>
                     <Crown className={`h-10 w-10 sm:h-12 sm:w-12 ${isYourTeamWinner ? 'text-primary' : 'text-white'
@@ -1548,8 +1596,8 @@ export default function TeamBattleGame() {
               <div className="space-y-4">
                 {/* Your Team */}
                 <div className={`rounded-xl p-4 ${isYourTeamWinner && !isDraw
-                    ? 'bg-gradient-to-r from-accent/20 to-accent-dark/20 border-2 border-accent/50'
-                    : 'bg-black/20 border border-white/10'
+                  ? 'bg-gradient-to-r from-accent/20 to-accent-dark/20 border-2 border-accent/50'
+                  : 'bg-black/20 border border-white/10'
                   }`}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
@@ -1595,8 +1643,8 @@ export default function TeamBattleGame() {
                   <>
                     <div className="h-px bg-white/10" />
                     <div className={`rounded-lg sm:rounded-xl p-3 sm:p-4 ${!isYourTeamWinner && !isDraw
-                        ? 'bg-gradient-to-r from-yellow-400/20 to-yellow-600/20 border-2 border-yellow-400/50'
-                        : 'bg-black/20 border border-white/10'
+                      ? 'bg-gradient-to-r from-yellow-400/20 to-yellow-600/20 border-2 border-yellow-400/50'
+                      : 'bg-black/20 border border-white/10'
                       }`}>
                       <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
                         <div className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
@@ -1702,9 +1750,10 @@ export default function TeamBattleGame() {
 
   // Only show feedback modal if it was our turn to answer
   // lastRoundCorrect is only set if it was our turn, so if it's not null, it was our turn
+  const activeQuestionForFeedback = currentRapidQuestion || gameState.currentQuestion;
   const showFeedbackModal =
     showRoundFeedback &&
-    gameState.currentQuestion &&
+    activeQuestionForFeedback &&
     correctAnswerId !== null &&
     lastRoundCorrect !== null; // If lastRoundCorrect is set, it means it was our turn
 
@@ -1726,8 +1775,8 @@ export default function TeamBattleGame() {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               {/* Your Team */}
               <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${gameState.isYourTurn !== false
-                  ? 'bg-accent/20 border-accent shadow-lg shadow-accent/30'
-                  : 'bg-primary/10 border-primary/30'
+                ? 'bg-accent/20 border-accent shadow-lg shadow-accent/30'
+                : 'bg-primary/10 border-primary/30'
                 }`}>
                 <div className="flex items-center justify-between gap-2 sm:gap-3">
                   <div className="flex-1 min-w-0">
@@ -1751,8 +1800,8 @@ export default function TeamBattleGame() {
 
               {/* Opposing Team */}
               <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${gameState.isYourTurn === false
-                  ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/30'
-                  : 'bg-secondary/10 border-secondary/30'
+                ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/30'
+                : 'bg-secondary/10 border-secondary/30'
                 }`}>
                 <div className="flex items-center justify-between gap-2 sm:gap-3">
                   <div className="flex-1 min-w-0">
@@ -1923,12 +1972,12 @@ export default function TeamBattleGame() {
       {/* Results phase removed - goes directly to next question */}
       {gameState.phase === "finished" && renderFinishedPhase()}
 
-      {showFeedbackModal && gameState.currentQuestion && (
+      {showFeedbackModal && activeQuestionForFeedback && (
         <FeedbackModal
           isCorrect={lastRoundCorrect == true}
-          question={gameState.currentQuestion.text}
+          question={activeQuestionForFeedback.text}
           correctAnswer={
-            gameState.currentQuestion.answers.find(
+            activeQuestionForFeedback.answers.find(
               (a) => a.id === correctAnswerId
             )?.text || ""
           }

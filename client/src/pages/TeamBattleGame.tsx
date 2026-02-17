@@ -24,6 +24,7 @@ import {
   MicOff,
   HelpCircle,
   LogOut,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -139,6 +140,9 @@ export default function TeamBattleGame() {
   const [showTossRetryInstruction, setShowTossRetryInstruction] = useState(false);
   const [showTossResult, setShowTossResult] = useState(false);
   const [tossResultData, setTossResultData] = useState<{ isWinner: boolean; teamName?: string } | null>(null);
+  const [showRapidRules, setShowRapidRules] = useState(false);
+  const [rapidRulesCountdown, setRapidRulesCountdown] = useState(5);
+  const hasShownRapidRules = useRef(false);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -153,6 +157,27 @@ export default function TeamBattleGame() {
       setShowRoundFeedback(true);
     }
   }, [lastRoundCorrect]);
+
+  // Effect to show Rapid Fire rules when game starts
+  useEffect(() => {
+    if (gameState.phase === "playing" && isRapidFireRef.current && !hasShownRapidRules.current) {
+      hasShownRapidRules.current = true;
+      setShowRapidRules(true);
+      setRapidRulesCountdown(5);
+    }
+  }, [gameState.phase]);
+
+  // Effect to handle Rapid Fire rules countdown
+  useEffect(() => {
+    if (showRapidRules && rapidRulesCountdown > 0) {
+      const timer = setTimeout(() => {
+        setRapidRulesCountdown((prev) => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (showRapidRules && rapidRulesCountdown === 0) {
+      setShowRapidRules(false);
+    }
+  }, [showRapidRules, rapidRulesCountdown]);
 
   // Get game session ID from URL
   const search = typeof window !== "undefined" ? window.location.search : "";
@@ -350,8 +375,28 @@ export default function TeamBattleGame() {
             }, 2000);
             break;
 
+
           case "team_battle_started":
-            setGameState((prev) => ({ ...prev, phase: "playing" }));
+            // Set rapid fire mode if specified in start event
+            if (data.gameType === "rapid_fire") {
+              isRapidFireRef.current = true;
+            }
+
+            // Update teams immediately to ensure header shows correct data during preparation
+            const newTeams = data.teams || [];
+            const newPlayerTeam = newTeams.find((team: any) =>
+              team.members && team.members.some((member: any) => member.userId === user?.id)
+            );
+            const newOpposingTeam = newTeams.find((team: any) => team.id !== newPlayerTeam?.id);
+
+            setGameState((prev) => ({
+              ...prev,
+              phase: "playing",
+              teams: newTeams.length ? newTeams : prev.teams,
+              playerTeam: newPlayerTeam || prev.playerTeam,
+              opposingTeam: newOpposingTeam || prev.opposingTeam
+            }));
+
             toast({
               title: "Battle Started!",
               description:
@@ -1825,8 +1870,60 @@ export default function TeamBattleGame() {
     correctAnswerId !== null &&
     lastRoundCorrect !== null; // If lastRoundCorrect is set, it means it was our turn
 
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-primary-dark to-black text-white relative">
+      {/* Rapid Fire Rules Dialog */}
+      <Dialog open={showRapidRules} onOpenChange={() => { }}>
+        <DialogContent className="sm:max-w-md bg-gradient-to-br from-[#0F1624] to-[#0A0F1A] border border-[#DEB126]/50 text-white p-0 overflow-hidden [&>button]:hidden" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <div className="h-2 bg-gray-800 w-full">
+            <div
+              className="h-full bg-[#DEB126] transition-all duration-1000 ease-linear"
+              style={{ width: `${(rapidRulesCountdown / 5) * 100}%` }}
+            />
+          </div>
+          <div className="p-6 flex flex-col items-center text-center space-y-6">
+            <div className="h-20 w-20 rounded-full bg-gradient-to-br from-[#DEB126] to-[#C59D1F] flex items-center justify-center shadow-[0_0_15px_rgba(222,177,38,0.5)] animate-pulse">
+              <Zap className="h-10 w-10 text-white fill-white" />
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#DEB126] via-[#F7D45E] to-[#DEB126] bg-clip-text text-transparent uppercase tracking-wider">
+                Rapid Fire Round
+              </h2>
+              <p className="text-gray-400 text-sm font-medium">
+                Starting in {rapidRulesCountdown} seconds...
+              </p>
+            </div>
+
+            <div className="w-full bg-white/5 rounded-xl p-4 border border-white/10 text-left space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">1</div>
+                <p className="text-sm text-gray-300"><span className="text-[#DEB126] font-semibold">Speed is key!</span> Questions appear one after another instantly.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">2</div>
+                <p className="text-sm text-gray-300">Both teams answer simultaneously. <span className="text-[#DEB126] font-semibold">First correct answer wins points.</span></p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">3</div>
+                <p className="text-sm text-gray-300">Wait for the <span className="text-[#DEB126] font-semibold">Captain</span> to separate final answers.</p>
+              </div>
+            </div>
+
+            <div className="w-full h-12 bg-white/5 rounded-lg flex items-center justify-center border border-white/10">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce"></div>
+                <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce delay-150"></div>
+                <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce delay-300"></div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Navigation Protection Dialog */}
       {showRefreshLoader && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
           <div className="text-center">
@@ -1837,8 +1934,8 @@ export default function TeamBattleGame() {
         </div>
       )}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
-        {/* Team Scores Header - Show during game (normal or rapid fire) */}
-        {((gameState.phase === "question") || (gameState.phase === "playing" && currentRapidQuestion)) && gameState.playerTeam && gameState.opposingTeam && (
+        {/* Team Scores Header - Show during game (normal or rapid fire) - even during preparing/loading phase */}
+        {((gameState.phase === "question") || (gameState.phase === "playing")) && gameState.playerTeam && gameState.opposingTeam && (
           <div className="mb-3 sm:mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               {/* Your Team */}

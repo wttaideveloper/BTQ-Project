@@ -5795,6 +5795,7 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
         gameId: gameId,
         gameSessionId: event.gameSessionId,
         teams: readyTeams,
+        gameType: (battle as any).gameType,
         message: "Team battle has begun!",
       });
     }
@@ -5809,6 +5810,7 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
         gameId: gameId,
         gameSessionId: event.gameSessionId,
         teams: readyTeams,
+        gameType: (battle as any).gameType,
         message: "Team battle has begun!",
       });
     }
@@ -5820,9 +5822,15 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
 
     // Start delivering questions after ensuring all clients are notified
     // Use a longer delay to ensure all clients have received team_battle_started
+    // Start delivering questions after ensuring all clients are notified
+    // Use a longer delay to ensure all clients have received team_battle_started
+    // RAPID FIRE: Increase delay significantly (to 6s) to allow room for the 5s "Rapid Fire Rules" dialog/countdown
+    const isRapidFire = battle && (battle as any).gameType === "rapid_fire";
+    const startDelay = isRapidFire ? 6000 : 3000;
+
     setTimeout(() => {
       try {
-        if (battle && (battle as any).gameType === "rapid_fire") {
+        if (isRapidFire) {
           const s = gameSessions.get(gameId);
           if (s) (s as any).mode = "rapid_fire";
           startRapidFireQuestions(gameId);
@@ -5834,7 +5842,7 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
         // Fallback to normal flow
         startTeamBattleQuestions(gameId);
       }
-    }, 3000); // Increased from 2000 to 3000 to give more time for clients to connect
+    }, startDelay);
   } catch (error) {
     // Silent error handling
     sendToClient(clientId, {

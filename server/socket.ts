@@ -6988,7 +6988,7 @@ function sendRapidFireQuestion(gameId: string) {
       question,
       questionNumber: currentIndex + 1,
       totalQuestions: totalQuestions,
-      timeLimit: 10000,
+      timeLimit: 20000,
       message: "Rapid-fire: first correct answer wins the point!",
     });
   }
@@ -7001,7 +7001,7 @@ function sendRapidFireQuestion(gameId: string) {
     processRapidFireResult(gameId, question.id).catch((err) => {
       console.error(`[RapidFire] Error processing rapid-fire timeout for gameId ${gameId}:`, err);
     });
-  }, 10000);
+  }, 20000);
 }
 
 async function processRapidFireResult(gameId: string, questionId: string) {

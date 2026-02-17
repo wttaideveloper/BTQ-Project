@@ -6848,14 +6848,6 @@ async function processTossResult(gameId: string) {
     // Fallback moved inside unexpected error catch or removed because we wait indefinitely
   } catch (err) {
     console.error(`[Toss] processTossResult error for gameId ${gameId}:`, err);
-  } finally {
-    // Resolve any pending toss promise so startTeamBattleQuestions can continue
-    if ((gameSession as any)?._tossResolve) {
-      try {
-        (gameSession as any)._tossResolve({});
-      } catch (e) { }
-      (gameSession as any)._tossResolve = undefined;
-    }
   }
 }
 

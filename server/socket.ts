@@ -5922,7 +5922,7 @@ async function startTeamBattleQuestions(gameId: string) {
             type: "team_battle_toss",
             gameId,
             question: validToss,
-            timeLimit: 10000, // 10s rapid-fire
+            // timeLimit removed for indefinite toss
             message: "Toss question: first correct team wins the toss!",
           });
         }
@@ -5935,14 +5935,7 @@ async function startTeamBattleQuestions(gameId: string) {
         (gameSession as any)._tossResolve = tossResolve;
         (gameSession as any)._tossPromise = tossPromise;
 
-        // Set timeout fallback to process toss after timeLimit
-        (gameSession as any).tossTimeout = setTimeout(() => {
-          // Determine winner after timeout
-          processTossResult(gameId).catch((err) => {
-            console.error(`[Toss] Error processing toss for gameId ${gameId}:`, err);
-            if ((gameSession as any)._tossResolve) (gameSession as any)._tossResolve({});
-          });
-        }, 10000);
+        // No timeout for toss - wait indefinitely for answers
 
         // Wait for toss to finish before continuing to generate main questions
         await tossPromise;
@@ -6789,10 +6782,15 @@ async function processTossResult(gameId: string) {
     }
 
     // No correct submissions -> check if BOTH teams submitted wrong answers
+
     const teamSubmissionMap: Record<string, boolean> = {};
+
     for (const team of gameSession.teams) {
-      const memberAnswers = team.memberAnswers?.[tossQuestion.id] || {};
-      teamSubmissionMap[team.id] = Object.keys(memberAnswers || {}).length > 0;
+      const memberAnswers =
+        (team as any).tossMemberAnswers?.[tossQuestion.id] || {};
+
+      teamSubmissionMap[team.id] =
+        Object.keys(memberAnswers).length > 0;
     }
 
     const teamsSubmitted = Object.values(teamSubmissionMap).filter(Boolean).length;
@@ -6829,22 +6827,12 @@ async function processTossResult(gameId: string) {
               type: "team_battle_toss",
               gameId,
               question: newToss,
-              timeLimit: 10000,
-              message: "Toss question (retry): first correct answer wins the toss!",
+              // timeLimit removed
+              message: "Both teams answered incorrectly. New Toss: first correct answer wins!",
             });
           }
 
-          // Reset toss timeout to give teams another chance
-          if ((gameSession as any).tossTimeout) {
-            clearTimeout((gameSession as any).tossTimeout);
-            (gameSession as any).tossTimeout = undefined;
-          }
-          (gameSession as any).tossTimeout = setTimeout(() => {
-            processTossResult(gameId).catch((err) => {
-              console.error(`[Toss] Error processing toss retry for gameId ${gameId}:`, err);
-              if ((gameSession as any)._tossResolve) (gameSession as any)._tossResolve({});
-            });
-          }, 10000);
+          // No timeout for re-toss either - wait indefinitely
 
           // Do not resolve toss Promise yet - wait for retry to finish
           return;
@@ -6852,12 +6840,12 @@ async function processTossResult(gameId: string) {
       } catch (err) {
         console.error(`[Toss] Failed to fetch retry toss question for gameId ${gameId}:`, err);
       }
+    } else {
+      // Waiting for other team to answer...
+      return;
     }
 
-    // Otherwise fallback to random winner (no submissions or only one team tried)
-    const teamIds = gameSession.teams.map((t: any) => t.id);
-    const randomIndex = Math.floor(Math.random() * teamIds.length);
-    await finalizeTossWinner(gameId, teamIds[randomIndex], undefined);
+    // Fallback moved inside unexpected error catch or removed because we wait indefinitely
   } catch (err) {
     console.error(`[Toss] processTossResult error for gameId ${gameId}:`, err);
   } finally {
@@ -6871,39 +6859,34 @@ async function processTossResult(gameId: string) {
   }
 }
 
-async function finalizeTossWinner(gameId: string, winningTeamId: string, winningUserId?: number | undefined) {
+async function finalizeTossWinner(
+  gameId: string,
+  winningTeamId: string,
+  winningUserId?: number
+) {
   const gameSession = gameSessions.get(gameId);
   if (!gameSession || !gameSession.teams) return;
 
   try {
-    // Atomic guard: if already decided, skip
-    if ((gameSession as any).tossWinnerTeamId) {
-      console.log(`[Toss] finalizeTossWinner called but toss already decided for gameId ${gameId}`);
-      return;
-    }
+    if ((gameSession as any).tossWinnerTeamId) return;
 
-    // Set toss winner in session
     (gameSession as any).tossWinnerTeamId = winningTeamId;
-    // Mark phase transition only after assigning sides
-    (gameSession as any).phase = "playing";
 
-    // Clear toss timeout if present
+    // 🔥 CRITICAL FIX
+    (gameSession as any).phase = "in_game";
+
     if ((gameSession as any).tossTimeout) {
       clearTimeout((gameSession as any).tossTimeout);
       (gameSession as any).tossTimeout = undefined;
     }
 
-    // Assign teamSide in-memory so existing ordering logic uses it
     for (const team of gameSession.teams) {
-      if (team.id === winningTeamId) {
-        team.teamSide = "A";
-      } else {
-        team.teamSide = "B";
-      }
+      team.teamSide = team.id === winningTeamId ? "A" : "B";
     }
 
-    // Notify all clients of toss result
-    const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+    const gameClients = Array.from(clients.values())
+      .filter((c) => c.gameId === gameId);
+
     for (const client of gameClients) {
       sendToClient(client.id, {
         type: "team_battle_toss_result",
@@ -6914,15 +6897,13 @@ async function finalizeTossWinner(gameId: string, winningTeamId: string, winning
       });
     }
 
-    // Resolve any pending toss promise so startTeamBattleQuestions can continue
     if ((gameSession as any)?._tossResolve) {
-      try {
-        (gameSession as any)._tossResolve({});
-      } catch (e) { }
+      (gameSession as any)._tossResolve({});
       (gameSession as any)._tossResolve = undefined;
     }
+
   } catch (err) {
-    console.error(`[Toss] finalizeTossWinner error for gameId ${gameId}:`, err);
+    console.error(`[Toss] finalizeTossWinner error:`, err);
   }
 }
 

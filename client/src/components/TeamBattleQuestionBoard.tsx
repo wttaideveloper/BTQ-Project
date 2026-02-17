@@ -87,7 +87,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       setDisplayTime(timeRemaining);
       hasReadQuestionRef.current = false;
       isTimerRunningRef.current = false;
-      
+
       // Clear timer when question changes
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -98,7 +98,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       lastTimeRemainingRef.current = timeRemaining;
       setDisplayTime(timeRemaining);
       isTimerRunningRef.current = false;
-      
+
       // Restart timer with new time
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -150,7 +150,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
             console.log(
               `📢 [TeamBattle] Starting narration: "${textToSpeak.substring(0, 50)}..."`
             );
-            
+
             // Verify session is still valid before speaking
             const currentSession = voiceService.getCurrentSession();
             if (currentSession === newSessionId || !currentSession) {
@@ -206,7 +206,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
 
     // Stop timer if question is locked, paused, read-only, or time expired
     // Use timeRemaining as source of truth, but also check displayTime for current state
-    if (timeRemaining <= 0 || isQuestionLocked || isPaused || isReadOnly) {
+    if (timeRemaining <= 0 || isQuestionLocked || isPaused || isReadOnly || isToss) {
       isTimerRunningRef.current = false;
       // Sync displayTime to match stopped state
       if (timeRemaining <= 0) {
@@ -362,50 +362,58 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       </div>
 
       <div className="h-4 bg-black w-full relative overflow-hidden">
-        <div
-          className={`timer-bar h-full ${
-            timePercentage > 50
-              ? "bg-gradient-to-r from-accent to-accent-dark border-r-2 border-white/50"
-              : timePercentage > 20
-              ? "bg-gradient-to-r from-orange-500 to-red-500 border-r-2 border-white/50"
-              : "bg-gradient-to-r from-red-600 to-red-900 border-r-2 border-white/50"
-          }`}
-          style={{ width: `${timePercentage}%` }}
-        ></div>
-
-        {timePercentage <= 20 && (
-          <div
-            className="absolute inset-0 bg-red-500/30 animate-pulse"
-            style={{ width: `${timePercentage * 3}%` }}
-          ></div>
-        )}
-
-        <div className="absolute inset-0 flex">
-          {Array.from({ length: 20 }).map((_, index) => (
+        {!isToss && (
+          <>
             <div
-              key={index}
-              className={`h-full flex-1 border-r border-black/40 ${
-                index < Math.floor(timePercentage / 5)
-                  ? timePercentage <= 20
-                    ? "bg-red-600/50 animate-pulse"
-                    : timePercentage <= 50
-                    ? "bg-orange-500/50"
-                    : "bg-accent/50"
-                  : "bg-transparent"
-              }`}
+              className={`timer-bar h-full ${timePercentage > 50
+                ? "bg-gradient-to-r from-accent to-accent-dark border-r-2 border-white/50"
+                : timePercentage > 20
+                  ? "bg-gradient-to-r from-orange-500 to-red-500 border-r-2 border-white/50"
+                  : "bg-gradient-to-r from-red-600 to-red-900 border-r-2 border-white/50"
+                }`}
+              style={{ width: `${timePercentage}%` }}
             ></div>
-          ))}
-        </div>
 
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span
-            className={`text-xs font-bold ${
-              timePercentage <= 20 ? "text-red-100 animate-pulse" : "text-white"
-            }`}
-          >
-            {displayTime}s
-          </span>
-        </div>
+            {timePercentage <= 20 && (
+              <div
+                className="absolute inset-0 bg-red-500/30 animate-pulse"
+                style={{ width: `${timePercentage * 3}%` }}
+              ></div>
+            )}
+
+            <div className="absolute inset-0 flex">
+              {Array.from({ length: 20 }).map((_, index) => (
+                <div
+                  key={index}
+                  className={`h-full flex-1 border-r border-black/40 ${index < Math.floor(timePercentage / 5)
+                    ? timePercentage <= 20
+                      ? "bg-red-600/50 animate-pulse"
+                      : timePercentage <= 50
+                        ? "bg-orange-500/50"
+                        : "bg-accent/50"
+                    : "bg-transparent"
+                    }`}
+                ></div>
+              ))}
+            </div>
+
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span
+                className={`text-xs font-bold ${timePercentage <= 20 ? "text-red-100 animate-pulse" : "text-white"
+                  }`}
+              >
+                {displayTime}s
+              </span>
+            </div>
+          </>
+        )}
+        {isToss && (
+          <div className="absolute inset-0 flex items-center justify-center bg-yellow-500/20">
+            <span className="text-xs font-bold text-yellow-300 animate-pulse">
+              RACE TO ANSWER
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="p-3 sm:p-5 md:p-8 flex-grow flex flex-col bg-gradient-to-b from-black to-primary-dark/30">
@@ -432,25 +440,22 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
                 type="button"
                 onClick={() => handleClick(answer.id)}
                 disabled={isDisabled}
-                className={`answer-button transition-all duration-200 ${
-                  isReadOnly 
-                    ? 'bg-primary/50 cursor-not-allowed opacity-75' 
-                    : isSelected
+                className={`answer-button transition-all duration-200 ${isReadOnly
+                  ? 'bg-primary/50 cursor-not-allowed opacity-75'
+                  : isSelected
                     ? 'bg-gradient-to-r from-accent to-accent-dark border-2 border-accent-light shadow-glow scale-[1.02]'
                     : 'bg-primary hover:bg-primary/90 hover:scale-[1.01]'
-                } text-white font-medium py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 rounded-xl flex flex-col items-stretch text-left gap-2 min-w-0 w-full relative`}
+                  } text-white font-medium py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 rounded-xl flex flex-col items-stretch text-left gap-2 min-w-0 w-full relative`}
               >
                 <div className="flex items-center min-w-0">
-                  <span className={`${
-                    isSelected 
-                      ? 'bg-white text-accent shadow-lg scale-110' 
-                      : 'bg-accent text-primary'
-                  } font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md flex-shrink-0 transition-all duration-200`}>
+                  <span className={`${isSelected
+                    ? 'bg-white text-accent shadow-lg scale-110'
+                    : 'bg-accent text-primary'
+                    } font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center mr-2 sm:mr-3 md:mr-4 shadow-md flex-shrink-0 transition-all duration-200`}>
                     {labels[index]}
                   </span>
-                  <span className={`text-sm sm:text-base md:text-lg line-clamp-2 sm:line-clamp-none flex-1 min-w-0 overflow-hidden ${
-                    isSelected ? 'text-white font-semibold' : 'text-white'
-                  }`}>
+                  <span className={`text-sm sm:text-base md:text-lg line-clamp-2 sm:line-clamp-none flex-1 min-w-0 overflow-hidden ${isSelected ? 'text-white font-semibold' : 'text-white'
+                    }`}>
                     {answer.text}
                   </span>
                   {isSelected && !isDisabled && (

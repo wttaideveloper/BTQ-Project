@@ -387,7 +387,7 @@ export default function TeamBattleGame() {
             setLastRoundCorrect(null);
             toast({
               title: "Toss Question",
-              description: "First correct answer wins the toss — hurry!",
+              description: data.message || "First correct answer wins the toss — hurry!",
               duration: 3000,
             });
             break;

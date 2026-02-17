@@ -6970,11 +6970,16 @@ function sendRapidFireQuestion(gameId: string) {
 
   // Broadcast rapid-fire question to all clients in the game
   const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
+  // Uses existing currentIndex variable from line 6953
+  const totalQuestions = gameSession.questions?.length || 5;
+
   for (const client of gameClients) {
     sendToClient(client.id, {
       type: "team_battle_rapid_question",
       gameId,
       question,
+      questionNumber: currentIndex + 1,
+      totalQuestions: totalQuestions,
       timeLimit: 10000,
       message: "Rapid-fire: first correct answer wins the point!",
     });

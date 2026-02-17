@@ -7158,6 +7158,28 @@ async function handleRapidFireSubmission(
           sendRapidFireQuestion(gameSession.id);
         }, 1200);
       }
+    } else {
+      // Incorrect answer: Check if ALL teams have now answered (and failed)
+      // This allows moving to next question immediately if everyone got it wrong
+      const allTeamsParticipated = (gameSession.teams || []).every((t: any) => {
+        const teamAnswers = (t as any).rapidMemberAnswers?.[qid];
+        return teamAnswers && Object.keys(teamAnswers).length > 0;
+      });
+
+      if (allTeamsParticipated && !(gameSession as any)._rapidAwardedMap?.[qid]) {
+        console.log(`[RapidFire] All teams answered incorrectly for ${qid}. Moving to next question immediately.`);
+
+        // Clear timeout since we are handling it now
+        if ((gameSession as any)._rapidQuestionTimeout) {
+          clearTimeout((gameSession as any)._rapidQuestionTimeout);
+          (gameSession as any)._rapidQuestionTimeout = undefined;
+        }
+
+        // Trigger "no award" logic immediately
+        processRapidFireResult(gameSession.id, qid).catch((err) => {
+          console.error(`[RapidFire] Error processing immediate result:`, err);
+        });
+      }
     }
   } catch (err) {
     console.error(`[handleRapidFireSubmission] Error:`, err);

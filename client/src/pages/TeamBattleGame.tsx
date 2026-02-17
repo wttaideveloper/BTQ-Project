@@ -1379,7 +1379,7 @@ export default function TeamBattleGame() {
           isPaused={false}
 
           isReadOnly={false} // Rapid fire allows race condition (both teams answer)
-          isToss={true} // Use toss behavior: click = immediate submit
+          isToss={false} // Rapid fire is not a toss question
 
           answeringTeamName={gameState.answeringTeamName}
           selectedAnswerId={selectedAnswer}

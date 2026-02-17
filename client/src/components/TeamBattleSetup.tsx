@@ -1770,27 +1770,27 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   useEffect(() => {
     if (!user?.id) return;
-  
+
     const enterBattleMode = async () => {
       try {
         await apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
           isInTeamBattle: true,
           gameType: isRapidFire ? "rapid_fire" : "team_battle",
         });
-  
+
         console.log("✅ User entered battle mode:", isRapidFire ? "rapid_fire" : "team_battle");
       } catch (err) {
         console.error("Failed to set battle mode:", err);
       }
     };
-  
+
     enterBattleMode();
-  
+
     return () => {
       apiRequest("PATCH", `/api/users/${user.id}/team-battle-status`, {
         isInTeamBattle: false,
-      }).catch(() => {});
-  
+      }).catch(() => { });
+
       console.log("❌ User exited battle mode");
     };
   }, [user?.id, isRapidFire]);
@@ -2514,7 +2514,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     <div className="fixed inset-0 bg-gradient-to-br from-black/80 via-primary-dark/80 to-secondary-dark/80 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:py-4 md:py-6 sm:px-4">
       <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-none sm:rounded-xl md:rounded-2xl shadow-2xl w-full h-full sm:h-auto sm:max-w-3xl mx-auto my-auto sm:max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden border-0 sm:border border-white/20">
         {/* Header Section */}
-        <div className="bg-gradient-to-r from-primary via-primary-dark to-secondary p-3 sm:p-4 md:p-6 relative overflow-hidden flex-shrink-0 safe-area-top">
+        <div className={`${isRapidFire ? "bg-gradient-to-r from-[#DEB126] via-[#C59D1F] to-[#B58E12]" : "bg-gradient-to-r from-primary via-primary-dark to-secondary"} p-3 sm:p-4 md:p-6 relative overflow-hidden flex-shrink-0 safe-area-top`}>
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
           <div className="relative z-10 flex justify-between items-center gap-2">
             <Button
@@ -2552,20 +2552,20 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-4 md:p-6 bg-white/95 pb-6 sm:pb-8 md:pb-10 safe-area-bottom" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
           {/* Game Configuration Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-6">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border border-blue-200/50 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <div className={`bg-gradient-to-br ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20 border-[#DEB126]/30" : "from-blue-50 to-blue-100/50 border-blue-200/50"} rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border shadow-sm hover:shadow-md transition-shadow duration-200`}>
               <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                <div className={`w-8 h-8 sm:w-10 sm:h-10 ${isRapidFire ? "bg-[#DEB126]" : "bg-blue-500"} rounded-lg flex items-center justify-center shadow-md flex-shrink-0`}>
                   <Users className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
-                <h3 className="font-heading font-bold text-base sm:text-lg text-blue-900">
+                <h3 className={`font-heading font-bold text-base sm:text-lg ${isRapidFire ? "text-[#856910]" : "text-blue-900"}`}>
                   Game Mode
                 </h3>
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-sm sm:text-base text-blue-800">
+                <p className={`font-semibold text-sm sm:text-base ${isRapidFire ? "text-[#856910]" : "text-blue-800"}`}>
                   {isRapidFire ? "Rapid Fire" : "Team Battle"}
                 </p>
-                <p className="text-xs sm:text-sm text-blue-700/80">
+                <p className={`text-xs sm:text-sm ${isRapidFire ? "text-[#856910]/80" : "text-blue-700/80"}`}>
                   {isRapidFire
                     ? "Fast-paced solo rounds where speed matters."
                     : "Two teams compete using the selected configuration"}
@@ -2573,37 +2573,37 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border border-purple-200/50 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <div className={`bg-gradient-to-br ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/30 border-[#DEB126]/30" : "from-purple-50 to-purple-100/50 border-purple-200/50"} rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border shadow-sm hover:shadow-md transition-shadow duration-200`}>
               <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-500 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                <div className={`w-8 h-8 sm:w-10 sm:h-10 ${isRapidFire ? "bg-[#C59D1F]" : "bg-purple-500"} rounded-lg flex items-center justify-center shadow-md flex-shrink-0`}>
                   <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
-                <h3 className="font-heading font-bold text-base sm:text-lg text-purple-900">
+                <h3 className={`font-heading font-bold text-base sm:text-lg ${isRapidFire ? "text-[#856910]" : "text-purple-900"}`}>
                   Configuration
                 </h3>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
                 <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
-                  <span className="text-purple-600 text-xs font-medium">
+                  <span className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
                     Type
                   </span>
-                  <p className="font-semibold text-purple-900 mt-0.5 text-xs sm:text-sm break-words">
+                  <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm break-words`}>
                     {gameType === "question" ? "Question-Based" : "Time-Based"}
                   </p>
                 </div>
                 <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
-                  <span className="text-purple-600 text-xs font-medium">
+                  <span className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
                     Difficulty
                   </span>
-                  <p className="font-semibold text-purple-900 mt-0.5 text-xs sm:text-sm">
+                  <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm`}>
                     {difficulty}
                   </p>
                 </div>
                 <div className="col-span-2 bg-white/60 rounded-lg p-1.5 sm:p-2">
-                  <span className="text-purple-600 text-xs font-medium">
+                  <span className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
                     Category
                   </span>
-                  <p className="font-semibold text-purple-900 mt-0.5 text-xs sm:text-sm break-words">
+                  <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm break-words`}>
                     {category}
                   </p>
                 </div>
@@ -2613,10 +2613,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           {/* Current Teams Overview */}
           <div className="mb-3 sm:mb-6 space-y-3 sm:space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-blue-200/50">
+            <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 bg-gradient-to-r ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20 border-[#DEB126]/30" : "from-blue-50 to-purple-50 border-blue-200/50"} rounded-lg sm:rounded-xl p-3 sm:p-4 border`}>
               <div className="flex-1 min-w-0">
                 <h3 className="text-lg sm:text-xl font-heading font-bold text-gray-900 flex items-center gap-2">
-                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+                  <Users className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-[#DEB126]" : "text-blue-600"} flex-shrink-0`} />
                   <span className="truncate">Current Teams</span>
                 </h3>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1">
@@ -2749,9 +2749,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           {/* Landing: Enter Team Battle */}
           {currentStage === "enter" && (
             <div className="mt-3 sm:mt-6 space-y-3 sm:space-y-4">
-              <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border border-blue-200/50 shadow-sm">
+              <div className={`bg-gradient-to-br ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20 border-[#DEB126]/30" : "from-blue-50 to-purple-50 border-blue-200/50"} p-4 sm:p-5 md:p-6 rounded-lg sm:rounded-xl border shadow-sm`}>
                 <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                  <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${isRapidFire ? "from-[#DEB126] to-[#C59D1F]" : "from-blue-500 to-purple-500"} rounded-lg sm:rounded-xl flex items-center justify-center shadow-md flex-shrink-0`}>
                     <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                   </div>
                   <div className="min-w-0">
@@ -2769,7 +2769,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <button
                   onClick={() => setCurrentStage("create-team")}
-                  className="group relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] sm:hover:scale-105"
+                  className={`group relative overflow-hidden bg-gradient-to-br ${isRapidFire ? "from-[#DEB126] to-[#C59D1F] hover:from-[#C59D1F] hover:to-[#B58E12]" : "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"} text-white rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] sm:hover:scale-105`}
                 >
                   <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative z-10 flex flex-col items-center gap-2 sm:gap-3">
@@ -2786,12 +2786,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </button>
                 <button
                   onClick={() => setCurrentStage("join-as-member")}
-                  className="group relative overflow-hidden bg-white hover:bg-gray-50 border-2 border-gray-300 hover:border-blue-400 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] sm:hover:scale-105"
+                  className={`group relative overflow-hidden bg-white hover:bg-gray-50 border-2 border-gray-300 ${isRapidFire ? "hover:border-[#DEB126]" : "hover:border-blue-400"} rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] sm:hover:scale-105`}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className={`absolute inset-0 bg-gradient-to-br ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20" : "from-blue-50/50 to-purple-50/50"} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}></div>
                   <div className="relative z-10 flex flex-col items-center gap-2 sm:gap-3">
-                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center group-hover:from-blue-200 group-hover:to-purple-200 transition-colors duration-300">
-                      <Users className="h-6 w-6 sm:h-7 sm:w-7 text-blue-600" />
+                    <div className={`w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br ${isRapidFire ? "from-[#DEB126]/20 to-[#DEB126]/30 group-hover:from-[#DEB126]/30 group-hover:to-[#DEB126]/40" : "from-blue-100 to-purple-100 group-hover:from-blue-200 group-hover:to-purple-200"} rounded-full flex items-center justify-center transition-colors duration-300`}>
+                      <Users className={`h-6 w-6 sm:h-7 sm:w-7 ${isRapidFire ? "text-[#856910]" : "text-blue-600"}`} />
                     </div>
                     <div className="text-center">
                       <p className="font-bold text-base sm:text-lg mb-1 text-gray-900">
@@ -2810,7 +2810,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           {/* Stage 1: Create Team */}
           {currentStage === "create-team" && (
             <div className="mt-3 sm:mt-6 space-y-4 sm:space-y-5">
-              <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
+              <div className={`bg-gradient-to-r ${isRapidFire ? "from-[#DEB126] to-[#C59D1F]" : "from-blue-500 to-blue-600"} p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg`}>
                 <div className="flex items-start gap-3 sm:gap-4">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
                     <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
@@ -2831,7 +2831,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   htmlFor="teamName"
                   className="text-xs sm:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"
                 >
-                  <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 flex-shrink-0" />
+                  <Users className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${isRapidFire ? "text-[#DEB126]" : "text-blue-600"} flex-shrink-0`} />
                   Team Name
                 </Label>
                 <input
@@ -2840,13 +2840,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
                   placeholder="Enter your team name"
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400"
+                  className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 ${isRapidFire ? "focus:ring-[#DEB126]" : "focus:ring-blue-500"} focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400`}
                 />
               </div>
               <Button
                 onClick={handleCreateTeam}
                 disabled={createTeamMutation.isPending || !teamName.trim()}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 sm:py-4 text-sm sm:text-base rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.01] sm:hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className={`w-full bg-gradient-to-r ${isRapidFire ? "from-[#DEB126] to-[#C59D1F] hover:from-[#C59D1F] hover:to-[#B58E12]" : "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"} text-white font-bold py-3 sm:py-4 text-sm sm:text-base rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.01] sm:hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none`}
               >
                 {createTeamMutation.isPending ? (
                   <div className="flex items-center gap-2">
@@ -2866,7 +2866,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           {/* Stage: Join as Member */}
           {currentStage === "join-as-member" && (
             <div className="mt-3 sm:mt-6 space-y-4 sm:space-y-5">
-              <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
+              <div className={`bg-gradient-to-r ${isRapidFire ? "from-[#C59D1F] to-[#B58E12]" : "from-purple-500 to-purple-600"} p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg`}>
                 <div className="flex items-start gap-3 sm:gap-4">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
                     <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
@@ -2884,16 +2884,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </div>
 
               {myActiveJoinRequest && (
-                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-yellow-300 shadow-sm">
+                <div className={`bg-gradient-to-r ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20" : "from-yellow-50 to-orange-50"} p-3 sm:p-4 rounded-lg sm:rounded-xl border ${isRapidFire ? "border-[#DEB126]" : "border-yellow-300"} shadow-sm`}>
                   <div className="flex items-start gap-2 sm:gap-3">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-yellow-400 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-900" />
+                    <div className={`w-8 h-8 sm:w-10 sm:h-10 ${isRapidFire ? "bg-[#DEB126]" : "bg-yellow-400"} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                      <Clock className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-white" : "text-yellow-900"}`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs sm:text-sm font-semibold text-yellow-900 mb-1">
+                      <p className={`text-xs sm:text-sm font-semibold ${isRapidFire ? "text-[#856910]" : "text-yellow-900"} mb-1`}>
                         Pending Request
                       </p>
-                      <p className="text-xs sm:text-sm text-yellow-800 break-words">
+                      <p className={`text-xs sm:text-sm ${isRapidFire ? "text-[#856910]" : "text-yellow-800"} break-words`}>
                         You have a pending join request to team ID:{" "}
                         <span className="font-mono text-xs">{myActiveJoinRequest.teamId}</span>
                       </p>
@@ -2906,7 +2906,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                           )
                         }
                         disabled={cancelJoinRequestMutation.isPending}
-                        className="mt-2 sm:mt-3 text-xs sm:text-sm border-yellow-400 text-yellow-800 hover:bg-yellow-100"
+                        className={`mt-2 sm:mt-3 text-xs sm:text-sm ${isRapidFire ? "border-[#DEB126] text-[#856910] hover:bg-[#DEB126]/20" : "border-yellow-400 text-yellow-800 hover:bg-yellow-100"}`}
                       >
                         {cancelJoinRequestMutation.isPending
                           ? "Cancelling..."
@@ -2918,9 +2918,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               )}
 
               <div className="bg-white rounded-lg sm:rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 px-3 sm:px-4 md:px-5 py-2 sm:py-3 border-b border-gray-200">
+                <div className={`bg-gradient-to-r ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20" : "from-purple-50 to-blue-50"} px-3 sm:px-4 md:px-5 py-2 sm:py-3 border-b border-gray-200`}>
                   <h4 className="font-heading font-bold text-sm sm:text-base text-gray-900 flex items-center gap-2">
-                    <Users className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 flex-shrink-0" />
+                    <Users className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-[#DEB126]" : "text-purple-600"} flex-shrink-0`} />
                     <span>Available Teams</span>
                   </h4>
                 </div>
@@ -2951,7 +2951,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                             className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 md:px-5 py-3 sm:py-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150"
                           >
                             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 w-full sm:w-auto">
-                              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-purple-400 to-blue-400 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <div className={`w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br ${isRapidFire ? "from-[#DEB126] to-[#C59D1F]" : "from-purple-400 to-blue-400"} rounded-lg flex items-center justify-center flex-shrink-0`}>
                                 <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                               </div>
                               <div className="flex flex-col min-w-0 flex-1">
@@ -2990,7 +2990,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                 !!myActiveJoinRequest ||
                                 joinRequestingTeamId === team.id
                               }
-                              className="w-full sm:w-auto text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                              className={`w-full sm:w-auto text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r ${isRapidFire ? "from-[#DEB126] to-[#C59D1F] hover:from-[#C59D1F] hover:to-[#B58E12]" : "from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"} text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200`}
                             >
                               {isFull
                                 ? "Team Full"
@@ -3020,7 +3020,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </Button>
                 <Button
                   onClick={() => setCurrentStage("create-team")}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-2.5 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+                  className={`flex-1 bg-gradient-to-r ${isRapidFire ? "from-[#DEB126] to-[#C59D1F] hover:from-[#C59D1F] hover:to-[#B58E12]" : "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"} text-white font-bold py-2.5 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all duration-200`}
                 >
                   Create a Team Instead
                 </Button>
@@ -3214,7 +3214,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           {/* Stage 3: Invite Teammates (only after opponent accepts) - Only for captains */}
           {currentStage === "invite-teammates" && userTeam && userTeam.captainId === user?.id && (
             <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
-              <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg">
+              <div className={`bg-gradient-to-r ${isRapidFire ? "from-[#DEB126] to-[#C59D1F]" : "from-purple-500 to-indigo-600"} p-4 sm:p-5 rounded-lg sm:rounded-xl shadow-lg`}>
                 <div className="flex items-start gap-3 sm:gap-4">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
                     <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
@@ -3310,7 +3310,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                 alreadyInvitedByMe ||
                                 (userTeam?.members.length || 0) >= 3
                               }
-                              className="w-full sm:w-auto text-xs font-semibold px-3 py-1.5 sm:py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
+                              className={`w-full sm:w-auto text-xs font-semibold px-3 py-1.5 sm:py-1 ${isRapidFire ? "bg-[#C59D1F] hover:bg-[#B58E12]" : "bg-purple-600 hover:bg-purple-700"} text-white rounded-lg`}
                             >
                               {pendingInvitation
                                 ? "Invited"
@@ -3338,11 +3338,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               inv.status === "pending" && inv.inviteeId === user?.id
           ).length > 0 && (
               <div className="mt-3 sm:mt-6 space-y-3 sm:space-y-4">
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-blue-200">
+                <div className={`bg-gradient-to-r ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20" : "from-blue-50 to-purple-50"} p-3 sm:p-4 rounded-lg sm:rounded-xl border ${isRapidFire ? "border-[#DEB126]/30" : "border-blue-200"}`}>
                   <h4 className="font-heading font-bold text-base sm:text-lg text-gray-900 mb-1 flex items-center gap-2 flex-wrap">
-                    <Mail className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+                    <Mail className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-[#DEB126]" : "text-blue-600"} flex-shrink-0`} />
                     <span>Choose Your Team</span>
-                    <span className="ml-auto bg-blue-500 text-white text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full">
+                    <span className={`ml-auto ${isRapidFire ? "bg-[#DEB126]" : "bg-blue-500"} text-white text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full`}>
                       {
                         invitations.filter(
                           (inv: TeamInvitation) =>
@@ -3369,11 +3369,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     return (
                       <div
                         key={invitation.id}
-                        className="bg-white p-3 sm:p-4 md:p-5 rounded-lg sm:rounded-xl border-2 border-blue-200 shadow-sm hover:shadow-md transition-all duration-200"
+                        className={`bg-white p-3 sm:p-4 md:p-5 rounded-lg sm:rounded-xl border-2 ${isRapidFire ? "border-[#DEB126]/30" : "border-blue-200"} shadow-sm hover:shadow-md transition-all duration-200`}
                       >
                         <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
                           <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-                            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
+                            <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${isRapidFire ? "from-[#DEB126] to-[#C59D1F]" : "from-blue-400 to-purple-500"} rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0`}>
                               {invitation.invitationType === "opponent" ? (
                                 <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                               ) : (
@@ -3388,14 +3388,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                     : "Team Member"}{" "}
                                   Invitation
                                 </p>
-                                <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0">
+                                <span className={`${isRapidFire ? "bg-[#DEB126]/20 text-[#856910]" : "bg-blue-100 text-blue-700"} text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0`}>
                                   {invitation.invitationType === "opponent"
                                     ? "Captain"
                                     : "Member"}
                                 </span>
                               </div>
                               <p className="text-xs sm:text-sm text-gray-700 mb-2">
-                                <span className="font-semibold text-blue-600">
+                                <span className={`font-semibold ${isRapidFire ? "text-[#DEB126]" : "text-blue-600"}`}>
                                   {invitation.inviterUsername || "Someone"}
                                 </span>{" "}
                                 invites you to join as{" "}

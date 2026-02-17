@@ -99,6 +99,7 @@ interface GameState {
     isWinner: boolean;
     reason?: string;
   };
+  gameType?: "regular" | "rapid_fire";
 }
 
 export default function TeamBattleGame() {
@@ -378,10 +379,6 @@ export default function TeamBattleGame() {
 
           case "team_battle_started":
             // Set rapid fire mode if specified in start event
-            if (data.gameType === "rapid_fire") {
-              isRapidFireRef.current = true;
-            }
-
             // Update teams immediately to ensure header shows correct data during preparation
             const newTeams = data.teams || [];
             const newPlayerTeam = newTeams.find((team: any) =>
@@ -389,13 +386,24 @@ export default function TeamBattleGame() {
             );
             const newOpposingTeam = newTeams.find((team: any) => team.id !== newPlayerTeam?.id);
 
+            // Check for rapid fire mode
+            const isRapid = data.gameType === "rapid_fire";
+
             setGameState((prev) => ({
               ...prev,
               phase: "playing",
               teams: newTeams.length ? newTeams : prev.teams,
               playerTeam: newPlayerTeam || prev.playerTeam,
-              opposingTeam: newOpposingTeam || prev.opposingTeam
+              opposingTeam: newOpposingTeam || prev.opposingTeam,
+              gameType: isRapid ? "rapid_fire" : "regular"
             }));
+
+            // Directly trigger rapid rules if applicable - redundant safety against effect timing
+            if (isRapid) {
+              setShowRapidRules(true);
+              setRapidRulesCountdown(5);
+              hasShownRapidRules.current = true;
+            }
 
             toast({
               title: "Battle Started!",
@@ -973,19 +981,23 @@ export default function TeamBattleGame() {
   // Game state tracking
 
   const updateGameState = (data: any) => {
+    // If server provides a gameType, keep a local flag to isolate rapid-fire pipelines
+    const gameType = data?.gameState?.gameType || (data?.gameState?.mode === "rapid_fire" ? "rapid_fire" : undefined);
+    try {
+      if (gameType === "rapid_fire") {
+        isRapidFireRef.current = true;
+      }
+    } catch (_) {
+      // defensive
+    }
+
     setGameState((prev) => ({
       ...prev,
       ...data.gameState,
       playerTeam: data.playerTeam,
       opposingTeam: data.opposingTeam,
+      gameType: gameType === "rapid_fire" ? "rapid_fire" : prev.gameType,
     }));
-    // If server provides a gameType, keep a local flag to isolate rapid-fire pipelines
-    try {
-      const gameType = data?.gameState?.gameType;
-      isRapidFireRef.current = gameType === "rapid_fire";
-    } catch (_) {
-      // defensive: leave existing value
-    }
   };
 
   const updateTeamsData = (teams: Team[]) => {
@@ -1872,56 +1884,23 @@ export default function TeamBattleGame() {
 
 
 
+  useEffect(() => {
+    // Check if we are in playing phase and it is a rapid fire game
+    // Triggers either from gameState update or isRapidFireRef being set
+    const isRapid = gameState.gameType === "rapid_fire" || isRapidFireRef.current;
+
+    if (gameState.phase === "playing" && isRapid && !hasShownRapidRules.current) {
+      setShowRapidRules(true);
+      setRapidRulesCountdown(5); // Reset countdown
+      hasShownRapidRules.current = true; // Mark as shown
+    }
+  }, [gameState.phase, gameState.gameType, isRapidFireRef]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-primary-dark to-black text-white relative">
       {/* Rapid Fire Rules Dialog */}
-      <Dialog open={showRapidRules} onOpenChange={() => { }}>
-        <DialogContent className="sm:max-w-md bg-gradient-to-br from-[#0F1624] to-[#0A0F1A] border border-[#DEB126]/50 text-white p-0 overflow-hidden [&>button]:hidden" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
-          <div className="h-2 bg-gray-800 w-full">
-            <div
-              className="h-full bg-[#DEB126] transition-all duration-1000 ease-linear"
-              style={{ width: `${(rapidRulesCountdown / 5) * 100}%` }}
-            />
-          </div>
-          <div className="p-6 flex flex-col items-center text-center space-y-6">
-            <div className="h-20 w-20 rounded-full bg-gradient-to-br from-[#DEB126] to-[#C59D1F] flex items-center justify-center shadow-[0_0_15px_rgba(222,177,38,0.5)] animate-pulse">
-              <Zap className="h-10 w-10 text-white fill-white" />
-            </div>
+      {/* Rapid Fire Rules Dialog - Removed to use inline rendering for robustness */}
 
-            <div className="space-y-2">
-              <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#DEB126] via-[#F7D45E] to-[#DEB126] bg-clip-text text-transparent uppercase tracking-wider">
-                Rapid Fire Round
-              </h2>
-              <p className="text-gray-400 text-sm font-medium">
-                Starting in {rapidRulesCountdown} seconds...
-              </p>
-            </div>
-
-            <div className="w-full bg-white/5 rounded-xl p-4 border border-white/10 text-left space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">1</div>
-                <p className="text-sm text-gray-300"><span className="text-[#DEB126] font-semibold">Speed is key!</span> Questions appear one after another instantly.</p>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">2</div>
-                <p className="text-sm text-gray-300">Both teams answer simultaneously. <span className="text-[#DEB126] font-semibold">First correct answer wins points.</span></p>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">3</div>
-                <p className="text-sm text-gray-300">Wait for the <span className="text-[#DEB126] font-semibold">Captain</span> to separate final answers.</p>
-              </div>
-            </div>
-
-            <div className="w-full h-12 bg-white/5 rounded-lg flex items-center justify-center border border-white/10">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce"></div>
-                <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce delay-150"></div>
-                <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce delay-300"></div>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Navigation Protection Dialog */}
       {showRefreshLoader && (
@@ -2113,22 +2092,70 @@ export default function TeamBattleGame() {
       {gameState.phase === "waiting" && renderWaitingPhase()}
       {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && (
         <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6">
-          <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-6 sm:py-8 md:py-10">
-            <div className="flex flex-col items-center justify-center space-y-4 sm:space-y-6">
-              <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg animate-pulse">
-                <Clock className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
+          {showRapidRules ? (
+            <Card className="bg-gradient-to-br from-[#0F1624] to-[#0A0F1A] border border-[#DEB126]/50 text-white p-0 overflow-hidden shadow-2xl">
+              <div className="h-2 bg-gray-800 w-full">
+                <div
+                  className="h-full bg-[#DEB126] transition-all duration-1000 ease-linear"
+                  style={{ width: `${(rapidRulesCountdown / 5) * 100}%` }}
+                />
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-center px-2">Preparing Battle</h2>
-              <p className="text-white/70 text-center text-sm sm:text-base px-2">
-                Loading questions and setting up the game...
-              </p>
-              <div className="flex gap-2">
-                <div className="h-3 w-3 rounded-full bg-blue-400 animate-bounce"></div>
-                <div className="h-3 w-3 rounded-full bg-blue-500 animate-bounce delay-150"></div>
-                <div className="h-3 w-3 rounded-full bg-blue-600 animate-bounce delay-300"></div>
+              <div className="p-6 flex flex-col items-center text-center space-y-6">
+                <div className="h-20 w-20 rounded-full bg-gradient-to-br from-[#DEB126] to-[#C59D1F] flex items-center justify-center shadow-[0_0_15px_rgba(222,177,38,0.5)] animate-pulse">
+                  <Zap className="h-10 w-10 text-white fill-white" />
+                </div>
+
+                <div className="space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#DEB126] via-[#F7D45E] to-[#DEB126] bg-clip-text text-transparent uppercase tracking-wider">
+                    Rapid Fire Round
+                  </h2>
+                  <p className="text-gray-400 text-sm font-medium">
+                    Starting in {rapidRulesCountdown} seconds...
+                  </p>
+                </div>
+
+                <div className="w-full bg-white/5 rounded-xl p-4 border border-white/10 text-left space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">1</div>
+                    <p className="text-sm text-gray-300"><span className="text-[#DEB126] font-semibold">Speed is key!</span> Questions appear one after another instantly.</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">2</div>
+                    <p className="text-sm text-gray-300">Both teams answer simultaneously. <span className="text-[#DEB126] font-semibold">First correct answer wins points.</span></p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">3</div>
+                    <p className="text-sm text-gray-300">Wait for the <span className="text-[#DEB126] font-semibold">Captain</span> to separate final answers.</p>
+                  </div>
+                </div>
+
+                <div className="w-full h-12 bg-white/5 rounded-lg flex items-center justify-center border border-white/10">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce"></div>
+                    <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce delay-150"></div>
+                    <div className="h-2 w-2 rounded-full bg-[#DEB126] animate-bounce delay-300"></div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          ) : (
+            <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-6 sm:py-8 md:py-10">
+              <div className="flex flex-col items-center justify-center space-y-4 sm:space-y-6">
+                <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-b from-blue-400 to-blue-600 flex items-center justify-center shadow-lg animate-pulse">
+                  <Clock className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-bold text-center px-2">Preparing Battle</h2>
+                <p className="text-white/70 text-center text-sm sm:text-base px-2">
+                  Loading questions and setting up the game...
+                </p>
+                <div className="flex gap-2">
+                  <div className="h-3 w-3 rounded-full bg-blue-400 animate-bounce"></div>
+                  <div className="h-3 w-3 rounded-full bg-blue-500 animate-bounce delay-150"></div>
+                  <div className="h-3 w-3 rounded-full bg-blue-600 animate-bounce delay-300"></div>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       )}
       {gameState.phase === "playing" && currentRapidQuestion && renderRapidQuestionPhase()}

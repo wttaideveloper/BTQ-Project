@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Clock, Check } from "lucide-react";
+import { Clock, Check, Zap, Target } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 import { playBasicSound } from "@/lib/basic-sound";
 import { voiceService } from "@/lib/voice-service";
@@ -319,8 +319,8 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   };
 
   return (
-    <div className={`flex-grow flex flex-col bg-black rounded-3xl shadow-2xl overflow-hidden relative border-2 ${isReadOnly ? 'border-yellow-500/50' : 'border-accent'}`}>
-      {isReadOnly && (
+    <div className={`flex-grow flex flex-col bg-black rounded-3xl shadow-2xl overflow-hidden relative border-2 ${isToss ? 'border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.3)]' : isReadOnly ? 'border-yellow-500/50' : 'border-accent'}`}>
+      {isReadOnly && !isToss && (
         <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-yellow-500/90 to-orange-500/90 text-white py-2 px-4 z-20 text-center">
           <div className="flex items-center justify-center gap-2">
             <Clock className="h-4 w-4 animate-pulse" />
@@ -330,15 +330,29 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
           </div>
         </div>
       )}
-      <div className={`bg-gradient-to-r from-primary to-primary-dark p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-0 ${isReadOnly ? 'pt-12 sm:pt-12' : ''}`}>
-        <div className="flex items-center">
-          <span className={`${isReadOnly ? 'bg-yellow-500' : 'bg-accent'} text-primary font-bold rounded-full w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center mr-2 shadow-glow`}>
-            {currentQuestionIndex + 1}
-          </span>
-          <span className="text-white font-medium text-sm sm:text-lg">
-            of {totalQuestions}
-          </span>
-        </div>
+
+      {/* Header Section */}
+      <div className={`p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-0 ${isToss ? 'bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-900 animate-pulse-slow' : 'bg-gradient-to-r from-primary to-primary-dark'} ${isReadOnly && !isToss ? 'pt-12 sm:pt-12' : ''}`}>
+
+        {isToss ? (
+          <div className="flex items-center gap-3 w-full justify-center sm:justify-start">
+            <div className="bg-yellow-500 text-black font-black px-3 py-1 rounded-full text-sm sm:text-base shadow-lg animate-bounce">
+              🔔 TOSS QUESTION
+            </div>
+            <span className="text-yellow-200 font-bold text-lg tracking-wider">
+              TOSS ROUND
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center">
+            <span className={`${isReadOnly ? 'bg-yellow-500' : 'bg-accent'} text-primary font-bold rounded-full w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center mr-2 shadow-glow`}>
+              {currentQuestionIndex + 1}
+            </span>
+            <span className="text-white font-medium text-sm sm:text-lg">
+              of {totalQuestions}
+            </span>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center sm:justify-end">
           <div className="px-2 sm:px-3 py-1 sm:py-1.5 bg-secondary rounded-xl shadow-md flex items-center gap-1 sm:gap-2">
@@ -361,7 +375,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
         </div>
       </div>
 
-      <div className="h-4 bg-black w-full relative overflow-hidden">
+      <div className={`${isToss ? 'h-10' : 'h-4'} bg-black w-full relative overflow-hidden transition-all duration-300`}>
         {!isToss && (
           <>
             <div
@@ -408,16 +422,18 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
           </>
         )}
         {isToss && (
-          <div className="absolute inset-0 flex items-center justify-center bg-yellow-500/20">
-            <span className="text-xs font-bold text-yellow-300 animate-pulse">
-              RACE TO ANSWER
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-r from-yellow-500/30 to-purple-500/30">
+            <span className="text-xs sm:text-sm font-black text-yellow-300 animate-pulse tracking-widest flex items-center gap-3">
+              <Zap className="h-4 w-4 text-white fill-white" />
+              BE QUICK <span className="mx-1 opacity-50">•</span> BE CORRECT
+              <Target className="h-4 w-4 text-white" />
             </span>
           </div>
         )}
       </div>
 
-      <div className="p-3 sm:p-5 md:p-8 flex-grow flex flex-col bg-gradient-to-b from-black to-primary-dark/30">
-        <div className="mb-4 sm:mb-6 md:mb-8 text-center bg-secondary/20 p-3 sm:p-4 md:p-5 rounded-xl border border-secondary/30">
+      <div className={`p-3 sm:p-5 md:p-8 flex-grow flex flex-col ${isToss ? 'bg-gradient-to-b from-indigo-950 to-purple-950/50' : 'bg-gradient-to-b from-black to-primary-dark/30'}`}>
+        <div className={`mb-4 sm:mb-6 md:mb-8 text-center p-3 sm:p-4 md:p-5 rounded-xl border ${isToss ? 'bg-white/5 border-yellow-500/30 shadow-[0_0_20px_rgba(234,179,8,0.1)]' : 'bg-secondary/20 border-secondary/30'}`}>
           <h2 className="text-xl sm:text-2xl md:text-3xl font-heading font-bold text-white mb-2 sm:mb-3">
             {question.text}
           </h2>

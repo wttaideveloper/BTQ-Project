@@ -135,7 +135,8 @@ export default function TeamBattleGame() {
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [showRefreshLoader, setShowRefreshLoader] = useState(false);
   const [currentRapidQuestion, setCurrentRapidQuestion] = useState<Question | null>(null);
-
+  const [showTossInstruction, setShowTossInstruction] = useState(false);
+  const [showTossRetryInstruction, setShowTossRetryInstruction] = useState(false);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -365,6 +366,20 @@ export default function TeamBattleGame() {
               break;
             }
 
+            // Check if this is a retry toss (based on message content)
+            const isRetry = data.message && data.message.includes("Both teams answered incorrectly");
+
+            if (isRetry) {
+              setShowTossRetryInstruction(true);
+              // Auto-hide after 5 seconds
+              setTimeout(() => setShowTossRetryInstruction(false), 5000);
+            } else {
+              // Initial toss instruction
+              setShowTossInstruction(true);
+              // Auto-hide after 5 seconds
+              setTimeout(() => setShowTossInstruction(false), 5000);
+            }
+
             setGameState((prev) => ({
               ...prev,
               phase: "toss",
@@ -385,14 +400,22 @@ export default function TeamBattleGame() {
             setWaitingForResults(false);
             setCorrectAnswerId(null);
             setLastRoundCorrect(null);
-            toast({
-              title: "Toss Question",
-              description: data.message || "First correct answer wins the toss — hurry!",
-              duration: 3000,
-            });
+
+            // Show toast only if not initial instruction to avoid clutter, or show simpler toast
+            if (!showTossInstruction) {
+              toast({
+                title: isRetry ? "Toss Retry" : "Toss Question",
+                description: data.message || "First correct answer wins the toss — hurry!",
+                duration: 3000,
+              });
+            }
             break;
 
           case "team_battle_toss_result": {
+            // Hide any active toss dialogs
+            setShowTossInstruction(false);
+            setShowTossRetryInstruction(false);
+
             // Show toss winner and continue. Resolve player's team from current state
             const winnerTeamId = data.winnerTeamId;
             const winnerUserId = data.winnerUserId || data.userId;
@@ -2028,6 +2051,54 @@ export default function TeamBattleGame() {
           gameMode="team"
         />
       )}
+
+      {/* Toss Instruction Dialog */}
+      {/* Toss Instruction Dialog */}
+      <Dialog open={showTossInstruction} onOpenChange={() => { }}>
+        <DialogContent className="sm:max-w-md bg-gradient-to-b from-indigo-900 to-slate-900 text-white border-2 border-yellow-500/50 shadow-[0_0_50px_rgba(234,179,8,0.3)] [&>button]:hidden">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-center text-yellow-400 flex flex-col items-center gap-2">
+              <span className="text-4xl">🔔</span>
+              TOSS ROUND
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-6 text-center space-y-4">
+            <div className="bg-white/10 p-4 rounded-xl border border-white/20">
+              <p className="text-lg font-medium text-white mb-2">
+                Be quick. Be correct.
+              </p>
+              <p className="text-white/80">
+                The <span className="text-yellow-400 font-bold">first correct answer</span> decides who plays first!
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Toss Retry Dialog */}
+      <Dialog open={showTossRetryInstruction} onOpenChange={() => { }}>
+        <DialogContent className="sm:max-w-md bg-gradient-to-b from-red-900 to-slate-900 text-white border-2 border-red-500/50 shadow-[0_0_50px_rgba(239,68,68,0.3)] [&>button]:hidden">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-center text-red-400 flex flex-col items-center gap-2">
+              <span className="text-4xl">❌</span>
+              BOTH TEAMS MISSED!
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-6 text-center space-y-4">
+            <div className="bg-white/10 p-4 rounded-xl border border-white/20">
+              <p className="text-lg font-medium text-white mb-2">
+                One More Chance!
+              </p>
+              <p className="text-white/80">
+                Both teams answered incorrectly. A new toss question is coming up.
+              </p>
+            </div>
+            <p className="text-sm text-white/60 italic">
+              Be fast, but be accurate this time!
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Exit Confirmation Dialog */}
       <Dialog open={showExitConfirmation} onOpenChange={setShowExitConfirmation}>

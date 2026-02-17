@@ -6813,6 +6813,7 @@ async function processTossResult(gameId: string) {
           count: 1,
           userId: undefined,
           excludeRecentHours: 0,
+          excludeIds: [tossQuestion.id],
         });
         const newToss = (tossCandidates || []).find(
           (q: any) => q && q.id && q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0

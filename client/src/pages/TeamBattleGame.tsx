@@ -137,6 +137,8 @@ export default function TeamBattleGame() {
   const [currentRapidQuestion, setCurrentRapidQuestion] = useState<Question | null>(null);
   const [showTossInstruction, setShowTossInstruction] = useState(false);
   const [showTossRetryInstruction, setShowTossRetryInstruction] = useState(false);
+  const [showTossResult, setShowTossResult] = useState(false);
+  const [tossResultData, setTossResultData] = useState<{ isWinner: boolean; teamName?: string } | null>(null);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -436,13 +438,22 @@ export default function TeamBattleGame() {
               isYourTeamWinner = winnerUserId === user?.id;
             }
 
-            toast({
-              title: "Toss Result",
-              description: isYourTeamWinner
-                ? "Your team won the toss and will answer first."
-                : "Opponent won the toss. Good luck!",
-              duration: 3000,
+            // Find winning team name
+            let winnerTeamName = "Opponent";
+            if (winnerTeamId && gameState.teams) {
+              winnerTeamName = gameState.teams.find((t) => t.id === winnerTeamId)?.name || "Opponent";
+            }
+
+            // Show Toss Result Dialog
+            setTossResultData({
+              isWinner: isYourTeamWinner,
+              teamName: winnerTeamName
             });
+            setShowTossResult(true);
+            setTimeout(() => {
+              setShowTossResult(false);
+              setTossResultData(null);
+            }, 5000);
 
             // Ensure local team assignment reflects server's winner assignment:
             setGameState((prev) => {
@@ -2100,7 +2111,30 @@ export default function TeamBattleGame() {
         </DialogContent>
       </Dialog>
 
-      {/* Exit Confirmation Dialog */}
+      {/* Toss Result Dialog */}
+      <Dialog open={showTossResult} onOpenChange={() => { }}>
+        <DialogContent className={`sm:max-w-md bg-gradient-to-b ${tossResultData?.isWinner ? 'from-green-900 to-slate-900 border-green-500/50 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'from-orange-900 to-slate-900 border-orange-500/50 shadow-[0_0_50px_rgba(249,115,22,0.3)]'} text-white border-2 [&>button]:hidden`}>
+          <DialogHeader>
+            <DialogTitle className={`text-2xl font-bold text-center ${tossResultData?.isWinner ? 'text-green-400' : 'text-orange-400'} flex flex-col items-center gap-2`}>
+              <span className="text-4xl">{tossResultData?.isWinner ? '🏆' : '⚠️'}</span>
+              {tossResultData?.isWinner ? 'YOU WON THE TOSS!' : 'OPPONENT WON THE TOSS'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-6 text-center space-y-4">
+            <div className="bg-white/10 p-4 rounded-xl border border-white/20">
+              <p className="text-lg font-medium text-white mb-2">
+                {tossResultData?.isWinner ? 'Your team takes the first turn.' : `${tossResultData?.teamName || "Opponent"} takes the first turn.`}
+              </p>
+            </div>
+            <p className="text-white/60 text-sm">
+              {tossResultData?.isWinner
+                ? "Get ready to answer the first battle question."
+                : "Prepare to defend! Your opponent gets the first question."}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showExitConfirmation} onOpenChange={setShowExitConfirmation}>
         <DialogContent className="sm:max-w-md bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white border border-white/20">
           <DialogHeader>

@@ -556,6 +556,15 @@ export default function TeamBattleGame() {
             break;
           }
 
+          case "rapid_fire_no_award": {
+            toast({
+              title: "Time's up",
+              description: "No points awarded. Moving to the next question...",
+              duration: 2500,
+            });
+            break;
+          }
+
           case "rapid_fire_awarded": {
             // Update scores based on server broadcast
             if (data.teams) {
@@ -622,6 +631,25 @@ export default function TeamBattleGame() {
             setWaitingForResults(false);
             setCorrectAnswerId(null);
             setLastRoundCorrect(null);
+
+            // Reconnect restore: replay persisted suggestions and finalized answer
+            if (data.restoredSuggestions?.length) {
+              const restored: SuggestionsByAnswerId = {};
+              for (const s of data.restoredSuggestions) {
+                if (!s?.answerId || s.userId == null) continue;
+                const list = restored[s.answerId] || [];
+                restored[s.answerId] = [
+                  ...list,
+                  { userId: s.userId, username: s.username || `Player ${s.userId}` },
+                ];
+              }
+              setSuggestions(restored);
+            }
+            if (data.restoredFinalAnswer?.answerId) {
+              setTeamAnswer(data.restoredFinalAnswer.answerId);
+              setSelectedAnswer(data.restoredFinalAnswer.answerId);
+              setHasSubmitted(true);
+            }
             break;
 
           case "team_battle_question":
@@ -1036,9 +1064,33 @@ export default function TeamBattleGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.phase, gameState.playerTeam, gameSessionId]);
 
+  const isSoloTeam = () => {
+    const members = gameState.playerTeam?.members;
+    if (!members || !Array.isArray(members)) {
+      // During load/reconnect, default to multi-player flow (captain must finalize)
+      return false;
+    }
+    const validCount = members.filter((m) => m?.userId != null).length;
+    return validCount <= 1;
+  };
+
   const handleMemberSelect = (answerId: string) => {
-    // Handle rapid fire submission (race condition like toss)
+    // Rapid Fire multi-player: suggestions only (same as regular team battle)
     if (isRapidFireRef.current && currentRapidQuestion && gameState.playerTeam && user) {
+      if (!isSoloTeam()) {
+        sendGameEvent({
+          type: "team_option_selected",
+          teamId: gameState.playerTeam.id,
+          questionId: currentRapidQuestion.id,
+          answerId,
+          userId: user.id,
+          username: user.username,
+        });
+        setSelectedAnswer(answerId);
+        return;
+      }
+
+      // 1v1: only captain exists — direct submit
       sendGameEvent({
         type: "submit_team_answer",
         teamId: gameState.playerTeam.id,
@@ -1087,20 +1139,35 @@ export default function TeamBattleGame() {
   };
 
   const handleCaptainSubmit = (answerId: string) => {
-    // Handle rapid fire submission for captain (race condition like toss)
+    // Rapid Fire: 1v1 = immediate submit; multi-player = captain finalizes
     if (isRapidFireRef.current && currentRapidQuestion && gameState.playerTeam && user) {
-      sendGameEvent({
-        type: "submit_team_answer",
-        teamId: gameState.playerTeam.id,
-        questionId: currentRapidQuestion.id,
-        answerId,
-        gameSessionId: gameSessionId || undefined,
-        userId: user.id,
-        username: user.username,
-        timeSpent: 0,
-      });
       setSelectedAnswer(answerId);
-      setHasSubmitted(true);
+
+      if (isSoloTeam()) {
+        sendGameEvent({
+          type: "submit_team_answer",
+          teamId: gameState.playerTeam.id,
+          questionId: currentRapidQuestion.id,
+          answerId,
+          gameSessionId: gameSessionId || undefined,
+          userId: user.id,
+          username: user.username,
+          timeSpent: 0,
+        });
+        setHasSubmitted(true);
+        return;
+      }
+
+      if (!isTeamCaptain()) return;
+
+      sendGameEvent({
+        type: "finalize_team_answer",
+        teamId: gameState.playerTeam.id,
+        finalAnswer: {
+          questionId: currentRapidQuestion.id,
+          answerId,
+        },
+      });
       return;
     }
 
@@ -1429,7 +1496,7 @@ export default function TeamBattleGame() {
           category={question.category}
           difficultyLabel={question.difficulty}
           isCaptain={isTeamCaptain()}
-          isQuestionLocked={Boolean(teamAnswer)}
+          isQuestionLocked={Boolean(teamAnswer) || (hasSubmitted && isSoloTeam())}
           suggestions={suggestions}
           onMemberSelect={handleMemberSelect}
           onCaptainSubmit={handleCaptainSubmit}
@@ -1441,6 +1508,24 @@ export default function TeamBattleGame() {
           answeringTeamName={gameState.answeringTeamName}
           selectedAnswerId={selectedAnswer}
         />
+
+        {teamAnswer && !isSoloTeam() && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 p-3 sm:p-4">
+            <Card className="max-w-sm w-full mx-auto bg-gradient-to-br from-secondary to-secondary-dark text-white border border-accent/60 shadow-2xl rounded-lg sm:rounded-xl">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-400 flex-shrink-0" />
+                  <span>Answer Locked</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <p className="text-xs sm:text-sm text-white/80">
+                  Your captain has finalized the team answer. Waiting for results...
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     );
   };
@@ -2121,11 +2206,11 @@ export default function TeamBattleGame() {
                   </div>
                   <div className="flex items-start gap-3">
                     <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">2</div>
-                    <p className="text-sm text-gray-300">Both teams answer simultaneously. <span className="text-[#DEB126] font-semibold">First correct answer wins points.</span></p>
+                    <p className="text-sm text-gray-300">Both teams race to answer. <span className="text-[#DEB126] font-semibold">First captain-finalized correct answer wins.</span></p>
                   </div>
                   <div className="flex items-start gap-3">
                     <div className="h-6 w-6 rounded-full bg-[#DEB126]/20 text-[#DEB126] flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">3</div>
-                    <p className="text-sm text-gray-300">Wait for the <span className="text-[#DEB126] font-semibold">Captain</span> to separate final answers.</p>
+                    <p className="text-sm text-gray-300">Teammates suggest answers; the <span className="text-[#DEB126] font-semibold">Captain finalizes</span> the team choice.</p>
                   </div>
                 </div>
 

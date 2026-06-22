@@ -1691,17 +1691,21 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
 
                 // Choose event type based on session mode/gameType to avoid emitting both pipelines
                 if ((activeBattleSession as any).mode === "rapid_fire" || (activeBattleSession as any).gameType === "rapid_fire") {
-                  sendToClient(clientId, {
-                    type: "team_battle_rapid_question",
-                    gameId: activeBattleSession.id,
-                    question: currentQuestion,
-                    questionNumber: questionNumber,
-                    totalQuestions: activeBattleSession.questions.length,
-                    teamId: userTeam.id,
-                    timeLimit: 10000,
-                    isYourTurn: isYourTurn || false,
-                    answeringTeamName: answeringTeam?.name,
-                  });
+                  sendToClient(
+                    clientId,
+                    buildRapidFireQuestionReconnectEvent(
+                      activeBattleSession,
+                      activeBattleSession.id,
+                      currentQuestion,
+                      questionNumber,
+                      activeBattleSession.questions.length,
+                      userTeam.id,
+                      {
+                        isYourTurn: isYourTurn || false,
+                        answeringTeamName: answeringTeam?.name,
+                      }
+                    )
+                  );
                 } else {
                   sendToClient(clientId, {
                     type: "team_battle_question",
@@ -4206,6 +4210,36 @@ async function handleTeamOptionSelected(clientId: string, event: GameEvent) {
         return;
       }
 
+      const isRapidFireOption = (gameSession as any)?.mode === "rapid_fire";
+      if (isRapidFireOption && event.questionId) {
+        if (isRapidFireQuestionResolved(gameSession, event.questionId)) {
+          sendToClient(clientId, {
+            type: "error",
+            message: "This question is no longer active",
+          });
+          return;
+        }
+        const activeQuestionId = getActiveRapidFireQuestionId(gameSession);
+        if (!activeQuestionId || event.questionId !== activeQuestionId) {
+          sendToClient(clientId, {
+            type: "error",
+            message: "This question is no longer active",
+          });
+          return;
+        }
+
+        // Persist suggestions server-side for captain reconnect
+        if (!sessionTeam.memberAnswers) sessionTeam.memberAnswers = {};
+        if (!sessionTeam.memberAnswers[event.questionId]) {
+          sessionTeam.memberAnswers[event.questionId] = {};
+        }
+        sessionTeam.memberAnswers[event.questionId][client.userId!.toString()] = {
+          answerId: event.answerId,
+          submittedAt: new Date(),
+          username: displayName,
+        };
+      }
+
       const teamMemberConnections = sessionTeam.members
         .map((member: any) => userConnections.get(member.userId))
         .filter(present)
@@ -4301,6 +4335,7 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
     }
 
     const isTeamBattle = (gameSession as any)?.gameType === "team_battle";
+    const isRapidFire = (gameSession as any)?.mode === "rapid_fire";
 
     if (isTeamBattle && gameSession && gameSession.teams) {
       const sessionTeam = gameSession.teams.find(
@@ -4323,6 +4358,25 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
         timeSpent: event.timeSpent || 0,
         submittedBy: client.userId,
       };
+
+      // Rapid Fire: reject stale or already-resolved questions before mutating state
+      if (isRapidFire) {
+        const activeQuestionId = getActiveRapidFireQuestionId(gameSession);
+        if (!activeQuestionId || finalAnswer.questionId !== activeQuestionId) {
+          sendToClient(clientId, {
+            type: "error",
+            message: "This question is no longer active",
+          });
+          return;
+        }
+        if (isRapidFireQuestionResolved(gameSession, finalAnswer.questionId)) {
+          sendToClient(clientId, {
+            type: "error",
+            message: "This question has already been resolved",
+          });
+          return;
+        }
+      }
 
       // Fixed: Prevent duplicate finalization for the same question
       const existingFinalAnswers = sessionTeam.finalAnswers || [];
@@ -4355,6 +4409,18 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
           });
         }
       });
+
+      // Rapid Fire: evaluate only the captain's finalized answer (first correct across teams wins)
+      if (isRapidFire) {
+        await evaluateRapidFireFinalizedAnswer(
+          gameSession,
+          sessionTeam,
+          finalAnswer.questionId,
+          finalAnswer.answerId,
+          client
+        );
+        return;
+      }
 
       // In alternating format, only one team answers per question
       // So when a team finalizes, we can immediately process results
@@ -7004,15 +7070,230 @@ function sendRapidFireQuestion(gameId: string) {
   }, 20000);
 }
 
+function isSoloTeam(team: any): boolean {
+  const members = team?.members;
+  if (!members || !Array.isArray(members)) return false;
+  const validCount = members.filter((m: any) => m?.userId != null).length;
+  return validCount <= 1;
+}
+
+function getActiveRapidFireQuestion(gameSession: any): any | null {
+  if (!gameSession?.questions?.length) return null;
+  const idx = gameSession.currentQuestionIndex ?? 0;
+  return gameSession.questions[idx] ?? null;
+}
+
+function getActiveRapidFireQuestionId(gameSession: any): string | null {
+  const q = getActiveRapidFireQuestion(gameSession);
+  return q?.id ?? null;
+}
+
+/** True once a question was awarded OR timed out / closed with no award. */
+function isRapidFireQuestionResolved(gameSession: any, questionId: string): boolean {
+  return !!(gameSession as any)._rapidAwardedMap?.[questionId];
+}
+
+function markRapidFireQuestionResolved(gameSession: any, questionId: string): void {
+  if (!(gameSession as any)._rapidAwardedMap) (gameSession as any)._rapidAwardedMap = {};
+  (gameSession as any)._rapidAwardedMap[questionId] = true;
+}
+
+function buildRapidFireRestorePayload(gameSession: any, teamId: string, questionId: string) {
+  const memoryTeam = gameSession.teams?.find((t: any) => t.id === teamId);
+  if (!memoryTeam) return { suggestions: [], finalAnswer: null };
+
+  const suggestions: Array<{ userId: number; username: string; answerId: string }> = [];
+  const memberAnswersForQ = memoryTeam.memberAnswers?.[questionId] || {};
+  for (const [userIdStr, entry] of Object.entries(memberAnswersForQ)) {
+    const entryAny = entry as any;
+    const userId = parseInt(userIdStr, 10);
+    const member = memoryTeam.members?.find((m: any) => m.userId === userId);
+    suggestions.push({
+      userId,
+      username: entryAny.username || member?.username || `Player ${userIdStr}`,
+      answerId: entryAny.answerId,
+    });
+  }
+
+  const finalAnswer =
+    (memoryTeam.finalAnswers || []).find((fa: any) => fa.questionId === questionId) || null;
+
+  return { suggestions, finalAnswer };
+}
+
+function buildRapidFireQuestionReconnectEvent(
+  gameSession: any,
+  gameId: string,
+  question: any,
+  questionNumber: number,
+  totalQuestions: number,
+  userTeamId: string,
+  extras: Record<string, any> = {}
+) {
+  const restore = buildRapidFireRestorePayload(gameSession, userTeamId, question.id);
+  return {
+    type: "team_battle_rapid_question",
+    gameId,
+    question,
+    questionNumber,
+    totalQuestions,
+    teamId: userTeamId,
+    timeLimit: 20000,
+    restoredSuggestions: restore.suggestions,
+    restoredFinalAnswer: restore.finalAnswer,
+    message: "Rapid-fire: first correct answer wins the point!",
+    ...extras,
+  };
+}
+
+function hasTeamFinalizedRapidQuestion(team: any, questionId: string): boolean {
+  return (team.finalAnswers || []).some((fa: any) => fa.questionId === questionId);
+}
+
+function allTeamsFinalizedRapidQuestion(gameSession: any, questionId: string): boolean {
+  return (gameSession.teams || []).every((t: any) =>
+    hasTeamFinalizedRapidQuestion(t, questionId)
+  );
+}
+
+async function tryAwardRapidFireCorrectAnswer(
+  gameSession: any,
+  sessionTeam: any,
+  qid: string,
+  userId?: number
+): Promise<boolean> {
+  if (isRapidFireQuestionResolved(gameSession, qid)) {
+    return false;
+  }
+
+  const activeQuestionId = getActiveRapidFireQuestionId(gameSession);
+  if (!activeQuestionId || qid !== activeQuestionId) {
+    return false;
+  }
+
+  markRapidFireQuestionResolved(gameSession, qid);
+
+  if ((gameSession as any)._rapidQuestionTimeout) {
+    clearTimeout((gameSession as any)._rapidQuestionTimeout);
+    (gameSession as any)._rapidQuestionTimeout = undefined;
+  }
+
+  const points = 10;
+  const teamObj = gameSession.teams.find((t: any) => t.id === sessionTeam.id);
+  if (teamObj) {
+    teamObj.score = (teamObj.score || 0) + points;
+    teamObj.correctAnswers = (teamObj.correctAnswers || 0) + 1;
+  }
+
+  const leaderboard = gameSession.teams
+    .map((t: any) => ({
+      teamId: t.id,
+      teamName: t.name,
+      score: t.score || 0,
+    }))
+    .sort((a: any, b: any) => b.score - a.score);
+
+  const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameSession.id);
+  for (const c of gameClients) {
+    sendToClient(c.id, {
+      type: "rapid_fire_awarded",
+      gameId: gameSession.id,
+      questionId: qid,
+      teamId: sessionTeam.id,
+      userId,
+      points,
+      teams: gameSession.teams,
+      leaderboard,
+      message: "Rapid-fire: first correct answer awarded",
+    });
+  }
+
+  gameSession.currentQuestionIndex = (gameSession.currentQuestionIndex || 0) + 1;
+  setTimeout(() => {
+    sendRapidFireQuestion(gameSession.id);
+  }, 1200);
+
+  return true;
+}
+
+async function evaluateRapidFireFinalizedAnswer(
+  gameSession: any,
+  sessionTeam: any,
+  questionId: string,
+  answerId: string,
+  client: Client
+) {
+  const activeQuestionId = getActiveRapidFireQuestionId(gameSession);
+  if (!activeQuestionId || questionId !== activeQuestionId) {
+    return;
+  }
+  if (isRapidFireQuestionResolved(gameSession, questionId)) {
+    return;
+  }
+
+  const question = (gameSession.questions || []).find((q: any) => q.id === questionId);
+  if (!question) return;
+
+  const correctAnswer = question.answers?.find((a: any) => a.isCorrect);
+  const isCorrect = !!(correctAnswer && answerId === correctAnswer.id);
+
+  const feedbackPayload: GameEvent = {
+    type: "rapid_fire_feedback",
+    gameId: client.gameId,
+    questionId,
+    answerId,
+    isCorrect,
+    correctAnswerId: correctAnswer?.id,
+    message: isCorrect ? "Correct!" : "Incorrect",
+  };
+
+  if (client.userId) {
+    try {
+      sendToUser(client.userId, feedbackPayload);
+    } catch (e) {
+      console.error(`[RapidFire] Failed to send finalize feedback to user ${client.userId}:`, e);
+    }
+  }
+
+  if (isCorrect) {
+    await tryAwardRapidFireCorrectAnswer(
+      gameSession,
+      sessionTeam,
+      questionId,
+      client.userId
+    );
+    return;
+  }
+
+  if (
+    allTeamsFinalizedRapidQuestion(gameSession, questionId) &&
+    !isRapidFireQuestionResolved(gameSession, questionId)
+  ) {
+    console.log(
+      `[RapidFire] All teams finalized incorrectly for ${questionId}. Moving to next question.`
+    );
+    if ((gameSession as any)._rapidQuestionTimeout) {
+      clearTimeout((gameSession as any)._rapidQuestionTimeout);
+      (gameSession as any)._rapidQuestionTimeout = undefined;
+    }
+    processRapidFireResult(gameSession.id, questionId).catch((err) => {
+      console.error(`[RapidFire] Error processing all-finalized-incorrect result:`, err);
+    });
+  }
+}
+
 async function processRapidFireResult(gameId: string, questionId: string) {
   const gameSession = gameSessions.get(gameId);
   if (!gameSession) return;
 
   try {
-    // If question already awarded, nothing to do
-    if ((gameSession as any)._rapidAwardedMap?.[questionId]) {
+    // Idempotent: question already awarded or permanently closed
+    if (isRapidFireQuestionResolved(gameSession, questionId)) {
       return;
     }
+
+    // CRITICAL: Mark resolved before advancing so stale finalizes cannot score
+    markRapidFireQuestionResolved(gameSession, questionId);
 
     // No correct submissions within time limit -> broadcast no-award and advance
     const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
@@ -7055,34 +7336,96 @@ async function handleRapidFireSubmission(
 ) {
   try {
     const qid = event.questionId as string;
-    const question = (gameSession.questions || []).find((q: any) => q.id === qid);
-    if (!question) {
-      // Not a rapid-fire question
+
+    if (isRapidFireQuestionResolved(gameSession, qid)) {
+      return;
+    }
+    const activeQuestionId = getActiveRapidFireQuestionId(gameSession);
+    if (!activeQuestionId || qid !== activeQuestionId) {
+      sendToClient(clientId, {
+        type: "error",
+        message: "This question is no longer active",
+      });
       return;
     }
 
-    // Initialize rapidMemberAnswers
+    const question = (gameSession.questions || []).find((q: any) => q.id === qid);
+    if (!question) {
+      return;
+    }
+
+    // Multi-player teams: member submissions are suggestions only (captain finalizes separately)
+    if (!isSoloTeam(sessionTeam)) {
+      if (sessionTeam.captainId !== client.userId) {
+        if (hasTeamFinalizedRapidQuestion(sessionTeam, qid)) {
+          sendToClient(clientId, {
+            type: "error",
+            message: "This question has already been finalized by your team",
+          });
+          return;
+        }
+
+        if (!sessionTeam.memberAnswers) sessionTeam.memberAnswers = {};
+        if (!sessionTeam.memberAnswers[qid]) sessionTeam.memberAnswers[qid] = {};
+        sessionTeam.memberAnswers[qid][client.userId!.toString()] = {
+          answerId: event.answerId,
+          submittedAt: new Date(),
+          timeSpent: event.timeSpent || 0,
+          username: client.playerName,
+        };
+
+        const teamClients = Array.from(clients.values()).filter((c) =>
+          sessionTeam.members.some((member: any) => member.userId === c.userId)
+        );
+        for (const teamClient of teamClients) {
+          sendToClient(teamClient.id, {
+            type: "team_member_answered",
+            teamId: sessionTeam.id,
+            questionId: qid,
+            memberName: client.playerName,
+            userId: client.userId,
+            username: client.playerName,
+            answersReceived: Object.keys(sessionTeam.memberAnswers[qid] || {}).length,
+            totalMembers: sessionTeam.members.length,
+          });
+        }
+
+        sendToClient(clientId, {
+          type: "team_answer_submitted",
+          teamId: sessionTeam.id,
+          questionId: qid,
+          answerId: event.answerId,
+          userId: client.userId,
+          username: client.playerName,
+          message: "Your suggestion has been sent to the captain",
+        });
+        return;
+      }
+
+      sendToClient(clientId, {
+        type: "error",
+        message: "Only the captain can submit the team's final answer",
+      });
+      return;
+    }
+
+    // 1v1 (solo captain): immediate evaluation — preserve original rapid-fire race behavior
     if (!sessionTeam.rapidMemberAnswers) sessionTeam.rapidMemberAnswers = {};
     if (!sessionTeam.rapidMemberAnswers[qid]) sessionTeam.rapidMemberAnswers[qid] = {};
 
-    // Prevent multiple submissions from same user for same question
     if (sessionTeam.rapidMemberAnswers[qid][client.userId!.toString()]) {
-      // Ignore duplicates
       return;
     }
 
-    // Store temporary rapid answer
     sessionTeam.rapidMemberAnswers[qid][client.userId!.toString()] = {
       answerId: event.answerId,
       submittedAt: new Date(),
       timeSpent: event.timeSpent || 0,
     };
 
-    // Evaluate correctness
     const correctAnswer = question.answers?.find((a: any) => a.isCorrect);
     const isCorrect = !!(correctAnswer && event.answerId === correctAnswer.id);
 
-    // Send feedback only to submitting user (and all their connections)
     const payload: GameEvent = {
       type: "rapid_fire_feedback",
       gameId: client.gameId,
@@ -7102,80 +7445,30 @@ async function handleRapidFireSubmission(
       }
     }
 
-    // Atomic award: if correct and not yet awarded -> award immediately
     if (isCorrect) {
-      if (!(gameSession as any)._rapidAwardedMap) (gameSession as any)._rapidAwardedMap = {};
-      if (!(gameSession as any)._rapidAwardedMap[qid]) {
-        // Mark awarded immediately to prevent races
-        (gameSession as any)._rapidAwardedMap[qid] = true;
-
-        // Clear per-question timeout
-        if ((gameSession as any)._rapidQuestionTimeout) {
-          clearTimeout((gameSession as any)._rapidQuestionTimeout);
-          (gameSession as any)._rapidQuestionTimeout = undefined;
-        }
-
-        // Award points to the team (simple in-memory update; DB persistence can be added later)
-        // Check if question was tossed or rapid fire (rapid fire implies 10 points usually, but user might want consistency)
-        // Keeping it 10 for rapid fire as per original code intent
-        const points = 10;
-        const teamObj = gameSession.teams.find((t: any) => t.id === sessionTeam.id);
-        if (teamObj) {
-          // Use 'score' property consistent with normal questions (initialized as score: 0)
-          teamObj.score = (teamObj.score || 0) + points;
-          teamObj.correctAnswers = (teamObj.correctAnswers || 0) + 1;
-        }
-
-        // Prepare leaderboard for broadcast
-        const leaderboard = gameSession.teams
-          .map((t: any) => ({
-            teamId: t.id,
-            teamName: t.name,
-            score: t.score || 0,
-          }))
-          .sort((a: any, b: any) => b.score - a.score);
-
-        // Notify all clients about award
-        const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameSession.id);
-        for (const c of gameClients) {
-          sendToClient(c.id, {
-            type: "rapid_fire_awarded",
-            gameId: gameSession.id,
-            questionId: qid,
-            teamId: sessionTeam.id,
-            userId: client.userId,
-            points,
-            // Include updated team scores so clients can update UI
-            teams: gameSession.teams,
-            leaderboard,
-            message: "Rapid-fire: first correct answer awarded",
-          });
-        }
-
-        // Advance to next question after short delay
-        gameSession.currentQuestionIndex = (gameSession.currentQuestionIndex || 0) + 1;
-        setTimeout(() => {
-          sendRapidFireQuestion(gameSession.id);
-        }, 1200);
-      }
+      await tryAwardRapidFireCorrectAnswer(
+        gameSession,
+        sessionTeam,
+        qid,
+        client.userId
+      );
     } else {
-      // Incorrect answer: Check if ALL teams have now answered (and failed)
-      // This allows moving to next question immediately if everyone got it wrong
       const allTeamsParticipated = (gameSession.teams || []).every((t: any) => {
+        if (!isSoloTeam(t)) {
+          return hasTeamFinalizedRapidQuestion(t, qid);
+        }
         const teamAnswers = (t as any).rapidMemberAnswers?.[qid];
         return teamAnswers && Object.keys(teamAnswers).length > 0;
       });
 
-      if (allTeamsParticipated && !(gameSession as any)._rapidAwardedMap?.[qid]) {
-        console.log(`[RapidFire] All teams answered incorrectly for ${qid}. Moving to next question immediately.`);
+      if (allTeamsParticipated && !isRapidFireQuestionResolved(gameSession, qid)) {
+        console.log(`[RapidFire] All solo teams answered incorrectly for ${qid}. Moving to next question.`);
 
-        // Clear timeout since we are handling it now
         if ((gameSession as any)._rapidQuestionTimeout) {
           clearTimeout((gameSession as any)._rapidQuestionTimeout);
           (gameSession as any)._rapidQuestionTimeout = undefined;
         }
 
-        // Trigger "no award" logic immediately
         processRapidFireResult(gameSession.id, qid).catch((err) => {
           console.error(`[RapidFire] Error processing immediate result:`, err);
         });
@@ -8133,18 +8426,22 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
 
               // Choose event type based on session mode/gameType to avoid emitting both pipelines
               if ((retrySession as any).mode === "rapid_fire" || (retrySession as any).gameType === "rapid_fire") {
-                sendToClient(clientId, {
-                  type: "team_battle_rapid_question",
-                  gameId: retrySession.id,
-                  question: currentQuestion,
-                  questionNumber: questionNumber,
-                  totalQuestions: retrySession.questions.length,
-                  teamId: userTeam.id,
-                  timeLimit: 10000,
-                  isYourTurn: isYourTurn || false,
-                  answeringTeamName: answeringTeam?.name,
-                  opposingTeamName: opposingTeam?.name,
-                });
+                sendToClient(
+                  clientId,
+                  buildRapidFireQuestionReconnectEvent(
+                    retrySession,
+                    retrySession.id,
+                    currentQuestion,
+                    questionNumber,
+                    retrySession.questions.length,
+                    userTeam.id,
+                    {
+                      isYourTurn: isYourTurn || false,
+                      answeringTeamName: answeringTeam?.name,
+                      opposingTeamName: opposingTeam?.name,
+                    }
+                  )
+                );
               } else {
                 sendToClient(clientId, {
                   type: "team_battle_question",
@@ -8165,6 +8462,10 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
         return; // Don't try to send question yet
       }
 
+      const isRapidFireSession =
+        (battleSession as any).mode === "rapid_fire" ||
+        (battleSession as any).gameType === "rapid_fire";
+
       // Send complete game state update
       sendToClient(clientId, {
         type: "game_state_update",
@@ -8174,6 +8475,9 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
           currentQuestion: battleSession.questions?.[battleSession.currentQuestionIndex || 0],
           questionNumber: (battleSession.currentQuestionIndex || 0) + 1,
           totalQuestions: battleSession.questions?.length || 0,
+          ...(isRapidFireSession
+            ? { mode: "rapid_fire", gameType: "rapid_fire" }
+            : {}),
         },
         playerTeam: userTeam,
         opposingTeam: opposingTeam,
@@ -8199,18 +8503,22 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
 
           // Send current question if battle is active
           if ((battleSession as any).mode === "rapid_fire" || (battleSession as any).gameType === "rapid_fire") {
-            sendToClient(clientId, {
-              type: "team_battle_rapid_question",
-              gameId: battleSession.id,
-              question: currentQuestion,
-              questionNumber: questionNumber,
-              totalQuestions: battleSession.questions.length,
-              teamId: userTeam.id,
-              timeLimit: 10000,
-              isYourTurn: isYourTurn || false,
-              answeringTeamName: answeringTeam?.name,
-              opposingTeamName: opposingTeam?.name,
-            });
+            sendToClient(
+              clientId,
+              buildRapidFireQuestionReconnectEvent(
+                battleSession,
+                battleSession.id,
+                currentQuestion,
+                questionNumber,
+                battleSession.questions.length,
+                userTeam.id,
+                {
+                  isYourTurn: isYourTurn || false,
+                  answeringTeamName: answeringTeam?.name,
+                  opposingTeamName: opposingTeam?.name,
+                }
+              )
+            );
           } else {
             sendToClient(clientId, {
               type: "team_battle_question",

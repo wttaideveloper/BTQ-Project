@@ -2504,11 +2504,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Filter teams that are:
-        // 1. Explicitly TEAM_BATTLE mode
+        // 1. Match requested mode (TEAM_BATTLE or RAPID_FIRE)
         // 2. Status is "forming"
         // 3. Not full (< 3 members) after excluding LEFT players
+        const expectedGameMode =
+          requestedGameType === "rapid_fire" ? "RAPID_FIRE" : "TEAM_BATTLE";
+
         const availableTeams = normalizedTeams.filter((t: any) =>
-          t.gameMode === "TEAM_BATTLE" &&
+          t.gameMode === expectedGameMode &&
           t.status === "forming" &&
           (t.members?.length || 0) < 3
         );

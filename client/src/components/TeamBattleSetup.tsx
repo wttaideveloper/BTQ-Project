@@ -1207,7 +1207,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   // Get ALL available teams (across all sessions) for join-as-member
   const { data: allAvailableTeams = [] } = useQuery<Team[]>({
-    queryKey: ["/api/teams/available"],
+    queryKey: ["/api/teams/available", isRapidFire ? "rapid_fire" : "team_battle"],
     queryFn: async () => {
       const gameTypeParam = isRapidFire ? "rapid_fire" : "team_battle";
       const res = await apiRequest("GET", `/api/teams/available?gameType=${encodeURIComponent(gameTypeParam)}`);

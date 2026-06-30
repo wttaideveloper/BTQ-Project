@@ -617,13 +617,21 @@ const Home: React.FC = () => {
               delay={0}
             />
             <HomeActionCard
+              title="Play with Friends (Same Device)"
+              description="Pass the device and take turns. Up to 3 players on one screen — perfect for family game night."
+              icon={Users}
+              onClick={handleMultiplayerStart}
+              accent="teal"
+              delay={80}
+            />
+            <HomeActionCard
               title="Team Battle"
               description="Two teams compete live. Invite friends, work together, and battle for victory."
               icon={Swords}
               onClick={handleEnterTeamBattle}
               loading={isLoadingTeamBattle}
               accent="purple"
-              delay={80}
+              delay={160}
             />
             <HomeActionCard
               title="Rapid Fire"
@@ -632,19 +640,6 @@ const Home: React.FC = () => {
               onClick={handleEnterRapidFire}
               loading={isLoadingRapidFire}
               accent="gold"
-              delay={160}
-            />
-            <HomeActionCard
-              title="Challenge Friend"
-              description="Send a challenge and compare scores when you're both ready."
-              icon={Users}
-              onClick={() => setLocation("/challenges")}
-              badge={
-                pendingChallenges.length > 0
-                  ? pendingChallenges.length
-                  : undefined
-              }
-              accent="teal"
               delay={240}
             />
           </div>
@@ -905,14 +900,22 @@ const Home: React.FC = () => {
                 className="space-y-2"
               >
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-white/20 bg-white/5 cursor-pointer">
-                  <RadioGroupItem value="question" id="dlg-question" />
+                  <RadioGroupItem
+                    value="question"
+                    id="dlg-question"
+                    className="h-5 w-5 shrink-0 border-2 border-white/60 text-accent focus-visible:ring-accent data-[state=checked]:border-accent"
+                  />
                   <Label htmlFor="dlg-question" className="cursor-pointer flex-1">
                     <span className="font-medium">Question-Based</span>
                     <p className="text-xs text-white/60">10 questions at your pace</p>
                   </Label>
                 </div>
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-white/20 bg-white/5 cursor-pointer">
-                  <RadioGroupItem value="time" id="dlg-time" />
+                  <RadioGroupItem
+                    value="time"
+                    id="dlg-time"
+                    className="h-5 w-5 shrink-0 border-2 border-white/60 text-accent focus-visible:ring-accent data-[state=checked]:border-accent"
+                  />
                   <Label htmlFor="dlg-time" className="cursor-pointer flex-1">
                     <span className="font-medium">Time-Based</span>
                     <p className="text-xs text-white/60">15-minute speed round</p>

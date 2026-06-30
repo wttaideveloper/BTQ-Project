@@ -617,7 +617,7 @@ const Home: React.FC = () => {
               delay={0}
             />
             <HomeActionCard
-              title="Play with Friends (Same Device)"
+              title="Play with Friends"
               description="Pass the device and take turns. Up to 3 players on one screen — perfect for family game night."
               icon={Users}
               onClick={handleMultiplayerStart}
@@ -967,7 +967,7 @@ const Home: React.FC = () => {
                 className="w-full home-btn-outline h-11 font-semibold"
                 onClick={handleMultiplayerStart}
               >
-                <Users className="mr-2 h-4 w-4" /> Play with Friends (Same Device)
+                <Users className="mr-2 h-4 w-4" /> Play with Friends
               </Button>
             </div>
           </div>
@@ -975,7 +975,11 @@ const Home: React.FC = () => {
       </Dialog>
 
       {showGameSetup && (
-        <GameSetup key={gameSetupKey} onStartGame={handleStartGame} />
+        <GameSetup
+          key={gameSetupKey}
+          onStartGame={handleStartGame}
+          onClose={() => setShowGameSetup(false)}
+        />
       )}
 
       {showTeamBattleSetup && (

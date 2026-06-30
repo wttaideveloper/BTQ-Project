@@ -1807,52 +1807,83 @@ export default function TeamBattleGame() {
       isYourTeamWinner = isWinner && !isDraw;
     }
 
+    const yourTeamLabel = yourTeam?.name || "Your Team";
+    const opponentLabel = opponentTeam?.name || "Opponent Team";
+
+    const outcomeHeadline = isDraw
+      ? "IT'S A DRAW!"
+      : isYourTeamWinner
+        ? "VICTORY!"
+        : "DEFEAT!";
+
+    const outcomeSubtitle = isDraw
+      ? "Both teams performed equally well!"
+      : isYourTeamWinner
+        ? "Your team wins!"
+        : `${opponentLabel} wins!`;
+
+    const outcomeDetail = isDraw
+      ? "Great battle — every point counted."
+      : gameState.disconnectWinner
+        ? isYourTeamWinner
+          ? gameState.disconnectWinner.reason ||
+            "The opponent team disconnected. You win by default."
+          : gameState.disconnectWinner.reason ||
+            "Your team was eliminated. Better luck next time!"
+        : isYourTeamWinner
+          ? yourScore > opponentScore
+            ? `You outscored ${opponentLabel} ${yourScore}–${opponentScore}.`
+            : "Your team claimed victory!"
+          : `${opponentLabel} outscored you ${opponentScore}–${yourScore}. Great effort — try again!`;
+
     return (
       <div className="max-w-2xl mx-auto p-3 sm:p-4 md:p-6">
         <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-10">
           {/* Winner Announcement Section */}
           <div className="text-center mb-6 sm:mb-8">
-            {isDraw ? (
-              <>
-                <div className="flex justify-center mb-3 sm:mb-4">
-                  <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600 flex items-center justify-center shadow-2xl animate-pulse-slow border-4 border-yellow-300">
-                    <Crown className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
-                  </div>
-                </div>
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">
-                  IT'S A DRAW!
-                </h1>
-                <p className="text-white/70 text-xs sm:text-sm md:text-base px-2">
-                  Both teams performed equally well!
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="flex justify-center mb-3 sm:mb-4">
-                  <div className={`h-20 w-20 sm:h-24 sm:w-24 rounded-full ${isYourTeamWinner
-                    ? 'bg-gradient-to-br from-accent via-accent-dark to-accent-light'
-                    : 'bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600'
-                    } flex items-center justify-center shadow-2xl animate-pulse-slow border-4 ${isYourTeamWinner ? 'border-accent-light' : 'border-yellow-300'
-                    }`}>
-                    <Crown className={`h-10 w-10 sm:h-12 sm:w-12 ${isYourTeamWinner ? 'text-primary' : 'text-white'
-                      }`} />
-                  </div>
-                </div>
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-wide mb-2 bg-gradient-to-r from-accent to-accent-light bg-clip-text text-transparent">
-                  {isYourTeamWinner ? 'VICTORY!' : 'GAME OVER!'}
-                </h1>
-                <p className="text-white/80 text-sm sm:text-base md:text-lg font-semibold mb-1 px-2">
-                  {winnerTeam?.name || (isYourTeamWinner ? 'Your Team' : 'Opponent Team')} Wins!
-                </p>
-                {gameState.disconnectWinner && (
-                  <p className="text-white/70 text-xs sm:text-sm md:text-base mb-1 px-2">
-                    {gameState.disconnectWinner.reason || 'Opponent team disconnected'}
-                  </p>
-                )}
-                <p className="text-white/60 text-xs sm:text-sm md:text-base px-2">
-                  Final Score: <span className="font-bold text-accent">{Math.max(yourScore, opponentScore)}</span> points
-                </p>
-              </>
+            <div className="flex justify-center mb-3 sm:mb-4">
+              <div
+                className={`h-20 w-20 sm:h-24 sm:w-24 rounded-full flex items-center justify-center shadow-2xl animate-pulse-slow border-4 ${
+                  isDraw
+                    ? "bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600 border-yellow-300"
+                    : isYourTeamWinner
+                      ? "bg-gradient-to-br from-accent via-accent-dark to-accent-light border-accent-light"
+                      : "bg-gradient-to-br from-red-600 via-red-700 to-red-900 border-red-400/60"
+                }`}
+              >
+                <Crown
+                  className={`h-10 w-10 sm:h-12 sm:w-12 ${
+                    isDraw || !isYourTeamWinner ? "text-white" : "text-primary"
+                  }`}
+                />
+              </div>
+            </div>
+            <h1
+              className={`text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-wide mb-2 bg-clip-text text-transparent ${
+                isDraw
+                  ? "bg-gradient-to-r from-yellow-400 to-yellow-600"
+                  : isYourTeamWinner
+                    ? "bg-gradient-to-r from-accent to-accent-light"
+                    : "bg-gradient-to-r from-red-400 to-red-600"
+              }`}
+            >
+              {outcomeHeadline}
+            </h1>
+            <p className="text-white/90 text-base sm:text-lg md:text-xl font-bold mb-2 px-2">
+              {outcomeSubtitle}
+            </p>
+            <p className="text-white/65 text-xs sm:text-sm md:text-base mb-3 px-2 max-w-md mx-auto leading-relaxed">
+              {outcomeDetail}
+            </p>
+            {!isDraw && (
+              <p className="text-white/55 text-xs sm:text-sm px-2">
+                Final score —{" "}
+                <span className="font-semibold text-accent">You {yourScore}</span>
+                {" · "}
+                <span className="font-semibold text-white/80">
+                  {opponentLabel} {opponentScore}
+                </span>
+              </p>
             )}
           </div>
 
@@ -1870,7 +1901,14 @@ export default function TeamBattleGame() {
                       {isYourTeamWinner && !isDraw && (
                         <Crown className="h-5 w-5 text-accent" />
                       )}
-                      {yourTeam.name || "Your Team"}
+                      <span>
+                        Your Team
+                        {yourTeamLabel !== "Your Team" && (
+                          <span className="block text-xs sm:text-sm font-normal text-white/55 mt-0.5">
+                            {yourTeamLabel}
+                          </span>
+                        )}
+                      </span>
                     </div>
                     {isYourTeamWinner && !isDraw && (
                       <span className="text-xs sm:text-sm bg-accent text-primary px-2 py-1 rounded-full font-semibold">
@@ -1909,18 +1947,18 @@ export default function TeamBattleGame() {
                   <>
                     <div className="h-px bg-white/10" />
                     <div className={`rounded-lg sm:rounded-xl p-3 sm:p-4 ${!isYourTeamWinner && !isDraw
-                      ? 'bg-gradient-to-r from-yellow-400/20 to-yellow-600/20 border-2 border-yellow-400/50'
+                      ? 'bg-gradient-to-r from-red-500/15 to-red-700/15 border-2 border-red-400/40'
                       : 'bg-black/20 border border-white/10'
                       }`}>
                       <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
                         <div className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                           {!isYourTeamWinner && !isDraw && (
-                            <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 flex-shrink-0" />
+                            <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-red-400 flex-shrink-0" />
                           )}
-                          <span className="truncate">{opponentTeam.name || "Opponent Team"}</span>
+                          <span className="truncate">Opponent · {opponentLabel}</span>
                         </div>
                         {!isYourTeamWinner && !isDraw && (
-                          <span className="text-xs sm:text-sm bg-yellow-400 text-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-semibold flex-shrink-0 whitespace-nowrap">
+                          <span className="text-xs sm:text-sm bg-red-500 text-white px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-semibold flex-shrink-0 whitespace-nowrap">
                             WINNER
                           </span>
                         )}

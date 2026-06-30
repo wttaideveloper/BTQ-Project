@@ -10,8 +10,6 @@ import Game from "@/pages/Game";
 import AdminPanel from "@/pages/AdminPanel";
 import AuthPage from "@/pages/AuthPage";
 import Leaderboard from "@/pages/Leaderboard";
-import ChallengesPage from "@/pages/ChallengesPage";
-import ChallengePage from "@/pages/ChallengePage";
 import TeamBattleGame from "@/pages/TeamBattleGame";
 import TeamBattleSetup from "@/pages/TeamBattleSetup";
 import GameHistory from "@/pages/GameHistory";
@@ -72,8 +70,6 @@ function Router() {
       <Route path="/team-battle-game" component={TeamBattleGame} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/game-history" component={GameHistory} />
-      <Route path="/challenges" component={ChallengesPage} />
-      <Route path="/challenge/:id" component={ChallengePage} />
       <Route path="/admin">
         <AdminGate>
           <AdminPanel />

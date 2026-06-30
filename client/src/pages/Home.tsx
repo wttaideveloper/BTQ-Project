@@ -32,7 +32,6 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Play,
-  Sword,
   Database,
   LogIn,
   LogOut,
@@ -61,7 +60,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Challenge, Notification } from "@shared/schema";
+import { Notification } from "@shared/schema";
 import { voiceService } from "@/lib/voice-service";
 import { stopSpeaking } from "@/lib/sounds";
 import {
@@ -107,15 +106,6 @@ const Home: React.FC = () => {
   const dailyVerse = useMemo(() => getDailyVerse(), []);
   const dailyChallenge = useMemo(() => getDailyChallenge(), []);
 
-  const { data: challenges } = useQuery({
-    queryKey: ["/api/challenges"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/challenges");
-      return await res.json();
-    },
-    enabled: !!user,
-  });
-
   const { data: notifications } = useQuery({
     queryKey: ["/api/notifications"],
     queryFn: async () => {
@@ -139,8 +129,6 @@ const Home: React.FC = () => {
     refetchOnWindowFocus: true,
   });
 
-  const pendingChallenges =
-    challenges?.filter((c: Challenge) => c.status === "pending") || [];
   const unreadNotifications =
     notifications?.filter((n: Notification) => !n.read) || [];
   const latestNotifications = (notifications || []).slice(0, 5);
@@ -165,16 +153,6 @@ const Home: React.FC = () => {
 
   // In-game streak from unfinished quiz; otherwise 0 until we persist streaks in DB
   const winStreak = getWinStreak(user?.id);
-
-  const activeChallenges = useMemo(() => {
-    if (!challenges || !user) return [];
-    return challenges.filter(
-      (c: Challenge) =>
-        c.status === "accepted" &&
-        ((c.challengerId === user.id && !c.challengerCompleted) ||
-          (c.challengeeId === user.id && !c.challengeeCompleted))
-    );
-  }, [challenges, user]);
 
   useEffect(() => {
     voiceService.stopAllAudio(true);
@@ -527,10 +505,7 @@ const Home: React.FC = () => {
         )}
 
         {/* Continue Playing */}
-        {user &&
-          (unfinishedGame ||
-            activeChallenges.length > 0 ||
-            pendingChallenges.length > 0) && (
+        {user && unfinishedGame && (
             <section className="animate-in fade-in slide-in-from-bottom-3 duration-500 delay-150 fill-mode-both">
               <Card className="home-glass-card border-accent/30 rounded-xl overflow-hidden">
                 <CardHeader className="pb-2">
@@ -542,61 +517,21 @@ const Home: React.FC = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2 pb-4">
-                  {unfinishedGame && (
-                    <button
-                      type="button"
-                      onClick={handleContinueGame}
-                      className="w-full flex items-center justify-between p-3 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-left group"
-                    >
-                      <div>
-                        <p className="text-white font-medium text-sm">
-                          Solo Quiz in progress
-                        </p>
-                        <p className="text-white/60 text-xs">
-                          {unfinishedGame.label}
-                        </p>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-accent group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-                  {activeChallenges.map((c: Challenge) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setLocation(`/challenge/${c.id}`)}
-                      className="w-full flex items-center justify-between p-3 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-left group"
-                    >
-                      <div>
-                        <p className="text-white font-medium text-sm">
-                          Active challenge
-                        </p>
-                        <p className="text-white/60 text-xs">
-                          {c.category} · {c.difficulty}
-                        </p>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-accent group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  ))}
-                  {pendingChallenges.slice(0, 2).map((c: Challenge) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setLocation("/challenges")}
-                      className="w-full flex items-center justify-between p-3 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-left group"
-                    >
-                      <div>
-                        <p className="text-white font-medium text-sm">
-                          Challenge waiting for you
-                        </p>
-                        <p className="text-white/60 text-xs">
-                          {c.category} · Tap to respond
-                        </p>
-                      </div>
-                      <Badge variant="destructive" className="text-xs">
-                        New
-                      </Badge>
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    onClick={handleContinueGame}
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-left group"
+                  >
+                    <div>
+                      <p className="text-white font-medium text-sm">
+                        Solo Quiz in progress
+                      </p>
+                      <p className="text-white/60 text-xs">
+                        {unfinishedGame.label}
+                      </p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-accent group-hover:translate-x-1 transition-transform" />
+                  </button>
                 </CardContent>
               </Card>
             </section>
@@ -707,14 +642,14 @@ const Home: React.FC = () => {
                     )}
                   </CardTitle>
                   <CardDescription className="text-white/55">
-                    Invites, challenges, and updates
+                    Invites and updates
                   </CardDescription>
                 </div>
               </CardHeader>
               <CardContent>
                 {latestNotifications.length === 0 ? (
                   <p className="text-white/50 text-sm py-4 text-center">
-                    No notifications yet — start a game or challenge a friend!
+                    No notifications yet — start a game or join a team battle!
                   </p>
                 ) : (
                   <ul className="space-y-2">
@@ -743,18 +678,6 @@ const Home: React.FC = () => {
                             })}
                           </p>
                         </div>
-                        {n.challengeId && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-accent hover:text-accent/80 flex-shrink-0"
-                            onClick={() =>
-                              setLocation(`/challenge/${n.challengeId}`)
-                            }
-                          >
-                            View
-                          </Button>
-                        )}
                       </li>
                     ))}
                   </ul>
@@ -845,13 +768,6 @@ const Home: React.FC = () => {
             onClick={() => setLocation("/game-history")}
           >
             <History className="mr-2 h-4 w-4" /> Game History
-          </Button>
-          <Button
-            variant="ghost"
-            className="text-white/70 hover:text-white hover:bg-white/10"
-            onClick={() => setLocation("/challenges")}
-          >
-            <Sword className="mr-2 h-4 w-4" /> Challenges
           </Button>
         </section>
 

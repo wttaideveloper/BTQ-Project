@@ -31,12 +31,10 @@ import {
   Award,
   User,
   Loader2,
-  Swords,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import { Challenge } from "@shared/schema";
 
 interface ScoreRecord {
   id: string;
@@ -116,18 +114,6 @@ export default function GameHistory() {
   });
 
   const {
-    data: challenges = [],
-    isLoading: challengesLoading,
-  } = useQuery({
-    queryKey: ["/api/challenges"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/challenges");
-      return res.json();
-    },
-    enabled: !!user,
-  });
-
-  const {
     data: leaderboardData,
     isLoading: leaderboardLoading,
     refetch: refetchLeaderboard,
@@ -165,22 +151,6 @@ export default function GameHistory() {
     );
     const accuracy = accuracyPct(totalCorrect, totalIncorrect);
 
-    const completedChallenges = (challenges as Challenge[]).filter(
-      (c) => c.status === "completed"
-    );
-    const wins = completedChallenges.filter(
-      (c) => c.winnerUserId === user?.id && !c.isDraw
-    ).length;
-    const losses = completedChallenges.filter(
-      (c) =>
-        c.winnerUserId &&
-        c.winnerUserId !== user?.id &&
-        !c.isDraw
-    ).length;
-    const draws = completedChallenges.filter((c) => c.isDraw).length;
-    const challengeTotal = wins + losses + draws;
-    const winRate = challengeTotal ? (wins / challengeTotal) * 100 : 0;
-
     const myEntry = players.find(
       (p) =>
         p.isCurrentUser ||
@@ -202,18 +172,14 @@ export default function GameHistory() {
       averageScore,
       accuracy,
       totalScore,
-      wins,
-      losses,
-      draws,
-      winRate,
       favoriteCategory: modeValue(scores.map((s) => s.category)),
       favoriteDifficulty: modeValue(scores.map((s) => s.difficulty)),
       rank,
       globalPlayers: leaderboardData?.metadata?.totalPlayers ?? players.length,
     };
-  }, [scores, challenges, players, user, leaderboardData]);
+  }, [scores, players, user, leaderboardData]);
 
-  const isLoading = scoresLoading || challengesLoading || leaderboardLoading;
+  const isLoading = scoresLoading || leaderboardLoading;
   const isRefreshing = scoresFetching || leaderboardFetching;
 
   const rankIcon = (index: number) => {
@@ -327,7 +293,7 @@ export default function GameHistory() {
         </div>
 
         {/* Detail cards */}
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-1 gap-4 max-w-2xl">
           <Card className="home-glass-card rounded-xl border-white/10">
             <CardHeader className="pb-2">
               <CardTitle className="text-white flex items-center gap-2 text-lg">
@@ -356,34 +322,6 @@ export default function GameHistory() {
                   {stats.favoriteDifficulty}
                 </p>
                 <p className="text-white/55 text-sm">Favorite Difficulty</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="home-glass-card rounded-xl border-white/10">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-white flex items-center gap-2 text-lg">
-                <Swords className="h-5 w-5 text-accent" /> Challenges
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold text-emerald-400">{stats.wins}</p>
-                <p className="text-white/55 text-sm">Wins</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-red-400">{stats.losses}</p>
-                <p className="text-white/55 text-sm">Losses</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-amber-400">{stats.draws}</p>
-                <p className="text-white/55 text-sm">Draws</p>
-              </div>
-              <div className="col-span-3 pt-2 border-t border-white/10">
-                <p className="text-lg font-semibold text-white">
-                  {stats.winRate.toFixed(0)}% win rate
-                </p>
-                <p className="text-white/55 text-sm">From friend challenges</p>
               </div>
             </CardContent>
           </Card>

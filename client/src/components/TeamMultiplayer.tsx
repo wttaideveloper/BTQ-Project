@@ -191,7 +191,6 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
           isOnline: true,
         });
       } catch (error) {
-        console.log("Failed to set online status:", error);
       }
     };
 
@@ -204,7 +203,6 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
 
     ws.onopen = () => {
       if (!isMounted) return;
-      console.log("WebSocket connected successfully");
       setSocket(ws);
 
       // Authenticate with the server
@@ -225,11 +223,9 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
 
       try {
         const data = JSON.parse(event.data);
-        console.log("WebSocket message received:", data);
 
         switch (data.type) {
           case "connection_established":
-            console.log("WebSocket connection confirmed");
             break;
 
           case "team_created":
@@ -430,7 +426,6 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
     };
 
     ws.onclose = () => {
-      console.log("WebSocket connection closed");
       if (isMounted) {
         setSocket(null);
       }

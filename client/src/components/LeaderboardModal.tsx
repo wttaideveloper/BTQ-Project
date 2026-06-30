@@ -57,22 +57,6 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
     );
   
   // Debug logging
-  console.log("🏆 LeaderboardModal Render:", {
-    hasWinner,
-    isTie,
-    winner: winner ? {
-      name: winner.name,
-      score: winner.score,
-      correctAnswers: winner.correctAnswers,
-      avgTime: winner.avgTime
-    } : null,
-    allPlayers: sortedPlayers.map(p => ({
-      name: p.name,
-      score: p.score,
-      correctAnswers: p.correctAnswers,
-      avgTime: p.avgTime
-    }))
-  });
   
   // Play victory sounds for game over - Game Show style!
   useEffect(() => {

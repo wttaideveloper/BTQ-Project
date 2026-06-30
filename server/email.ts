@@ -74,7 +74,6 @@ If you didn't expect this invitation, you can safely ignore this email.
     };
 
     await sgMail.send(msg);
-    console.log('Team invitation email sent successfully');
     return true;
   } catch (error) {
     console.error('Failed to send team invitation email:', error);

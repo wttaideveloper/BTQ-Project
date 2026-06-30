@@ -94,15 +94,12 @@ export function useBattleState(gameSessionId: string | null) {
       // ================================================================
       if (data.stateVersion !== undefined) {
         if (data.stateVersion < lastStateVersionRef.current) {
-          console.log(`[useBattleState] ⚠️ Ignoring out-of-order response: v${data.stateVersion} < v${lastStateVersionRef.current}`);
           // Return the cached data instead of stale response
           const cached = queryClient.getQueryData<BattleState>(queryKey);
           if (cached) return cached;
         }
         lastStateVersionRef.current = data.stateVersion;
-        console.log(`[useBattleState] 📊 Fetched authoritative state (v${data.stateVersion}):`, data.phase, data.bothReady);
       } else {
-        console.log("[useBattleState] 📊 Fetched authoritative state:", data);
       }
       
       return data;
@@ -120,18 +117,15 @@ export function useBattleState(gameSessionId: string | null) {
   const debouncedRefetch = useCallback(() => {
     const now = Date.now();
     if (now - lastRefetchRef.current < REFETCH_DEBOUNCE_MS) {
-      console.log("[useBattleState] ⏳ Skipping refetch (debounced)");
       return;
     }
     lastRefetchRef.current = now;
-    console.log("[useBattleState] 🔄 Refetching battle state from API...");
     refetch();
   }, [refetch]);
 
   // Force immediate refetch (bypasses debounce)
   const forceRefetch = useCallback(() => {
     lastRefetchRef.current = 0;
-    console.log("[useBattleState] ⚡ Force refetching battle state...");
     refetch();
   }, [refetch]);
 
@@ -166,9 +160,6 @@ export function useBattleState(gameSessionId: string | null) {
         // Only refetch if this event is for our session (or has no session info)
         const eventSessionId = data.gameSessionId;
         if (!eventSessionId || eventSessionId === gameSessionId) {
-          console.log(
-            `[useBattleState] 📨 Received ${eventType} notification, triggering refetch`
-          );
           debouncedRefetch();
         }
       });
@@ -186,13 +177,11 @@ export function useBattleState(gameSessionId: string | null) {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        console.log("[useBattleState] 👁️ Window became visible, refetching...");
         forceRefetch();
       }
     };
 
     const handleFocus = () => {
-      console.log("[useBattleState] 👁️ Window focused, refetching...");
       debouncedRefetch();
     };
 

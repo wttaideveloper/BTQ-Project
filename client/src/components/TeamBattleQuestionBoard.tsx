@@ -129,16 +129,12 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
         try {
           // Double-check conditions before speaking
           if (isPaused || isReadOnly) {
-            console.log(`⏭️ [TeamBattle] Skipping narration - paused or read-only`);
             // Reset flag so it can retry when conditions are met
             hasReadQuestionRef.current = false;
             return;
           }
 
           await voiceService.getVoiceStatus();
-          console.log(
-            `🔊 [TeamBattle] Voice service ready - reading Question ${currentQuestionIndex + 1} with session ${newSessionId}`
-          );
 
           // Only speak if document is visible and conditions are still met
           if (
@@ -147,9 +143,6 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
             !isReadOnly
           ) {
             const textToSpeak = `Question ${currentQuestionIndex + 1}: ${question.text}`;
-            console.log(
-              `📢 [TeamBattle] Starting narration: "${textToSpeak.substring(0, 50)}..."`
-            );
 
             // Verify session is still valid before speaking
             const currentSession = voiceService.getCurrentSession();
@@ -158,14 +151,11 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
                 textToSpeak,
                 newSessionId
               );
-              console.log(`✅ [TeamBattle] Narration started successfully`);
             } else {
-              console.log(`⚠️ [TeamBattle] Session changed, skipping narration. Current: ${currentSession}, Expected: ${newSessionId}`);
               // Reset flag so it can retry
               hasReadQuestionRef.current = false;
             }
           } else {
-            console.log(`⏭️ [TeamBattle] Skipping narration - document not visible or conditions changed`);
             // Reset flag so it can retry when conditions are met
             hasReadQuestionRef.current = false;
           }
@@ -185,12 +175,10 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
         clearTimeout(questionTimer);
         const currentSession = voiceService.getCurrentSession();
         if (currentSession === newSessionId) {
-          console.log(`🧹 [TeamBattle] Cleaning up session ${newSessionId}`);
           voiceService.clearSession();
         }
       };
     } else if (isVoiceEnabled() && hasReadQuestionRef.current) {
-      console.log(`⏭️ [TeamBattle] Question ${currentQuestionIndex + 1} already marked as read, skipping narration`);
     }
   }, [question.id, question.text, currentQuestionIndex, isPaused, isReadOnly]);
 

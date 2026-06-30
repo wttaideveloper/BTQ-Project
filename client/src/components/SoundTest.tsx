@@ -19,14 +19,12 @@ const SoundTest: React.FC = () => {
   
   // Test Howler.js sound
   const testHowlerSound = (soundName: string) => {
-    console.log(`Testing Howler sound: ${soundName}`);
     // @ts-ignore - we're accepting any string here for testing
     playSound(soundName);
   };
   
   // Test basic Audio API sound
   const testBasicSound = (soundName: SoundName) => {
-    console.log(`Testing basic sound: ${soundName}`);
     playBasicSound(soundName);
   };
   

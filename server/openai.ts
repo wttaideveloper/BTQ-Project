@@ -33,7 +33,6 @@ export async function generateQuestions(
   count: number
 ): Promise<Question[]> {
   try {
-    console.log(`Generating ${count} questions for category: ${category}, difficulty: ${difficulty}`);
     
     const prompt = `
       Create exactly ${count} Bible trivia questions for a Christian trivia game.
@@ -86,7 +85,6 @@ export async function generateQuestions(
       - Make questions unique and different from common Bible trivia
     `;
 
-    console.log("Sending request to OpenAI...");
     
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -101,8 +99,6 @@ export async function generateQuestions(
       throw new Error("No content returned from OpenAI");
     }
 
-    console.log("Parsing OpenAI response...");
-    console.log("Raw response:", content);
     
     // Parse the response and handle different response formats
     let parsedContent;
@@ -110,7 +106,6 @@ export async function generateQuestions(
       parsedContent = JSON.parse(content);
     } catch (parseError) {
       console.error("Failed to parse JSON response:", parseError);
-      console.log("Raw response:", content);
       throw new Error("Invalid JSON response from OpenAI");
     }
 
@@ -132,7 +127,6 @@ export async function generateQuestions(
       throw new Error("Unexpected response format from OpenAI");
     }
 
-    console.log(`Successfully parsed ${questions.length} questions`);
 
     // Validate and format questions
     const formattedQuestions = questions.map((q: any, index: number) => {
@@ -162,27 +156,22 @@ export async function generateQuestions(
         }))
       };
     });
-    console.log(`Successfully generated ${formattedQuestions.length} questions`);
-    console.log("Checking for duplicate questions...");
     const uniqueQuestions = [];
     let duplicatesFound = 0;
     
     for (const question of formattedQuestions) {
       const exists = await questionExists(question.text);
       if (exists) {
-        console.log(`Duplicate found: ${question.text.substring(0, 50)}...`);
         duplicatesFound++;
       } else {
         uniqueQuestions.push(question);
       }
     }
     
-    console.log(`📊 Found ${duplicatesFound} duplicates, ${uniqueQuestions.length} unique questions`);
     
     // If we don't have enough unique questions, generate more
     if (uniqueQuestions.length < count) {
       const additionalNeeded = count - uniqueQuestions.length;
-      console.log(`Need ${additionalNeeded} more unique questions, generating additional ones...`);
       
       // Generate additional questions with different prompts
       const additionalPrompt = `
@@ -253,10 +242,8 @@ export async function generateQuestions(
       }
     }
     
-    console.log(`✅ Final unique questions: ${uniqueQuestions.length}`);
     
     // Return questions for review instead of storing directly
-    console.log("📋 Questions ready for review and validation");
     return uniqueQuestions;
     
   } catch (error) {
@@ -264,7 +251,6 @@ export async function generateQuestions(
     
     // If AI generation fails, try to return some existing questions from the database
     try {
-      console.log("🔄 AI generation failed, falling back to existing questions...");
       const existingQuestions = await database.getRandomQuestions({
         category: category !== "All Categories" ? category : undefined,
         difficulty,
@@ -272,7 +258,6 @@ export async function generateQuestions(
       });
       
       if (existingQuestions.length > 0) {
-        console.log(`✅ Returning ${existingQuestions.length} existing questions as fallback`);
         return existingQuestions;
       }
     } catch (fallbackError) {

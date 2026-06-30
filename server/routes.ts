@@ -95,7 +95,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         LIMIT 1
       `;
       if (Array.isArray(exists) && exists.length > 0) {
-        console.log("[Startup Check] Column 'current_team_battle_mode' exists on users table");
       } else {
         console.warn("[Startup Check] Column 'current_team_battle_mode' DOES NOT exist on users table");
       }
@@ -160,7 +159,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           WHERE status = 'forming'
           RETURNING id, team_a_name, team_b_name, created_at
         `;
-        console.log(`🗑️  Deleted ALL ${staleBattles.length} forming battles`);
       } else {
         // Delete only stale battles (forming >30 minutes)
         staleBattles = await sql`
@@ -169,7 +167,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           AND created_at < NOW() - INTERVAL '30 minutes'
           RETURNING id, team_a_name, team_b_name, created_at
         `;
-        console.log(`🗑️  Deleted ${staleBattles.length} stale battles (>30 min)`);
       }
 
       // Delete expired join requests
@@ -273,12 +270,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Team join request routes
-  console.log("✅ Registering team join request routes...");
 
   // Helper function to parse team ID and get team from team_battles
   async function getTeamFromBattle(teamId: string) {
     try {
-      console.log(`[getTeamFromBattle] Starting with teamId: ${teamId}`);
 
       // Team ID format supports both "{battleId}-team-{a/b}" and "battle-{battleId}-team-{a/b}"
       const parts = teamId.split('-team-');
@@ -292,20 +287,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const battleId = rawBattleId.startsWith('battle-') ? rawBattleId.substring('battle-'.length) : rawBattleId;
       const teamSide = parts[1].toUpperCase(); // "A" or "B"
 
-      console.log(`[getTeamFromBattle] Parsed: battleId=${battleId}, teamSide=${teamSide}`);
 
       // First try: Get battle by battleId
       let battle = await database.getTeamBattle(battleId);
       if (!battle) {
-        console.log(`[getTeamFromBattle] Battle not found by ID: ${battleId}, trying alternative lookup...`);
 
         // Alternative lookup: Find battle by gameSessionId and team captain
         // This handles cases where teamId might be a different format
         const allBattles = await database.getTeamBattlesByStatus("forming");
-        console.log(`[getTeamFromBattle] Found ${allBattles.length} forming battles, searching for matching team...`);
 
         for (const b of allBattles) {
-          console.log(`[getTeamFromBattle] Checking battle ${b.id}: TeamA=${b.teamAName} (captain: ${b.teamACaptainId}), TeamB=${b.teamBName} (captain: ${b.teamBCaptainId})`);
 
           // Check if this battle has the team we're looking for
           const teams = await convertTeamBattleToTeams(b);
@@ -315,7 +306,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
 
           if (matchingTeam) {
-            console.log(`[getTeamFromBattle] ✅ Found matching team in battle ${b.id}: ${matchingTeam.name}`);
             battle = b;
             break;
           }
@@ -333,11 +323,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!team) {
         console.error(`[getTeamFromBattle] ❌ Team ${teamSide} not found in battle ${battle.id}`);
-        console.log(`[getTeamFromBattle] Available teams in battle:`, teams.map(t => `${t.name} (${t.id})`));
         return null;
       }
 
-      console.log(`[getTeamFromBattle] ✅ Found team: ${team.name} (${team.id})`);
       return team;
     } catch (error) {
       console.error('[getTeamFromBattle] Error:', error);
@@ -368,7 +356,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if member already in team
       if (currentTeammates.some((m: any) => m.id === member.id)) {
-        console.log('Member already in team');
         return;
       }
 
@@ -380,7 +367,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         [teammatesField]: updatedTeammates
       });
 
-      console.log(`✅ Added member ${member.username} to team ${teamSide.toUpperCase()} in battle ${battleId}`);
     } catch (error) {
       console.error('Error in addMemberToTeamBattle:', error);
       throw error;
@@ -397,17 +383,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const userId = req.user.id;
 
-      console.log(`[GET /api/team-join-requests] Fetching ALL join requests for captain ${userId}`);
 
       const joinRequests = await database.getJoinRequestsForCaptain(userId);
 
-      console.log(`[GET /api/team-join-requests] Returning ${joinRequests.length} join requests`);
-      console.log(`[GET /api/team-join-requests] Response:`, JSON.stringify(joinRequests.map(jr => ({
-        id: jr.id,
-        team_id: jr.team_id,
-        requester: jr.requester_username || jr.requesterUsername,
-        status: jr.status
-      })), null, 2));
 
       res.json(joinRequests);
     } catch (err) {
@@ -419,25 +397,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST - Create a join request
   app.post("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
     try {
-      console.log('[POST /api/team-join-requests] Step 1: Called');
       const { teamId } = req.body;
       const requestedGameType = req.body?.gameType as string | undefined;
       const user = req.user as Express.User;
-      console.log('[POST /api/team-join-requests] Step 2: User', user.username, 'ID:', user.id, 'requesting team:', teamId);
 
       if (!teamId) {
         console.error('[POST /api/team-join-requests] Team ID missing');
         return res.status(400).json({ message: "Team ID is required" });
       }
 
-      console.log('[POST /api/team-join-requests] Step 3: Fetching team details');
       // Get team details from team_battles (teams are virtual)
       const team = await getTeamFromBattle(teamId);
       if (!team) {
         console.error('[POST /api/team-join-requests] Team not found:', teamId);
         return res.status(404).json({ message: "Team not found" });
       }
-      console.log('[POST /api/team-join-requests] Team found:', team.name, 'teamId:', team.id);
 
       // Validate gameType matches requested mode (prevents cross-mode joining)
       if (requestedGameType && team.gameType && requestedGameType !== team.gameType) {
@@ -445,16 +419,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Team game type does not match your current mode" });
       }
 
-      console.log('[POST /api/team-join-requests] Step 4: Checking capacity');
       // Check if team is full
       const currentMembers = 1 + (team.teammates?.length || 0);
-      console.log('[POST /api/team-join-requests] Team has', currentMembers, '/4 members');
       if (currentMembers >= 4) {
         console.error('[POST /api/team-join-requests] Team is full');
         return res.status(400).json({ message: "Team is full" });
       }
 
-      console.log('[POST /api/team-join-requests] Step 5: Checking existing requests');
       // Check if user already has a pending request for this team
       const allUserRequests = await database.getJoinRequestsByUser(user.id);
       const existingRequest = allUserRequests.find((r: any) => r.teamId === team.id && r.status === "pending");
@@ -464,13 +435,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "You already have a pending request for this team",
         });
       }
-      console.log('[POST /api/team-join-requests] No existing requests');
 
-      console.log('[POST /api/team-join-requests] Step 6: Creating request with 5min expiry');
       // CRITICAL FIX: Use the actual team.id (from database) instead of the input teamId
       // This ensures the join request is created with the correct team ID that matches the database
       const actualTeamId = team.id;
-      console.log('[POST /api/team-join-requests] Using actual team ID:', actualTeamId);
 
       // Create join request with 5 minute expiry (increased from 60s to handle timezone issues)
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -480,9 +448,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user.username,
         expiresAt
       );
-      console.log('[POST /api/team-join-requests] Request created:', joinRequest.id, 'for team:', actualTeamId);
 
-      console.log('[POST /api/team-join-requests] Step 7: Sending websocket to captain');
       // Notify team captain via websocket
       try {
         sendToUser(team.captainId, {
@@ -494,15 +460,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           expiresAt: joinRequest.expiresAt,
           status: joinRequest.status,
         });
-        console.log('[POST /api/team-join-requests] Websocket sent to captain:', team.captainId);
       } catch (wsError) {
         console.error('[POST /api/team-join-requests] Websocket failed:', wsError);
         // Don't fail the request if websocket fails
       }
 
-      console.log('[POST /api/team-join-requests] Step 8: Sending response');
       res.json(joinRequest);
-      console.log('[POST /api/team-join-requests] Completed successfully');
     } catch (error) {
       console.error("[POST /api/team-join-requests] Error:", error);
       if (error instanceof Error) {
@@ -519,13 +482,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = req.params.id;
       const { status } = req.body || {};
 
-      console.log(`[PATCH /api/team-join-requests/${id}] User ${user.id} (${user.username}) attempting to ${status}`);
 
       if (!status) return res.status(400).json({ message: "status required" });
 
       // Use the simplified method to get ALL join requests for this captain
       const captainRequests = await database.getJoinRequestsForCaptain(user.id);
-      console.log(`[PATCH] Found ${captainRequests.length} join requests for captain ${user.id}`);
 
       let jr: any = captainRequests.find((r: any) => r.id === id);
 
@@ -533,7 +494,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!jr) {
         const reqsByUser = await database.getJoinRequestsByUser(user.id);
         jr = reqsByUser.find((r: any) => r.id === id);
-        console.log(`[PATCH] Found as requester? ${!!jr}`);
       }
 
       if (!jr) {
@@ -541,7 +501,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Request not found" });
       }
 
-      console.log(`[PATCH] Join request found:`, { id: jr.id, teamId: jr.team_id || jr.teamId, requesterId: jr.requester_id || jr.requesterId });
 
       const teamId = jr.team_id || jr.teamId;
       if (!teamId) {
@@ -552,7 +511,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let team;
       try {
         team = await getTeamFromBattle(teamId);
-        console.log(`[PATCH] Team found:`, team ? { id: team.id, name: team.name, captainId: team.captainId } : 'NULL');
       } catch (teamError: any) {
         console.error(`[PATCH] Error getting team from battle:`, teamError);
         console.error(`[PATCH] Team ID was: ${teamId}`);
@@ -566,7 +524,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isLeader = team?.captainId === user.id;
       const isRequester = (jr.requester_id || jr.requesterId) === user.id;
 
-      console.log(`[PATCH] Authorization check: isLeader=${isLeader}, isRequester=${isRequester}, status=${status}`);
 
       if (status === "cancelled" && !isRequester) {
         console.error(`[PATCH] Forbidden: Only requester can cancel`);
@@ -587,7 +544,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         const members = team.teammates || [];
         if (members.length >= 3) {
-          console.log(`[PATCH] Team ${teamId} is already full (${members.length} members)`);
           return res.status(400).json({ message: "Team full" });
         }
 
@@ -607,7 +563,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
 
           if (userAlreadyInTeam) {
-            console.log(`[PATCH] User ${requesterId} is already in a team for this session`);
             return res.status(400).json({
               message: "You are already in a team for this game session. You cannot join multiple teams."
             });
@@ -622,7 +577,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: requesterId,
             username: requesterUsername,
           });
-          console.log(`[PATCH] Successfully added member ${requesterUsername} (${requesterId}) to team ${teamId}`);
         } catch (addError: any) {
           console.error(`[PATCH] Error adding member to team battle:`, addError);
           console.error(`[PATCH] Team ID: ${teamId}, Member: ${requesterId} (${requesterUsername})`);
@@ -716,10 +670,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ],
       };
 
-      console.log("Testing database insert with question:", testQuestion);
 
       const createdQuestion = await database.createQuestion(testQuestion);
-      console.log("✅ Test question created successfully:", createdQuestion);
 
       res.json({
         message: "Test question created successfully",
@@ -773,23 +725,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Remove member from the appropriate team
         const teammatesField = teamSide === "a" ? "teamATeammates" : "teamBTeammates";
         const currentTeammates = battle[teammatesField] || [];
-        console.log(`[Backend] Removing member ${userId} from ${teamSide.toUpperCase()} team in battle ${battleId}`);
-        console.log(`[Backend] Current teammates:`, currentTeammates);
         const updatedTeammates = currentTeammates.filter((teammate: any) => {
           const teammateId = typeof teammate === 'number' ? teammate : (teammate?.id ?? null);
           return teammateId !== null && teammateId !== userId;
         });
-        console.log(`[Backend] Updated teammates:`, updatedTeammates);
 
         await database.updateTeamBattle(battleId, {
           [teammatesField]: updatedTeammates
         });
-        console.log(`[Backend] Database updated for battle ${battleId}`);
 
         // Get updated battle to send fresh data
         const updatedBattle = await database.getTeamBattle(battleId);
         if (updatedBattle) {
-          console.log(`[Backend] Updated battle teammates:`, updatedBattle.teamATeammates, updatedBattle.teamBTeammates);
 
           // Notify all participants about the team update (don't fail if this errors)
           try {
@@ -837,7 +784,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         res.json({ ok: true, members: updatedTeammates });
-        console.log(`[Backend] Remove member response sent`);
         return;
       }
 
@@ -870,31 +816,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Questions array is required" });
       }
 
-      console.log("Testing with exact payload format:", questions);
 
       const storedQuestions = [];
       for (const question of questions) {
         try {
-          console.log(`Testing question: ${question.text}`);
-          console.log(
-            `Question difficulty: ${question.difficulty}, category: ${question.category}`
-          );
 
           // Test validation first
           const validation =
             QuestionValidationService.validateQuestion(question);
-          console.log(`Validation result:`, validation);
 
           if (!validation.isValid) {
-            console.log(
-              `❌ Validation failed: ${validation.errors.join(", ")}`
-            );
             continue;
           }
 
           const storedQuestion = await database.createQuestion(question);
           storedQuestions.push(storedQuestion);
-          console.log(`✅ Test question stored: ${storedQuestion.id}`);
         } catch (error) {
           console.error(`❌ Test question failed: ${error}`);
         }
@@ -1006,9 +942,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
-      console.log(
-        `Generating ${count} questions for category: ${category}, difficulty: ${difficulty}`
-      );
 
       // Generate questions using OpenAI (returns for review, doesn't save to database)
       const generatedQuestions = await generateQuestions(
@@ -1017,9 +950,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         count
       );
 
-      console.log(
-        `Successfully generated ${generatedQuestions.length} questions for review`
-      );
 
       res.json({
         message: `Successfully generated ${generatedQuestions.length} questions for review`,
@@ -1093,7 +1023,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { questions } = req.body;
 
-      console.log("Received questions for storage:", questions);
 
       if (!questions || !Array.isArray(questions)) {
         return res.status(400).json({ message: "Questions array is required" });
@@ -1101,11 +1030,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Log each question's difficulty and category
       questions.forEach((question, index) => {
-        console.log(`Question ${index + 1}:`, {
-          difficulty: question.difficulty,
-          category: question.category,
-          text: question.text?.substring(0, 50) + "...",
-        });
       });
 
       // Store questions directly using database.createQuestion - NO VALIDATION
@@ -1113,25 +1037,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       for (const question of questions) {
         try {
-          console.log(
-            `\n🔍 Processing question: ${question.text?.substring(0, 50)}...`
-          );
-          console.log(`Question data:`, {
-            id: question.id,
-            text: question.text,
-            category: question.category,
-            difficulty: question.difficulty,
-            context: question.context,
-            answersCount: question.answers?.length,
-          });
 
           // Store directly without any validation
-          console.log(`📝 Storing question directly to database...`);
           const storedQuestion = await database.createQuestion(question);
 
-          console.log(
-            `✅ Successfully stored question with ID: ${storedQuestion.id}`
-          );
           storedQuestions.push(storedQuestion);
         } catch (error) {
           console.error(
@@ -1145,9 +1054,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      console.log(
-        `Successfully stored ${storedQuestions.length} out of ${questions.length} questions`
-      );
 
       res.json({
         message: `Successfully stored ${storedQuestions.length} questions`,
@@ -1218,11 +1124,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // and apply word shuffling when all questions are answered
       });
 
-      console.log(`🎮 Game ${gameId}: Served ${questions.length} questions to ${userId ? `user ${userId} (${req.user?.username})` : 'anonymous user'} with enhanced randomization`);
 
       // Log first few question IDs for debugging
       const questionIds = questions.slice(0, 3).map(q => q.id.substring(0, 8));
-      console.log(`📝 Question IDs: [${questionIds.join(', ')}...]`);
 
       // History tracking is automatically done by getRandomQuestionsWithHistory when userId is provided
       // Additional tracking happens when user answers via /api/question-analytics/track
@@ -1256,14 +1160,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             timeSpent: timeSpent || 0,
           });
         } catch (historyErr) {
-          console.log('Question history tracking failed (non-critical):', historyErr);
         }
       }
 
       // Respond quickly to avoid blocking the game
       res.status(200).json({ message: "Analytics tracked successfully" });
     } catch (err) {
-      console.log("Analytics tracking error (non-critical):", err);
       res.status(200).json({ message: "Analytics tracking completed" }); // Always return success to avoid blocking game
     }
   });
@@ -1386,7 +1288,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Save multiplayer score (local multiplayer games)
   app.post("/api/multiplayer/scores", async (req, res) => {
     try {
-      console.log("Saving multiplayer score:", req.body);
 
       const multiplayerScore = {
         id: uuidv4(),
@@ -1406,7 +1307,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const savedScore = await database.saveMultiplayerScore(multiplayerScore);
-      console.log("Multiplayer score saved successfully:", savedScore);
       res.status(201).json(savedScore);
     } catch (err) {
       console.error("Failed to save multiplayer score:", err);
@@ -1422,12 +1322,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const gameType = (req.query.gameType as string) || "all";
       const category = (req.query.category as string) || "All Categories";
-      console.log(
-        "Leaderboard request for gameType:",
-        gameType,
-        "category:",
-        category
-      );
 
       // Validate parameters
       if (!["all", "single", "multi"].includes(gameType)) {
@@ -1437,11 +1331,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const leaderboardData = await database.getLeaderboardData(
         gameType,
         category
-      );
-      console.log(
-        "Leaderboard data returned:",
-        leaderboardData.length,
-        "entries"
       );
 
       // Mark current user if authenticated
@@ -1711,7 +1600,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       const userDetails = (await Promise.all(userPromises)).filter(Boolean);
-      console.log(`[GET /api/users/online] Returning ${userDetails.length} available users (filtered by activeTeamMemberships)`);
       res.json(userDetails);
     } catch (err) {
       console.error("Failed to fetch online users:", err);
@@ -1754,7 +1642,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       const userDetails = (await Promise.all(userPromises)).filter(Boolean);
-      console.log(`[GET /api/users/available] Returning ${userDetails.length} available users`);
       res.json(userDetails);
     } catch (err) {
       console.error("Failed to fetch available users:", err);
@@ -1788,14 +1675,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ✅ NEW: Get Team Battle available users
   app.get("/api/users/team-battle-available", ensureAuthenticated, async (req, res) => {
     try {
-      console.log("[GET /api/users/team-battle-available] Fetching users in Team Battle...");
   
       const gameType = req.query.gameType as string | undefined;
-      console.log("Requested gameType:", gameType);
   
       const users = await database.getTeamBattleAvailableUsers(gameType);
   
-      console.log(`[GET /api/users/team-battle-available] Found ${users.length} users`);
   
       const { getOnlineUserIds } = await import("./socket");
       const onlineUserIds = getOnlineUserIds();
@@ -1810,7 +1694,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isInTeamBattle: user.isInTeamBattle,
       }));
   
-      console.log(`[GET /api/users/team-battle-available] Returning ${userDetails.length} users`);
   
       res.json(userDetails);
     } catch (err) {
@@ -1825,10 +1708,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = parseInt(req.params.id);
       const { isInTeamBattle, gameType } = req.body;
 
-      console.log(`[PATCH /api/users/${userId}/team-battle-status] Setting isInTeamBattle=${isInTeamBattle} for user ${userId}`);
 
       if (userId !== req.user?.id) {
-        console.log(`[PATCH /api/users/${userId}/team-battle-status] FORBIDDEN: User ${req.user?.id} tried to update user ${userId}`);
         return res
           .status(403)
           .json({ message: "Cannot update other user's Team Battle status" });
@@ -1843,7 +1724,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = await database.setUserTeamBattleStatus(userId, isInTeamBattle, modeToSet);
-      console.log(`[PATCH /api/users/${userId}/team-battle-status] SUCCESS: Updated user ${user.username} (${user.id}), isInTeamBattle=${user.isInTeamBattle}`);
 
       // Broadcast status change to all Team Battle users
       const io = req.app.get("io");
@@ -1853,7 +1733,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           isInTeamBattle,
           timestamp: new Date(),
         });
-        console.log(`[PATCH /api/users/:id/team-battle-status] Broadcasted availability update for user ${userId}: ${isInTeamBattle}`);
       }
 
       res.json(user);
@@ -1882,7 +1761,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         inv => new Date(inv.expiresAt) > now
       );
 
-      console.log(`[GET /api/users/:id/pending-team-invitations] Found ${validInvitations.length} valid pending invitations for user ${userId}`);
       res.json(validInvitations);
     } catch (err) {
       console.error("Failed to fetch pending invitations:", err);
@@ -1922,7 +1800,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Handle teammates - they might be objects or numbers
       const teammates = battle.teamATeammates || [];
-      console.log(`[convertTeamBattleToTeams] Battle ${battle.id} Team A teammates:`, teammates);
 
       for (const teammateId of teammates) {
         const userInfo = await getUserInfo(teammateId);
@@ -1975,7 +1852,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Handle teammates - they might be objects or numbers
       const teammates = battle.teamBTeammates || [];
-      console.log(`[convertTeamBattleToTeams] Battle ${battle.id} Team B teammates:`, teammates);
 
       for (const teammateId of teammates) {
         const userInfo = await getUserInfo(teammateId);
@@ -2045,7 +1921,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           difficulty = gameSession.difficulty || difficulty;
         }
       } catch (err) {
-        console.log("Could not fetch game session, using defaults:", err);
       }
       // Allow client to explicitly request a gameType (e.g., rapid_fire)
       if (req.body && req.body.gameType) {
@@ -2065,7 +1940,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const existingBattles = [...formingBattles, ...readyBattles];
 
         for (const battle of existingBattles) {
-          console.log(`🧹 Cleaning up old ${battle.status} team for captain ${req.user.id}: battle ${battle.id}`);
 
           // CRITICAL FIX: Remove captain from activeTeamMemberships if they're in it
           if (battle.teamACaptainId) {
@@ -2093,7 +1967,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         if (existingBattles.length > 0) {
-          console.log(`✅ Removed ${existingBattles.length} old team(s) for captain ${req.user.id}`);
         }
       } catch (cleanupErr) {
         console.error("Failed to cleanup old teams:", cleanupErr);
@@ -2128,16 +2001,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const battle = await database.createTeamBattle(teamBattleData);
 
       // ✅ VERIFICATION: Log battle ID and confirm it exists in DB
-      console.log(`🆔 Team Battle Created - ID: ${battle.id}, Session: ${battle.gameSessionId}`);
 
       // Verify the battle was actually saved to database
       try {
         const verifyBattle = await database.getTeamBattle(battle.id);
         if (verifyBattle) {
-          console.log(`✅ VERIFIED: Battle ${battle.id} exists in database`);
-          console.log(`   - Status: ${verifyBattle.status}`);
-          console.log(`   - Team A: ${verifyBattle.teamAName} (Captain: ${verifyBattle.teamACaptainId})`);
-          console.log(`   - Created: ${verifyBattle.createdAt}`);
         } else {
           console.error(`❌ ERROR: Battle ${battle.id} NOT FOUND in database after creation!`);
         }
@@ -2147,25 +2015,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // CRITICAL FIX: Add team creator to activeTeamMemberships
       activeTeamMemberships.set(req.user.id, `${battle.id}-team-a`);
-      console.log(`[POST /api/teams] Added user ${req.user.id} to activeTeamMemberships for team ${battle.id}-team-a`);
 
       // CRITICAL FIX: Broadcast update immediately so all clients see the change
       try {
         await broadcastOnlineStatusUpdate();
-        console.log(`[POST /api/teams] ✅ Broadcasted online status update after team creation`);
       } catch (broadcastErr) {
         console.error(`[POST /api/teams] Error broadcasting update:`, broadcastErr);
         // Non-critical, continue
       }
 
       // Debug logging to verify team creation
-      console.log('✅ Team Created:', {
-        teamId: `${battle.id}-team-a`,
-        gameSessionId: battle.gameSessionId,
-        status: battle.status,
-        gameMode: 'TEAM_BATTLE',
-        teamName: battle.teamAName
-      });
 
       const teams = await convertTeamBattleToTeams(battle);
       res.status(201).json(teams[0]); // Return Team A
@@ -2188,7 +2047,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = req.user.id;
-      console.log(`[Cleanup] 🧹 Starting comprehensive cleanup for user ${userId}`);
 
       // Import socket functions
       const { activeTeamMemberships, broadcastOnlineStatusUpdate, resetBattleState } = await import("./socket");
@@ -2210,7 +2068,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         activeTeamMemberships.delete(userId);
         cleanupStats.removedFromActiveTeam = true;
         changesMade = true;
-        console.log(`[Cleanup] ✅ Removed user ${userId} from activeTeamMemberships`);
       }
 
       // ========================================================================
@@ -2224,7 +2081,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       cleanupStats.removedOldTeams = existingBattles.length;
 
       for (const battle of existingBattles) {
-        console.log(`[Cleanup] 🗑️ Removing old forming team for user ${userId}: battle ${battle.id}`);
 
         // Remove all teammates from activeTeamMemberships
         const allTeammateIds = [
@@ -2236,7 +2092,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             activeTeamMemberships.delete(teammateId);
             cleanupStats.removedTeammates++;
             changesMade = true;
-            console.log(`[Cleanup] ✅ Removed teammate ${teammateId} from activeTeamMemberships`);
           }
         }
 
@@ -2244,12 +2099,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (battle.teamACaptainId && activeTeamMemberships.has(battle.teamACaptainId)) {
           activeTeamMemberships.delete(battle.teamACaptainId);
           changesMade = true;
-          console.log(`[Cleanup] ✅ Removed Team A captain ${battle.teamACaptainId} from activeTeamMemberships`);
         }
         if (battle.teamBCaptainId && activeTeamMemberships.has(battle.teamBCaptainId)) {
           activeTeamMemberships.delete(battle.teamBCaptainId);
           changesMade = true;
-          console.log(`[Cleanup] ✅ Removed Team B captain ${battle.teamBCaptainId} from activeTeamMemberships`);
         }
 
         // CENTRALIZED: Use resetBattleState for cleanup
@@ -2262,7 +2115,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (existingBattles.length > 0) {
-        console.log(`[Cleanup] ✅ Deleted ${existingBattles.length} old team(s)`);
       }
 
       // ========================================================================
@@ -2292,11 +2144,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: "This invitation has expired because the other party started a new team battle.",
           });
 
-          console.log(`[Cleanup] ✅ Expired invitation ${invitation.id} (user ${userId} was ${invitation.inviterId === userId ? 'inviter' : 'invitee'})`);
         }
 
         if (allPendingInvitations.length > 0) {
-          console.log(`[Cleanup] ✅ Expired ${allPendingInvitations.length} pending invitation(s)`);
         }
       } catch (invitationError) {
         console.error(`[Cleanup] ⚠️ Error expiring invitations (non-critical):`, invitationError);
@@ -2330,11 +2180,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: "This join request has expired because you started a new team battle.",
           });
 
-          console.log(`[Cleanup] ✅ Expired join request ${jr.id} for user ${userId}`);
         }
 
         if (pendingRequests.length > 0) {
-          console.log(`[Cleanup] ✅ Expired ${pendingRequests.length} pending join request(s)`);
         }
       } catch (joinRequestError) {
         console.error(`[Cleanup] ⚠️ Error expiring join requests (non-critical):`, joinRequestError);
@@ -2353,7 +2201,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Check all in-memory game sessions for this user
         const leftCheck = hasPlayerLeftAnyActiveGame(userId);
         if (leftCheck.left) {
-          console.log(`[Cleanup] ✅ User ${userId} already marked as LEFT in gameSession ${leftCheck.gameId} — no further action needed`);
           changesMade = true;
         }
 
@@ -2365,7 +2212,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (activeTeamMemberships.has(userId)) {
             activeTeamMemberships.delete(userId);
             changesMade = true;
-            console.log(`[Cleanup] ✅ Removed user ${userId} from activeTeamMemberships (was in playing battle ${battle.id})`);
           }
         }
       } catch (playingBattleError) {
@@ -2378,19 +2224,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (changesMade) {
         try {
           await broadcastOnlineStatusUpdate();
-          console.log(`[Cleanup] ✅ Broadcasted online status update after cleanup`);
         } catch (broadcastError) {
           console.error(`[Cleanup] ⚠️ Error broadcasting update (non-critical):`, broadcastError);
           // Continue - broadcast failure shouldn't fail the cleanup response
         }
       } else {
-        console.log(`[Cleanup] ℹ️ No changes made - skipping broadcast`);
       }
 
       // ========================================================================
       // Return cleanup results
       // ========================================================================
-      console.log(`[Cleanup] ✅ Cleanup completed for user ${userId}:`, cleanupStats);
 
       res.json({
         message: "Cleanup completed",
@@ -2411,15 +2254,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/teams", ensureAuthenticated, async (req, res) => {
     try {
       const gameSessionId = req.query.gameSessionId as string;
-      console.log(`[Backend] GET /api/teams called for gameSessionId: ${gameSessionId}`);
       if (!gameSessionId) {
         return res.status(400).json({ message: "Game session ID required" });
       }
 
       const battles = await database.getTeamBattlesByGameSession(gameSessionId);
-      console.log(`[Backend] Found ${battles.length} battles for session ${gameSessionId}`);
       if (battles.length === 0) {
-        console.log(`[Backend] No battles found, returning empty array`);
         return res.json([]);
       }
 
@@ -2430,7 +2270,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         allTeams.push(...teams);
       }
 
-      console.log(`[Backend] Returning ${allTeams.length} teams:`, allTeams.map(t => ({ id: t.id, name: t.name, membersCount: t.members.length })));
       res.json(allTeams);
     } catch (err) {
       console.error("Failed to fetch teams:", err);
@@ -2443,7 +2282,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const requestedGameType = (req.query.gameType as string) || undefined;
       if (requestedGameType) {
-        console.log(`[GET /api/teams/available] Filtering available teams by gameType=${requestedGameType}`);
       }
       // Set no-cache headers to prevent stale data
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -2453,7 +2291,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // ✅ DATABASE-ONLY LOGIC: No in-memory session filtering
       // Get all team battles that are still forming from database
       const allBattles = await database.getTeamBattlesByStatus("forming");
-      console.log(`📋 Found ${allBattles.length} total forming battles from database`);
 
       const allAvailableTeams = [];
       const now = Date.now();
@@ -2464,7 +2301,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const normalizedBattleType = (!storedType || storedType === "question") ? "team_battle" : storedType;
         // If the client requested a specific gameType, skip battles that don't match
         if (requestedGameType && normalizedBattleType !== requestedGameType) {
-          console.log(`  ⏭️ Skipping battle ${battle.id} due to gameType mismatch (battle=${normalizedBattleType} requested=${requestedGameType})`);
           continue;
         }
         // Filter 1: Remove stale battles (older than 30 minutes)
@@ -2472,7 +2308,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isStale = battleAge > 30 * 60 * 1000; // 30 minutes
 
         if (isStale) {
-          console.log(`  ⏰ Skipping stale battle ${battle.id} (age: ${Math.round(battleAge / 60000)}min)`);
           continue;
         }
 
@@ -2517,13 +2352,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
 
         if (availableTeams.length > 0) {
-          console.log(`  ✅ Battle ${battle.id} (session: ${battle.gameSessionId}): ${availableTeams.length} available teams, created: ${new Date(battle.createdAt).toISOString()}`);
         }
         allAvailableTeams.push(...availableTeams);
       }
 
-      console.log(`✅ Returning ${allAvailableTeams.length} total available teams`);
-      console.log(`   Team IDs: ${allAvailableTeams.map((t: any) => `${t.name}(${t.gameSessionId})`).join(', ') || 'NONE'}`);
       res.json(allAvailableTeams);
     } catch (err) {
       console.error("Failed to fetch available teams:", err);
@@ -2897,9 +2729,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const teamIdParts = req.body.teamId?.split("-team-");
         if (teamIdParts && teamIdParts.length === 2) {
           teamBattleId = teamIdParts[0];
-          console.log(
-            `✅ Opponent invitation - captured battle ID: ${teamBattleId}`
-          );
         } else {
           // Fallback: try to find battle by gameSessionId
           const gameSessionId = req.body.gameSessionId;
@@ -2919,9 +2748,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               if (battleWithTeamA) {
                 teamBattleId = battleWithTeamA.id;
-                console.log(
-                  `✅ Opponent invitation - found battle by session: ${teamBattleId}`
-                );
               }
             }
           }
@@ -3048,9 +2874,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // If accepted, handle based on invitation type
         if (status === "accepted") {
           if (updatedInvitation.invitationType === "opponent") {
-            console.log(
-              "This is an opponent invitation - update team battle with Team B"
-            );
 
             // ✅ FIX: Use the teamBattleId from the invitation if available
             // Otherwise, find the inviter's existing team battle (Team A only)
@@ -3060,9 +2883,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // ✅ Use the specific battle referenced in the invitation
               existingBattle = await database.getTeamBattle(
                 updatedInvitation.teamBattleId
-              );
-              console.log(
-                `✅ Using battle from invitation: ${updatedInvitation.teamBattleId}`
               );
             } else {
               // ✅ Fallback: Find the MOST RECENT battle from inviter that needs Team B
@@ -3084,9 +2904,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   existingBattle = null; // This battle already has Team B
                 }
 
-                console.log(
-                  `✅ Using most recent battle: ${existingBattle?.id}`
-                );
               }
             }
 
@@ -3098,9 +2915,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // 🔒 CRITICAL FIX: Check if Team B slot is already filled (first-come-first-serve)
             if (existingBattle.teamBCaptainId || existingBattle.teamBName) {
-              console.log(
-                `❌ Team B already filled! Battle: ${existingBattle.id}, Team B Captain: ${existingBattle.teamBCaptainId}`
-              );
 
               // Update this invitation to expired
               await database.updateTeamInvitation(invitationId, {
@@ -3128,12 +2942,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             // ✅ FIX: VERIFY Team A name is NOT overwritten - preserve it
-            console.log(
-              `📝 Preserving Team A Name: "${existingBattle.teamAName}"`
-            );
-            console.log(
-              `📝 Setting Team B Name: "${req.body.teamName || req.user!.username + "'s Team"}"`
-            );
 
             // Update the battle to add Team B
             const updatedBattle = await database.updateTeamBattle(
@@ -3154,9 +2962,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // 🔒 CRITICAL: Expire all other pending opponent invitations for this battle
             // (First-come-first-serve: only first acceptor gets the opponent slot)
-            console.log(
-              `🔒 Expiring all other pending opponent invitations for battle: ${existingBattle.id}`
-            );
             const allOpponentInvites = await database.getTeamInvitationsByBattle(
               existingBattle.id,
               "opponent"
@@ -3764,14 +3569,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      console.log(`[POST /api/team-battle/start] User ${user.id} (${user.username}) starting battle for session ${gameSessionId}`);
 
       // Get teams from database to validate - use team battles structure
       // The teams are stored in team_battles table, not teams table
       const battles = await database.getTeamBattlesByGameSession(gameSessionId);
 
       if (battles.length === 0) {
-        console.log(`[POST /api/team-battle/start] No battles found for session ${gameSessionId}`);
         return res.status(400).json({
           message: "No team battle found for this session. Please create teams first."
         });
@@ -3781,7 +3584,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const battle = battles.find(b => b.status === 'forming') || battles[0];
 
       if (!battle) {
-        console.log(`[POST /api/team-battle/start] No forming battle found`);
         return res.status(400).json({
           message: "No active battle found. Please create teams first."
         });
@@ -3792,7 +3594,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isTeamBCaptain = battle.teamBCaptainId === user.id;
 
       if (!isTeamACaptain && !isTeamBCaptain) {
-        console.log(`[POST /api/team-battle/start] User ${user.id} is not a captain`);
         return res.status(403).json({
           message: "Only team captains can start battles"
         });
@@ -3800,7 +3601,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate both teams exist and have at least 1 member
       if (!battle.teamBCaptainId || !battle.teamBName) {
-        console.log(`[POST /api/team-battle/start] Team B not created yet`);
         return res.status(400).json({
           message: "Opposing team not created yet. Waiting for opponent captain to accept invitation."
         });
@@ -3811,13 +3611,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teamBSize = 1 + (battle.teamBTeammates?.length || 0);
 
       if (teamASize < 1 || teamBSize < 1) {
-        console.log(`[POST /api/team-battle/start] Teams too small: Team A: ${teamASize}, Team B: ${teamBSize}`);
         return res.status(400).json({
           message: `Both teams need at least 1 member. Current: Team A has ${teamASize}, Team B has ${teamBSize}`
         });
       }
 
-      console.log(`[POST /api/team-battle/start] ✅ Validation passed: ${teamASize}v${teamBSize} battle ready`);
 
       // Send WebSocket event to trigger the start_team_battle handler
       // The handler will process the event and start the battle
@@ -3828,7 +3626,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: user.id,
       } as any);
 
-      console.log(`[POST /api/team-battle/start] ✅ Sent start_team_battle event to user ${user.id}`);
 
       return res.json({
         message: "Team battle start initiated",
@@ -4044,7 +3841,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stateVersion, // ELITE: Monotonic version for debugging & out-of-order detection
       };
 
-      console.log(`[GET /api/team-battle/state] Session: ${gameSessionId}, Phase: ${phase}, BothReady: ${response.bothReady}, Countdown: ${countdown}, StateVersion: ${stateVersion}`);
 
       return res.json(response);
     } catch (error) {
@@ -4053,6 +3849,5 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  console.log("✅ All routes registered successfully");
   return httpServer;
 }

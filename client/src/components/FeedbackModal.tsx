@@ -38,7 +38,6 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
     // Skip for Team Battle mode since we don't use voice narration there
     if (gameMode !== 'team' && gameMode !== 'teambattle') {
       voiceService.startNewSession(feedbackSessionId);
-      console.log(`🎬 Feedback modal opened with session ${feedbackSessionId}`);
     }
 
     // Play sequence of game show sounds based on correctness
@@ -98,7 +97,6 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
         // Clear this feedback session when modal closes (only if it's still active)
         const currentSession = voiceService.getCurrentSession();
         if (currentSession === feedbackSessionId) {
-          console.log(`🧹 Cleaning up feedback session ${feedbackSessionId}`);
           voiceService.clearSession();
         }
       };

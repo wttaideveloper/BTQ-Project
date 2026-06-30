@@ -100,7 +100,6 @@ const Home: React.FC = () => {
 
   // Clean up voice narration when entering home page
   useEffect(() => {
-    console.log("🏠 Home component mounted - stopping all voice narration");
     voiceService.stopAllAudio(true); // Block future narration
     stopSpeaking();
 
@@ -121,7 +120,6 @@ const Home: React.FC = () => {
             isInTeamBattle: false,
             gameType: null,
           });
-          console.log("[Home] ✅ Reset isInTeamBattle=false on Home page mount");
         } catch (err) {
           console.error("[Home] ⚠️ Failed to reset Team Battle status:", err);
           // Non-critical, continue anyway
@@ -849,8 +847,6 @@ const Home: React.FC = () => {
                           // ========================================================================
                           // STEP 1: Clear all team battle related cache (client-side)
                           // ========================================================================
-                          console.log("[Home] 🧹 Enter Team Battle clicked - starting cleanup");
-                          console.log("[Home] Step 1: Clearing client-side cache");
 
                           queryClient.removeQueries({ queryKey: ["/api/teams"] });
                           queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
@@ -859,19 +855,16 @@ const Home: React.FC = () => {
                           queryClient.removeQueries({ queryKey: ["/api/users/online"] });
                           queryClient.removeQueries({ queryKey: ["/api/users/team-battle-available"] });
 
-                          console.log("[Home] ✅ Step 1: Client-side cache cleared");
 
                           // ========================================================================
                           // STEP 2: Clean up server-side stale data (CRITICAL)
                           // ========================================================================
-                          console.log("[Home] Step 2: Starting server-side cleanup");
 
                           try {
                             const response = await apiRequest("POST", "/api/team-battle/cleanup");
                             const result = await response.json();
 
                             if (result.success) {
-                              console.log("[Home] ✅ Step 2: Server-side cleanup completed", result.stats);
                             } else {
                               console.warn("[Home] ⚠️ Step 2: Server-side cleanup completed with warnings", result);
                             }
@@ -883,14 +876,12 @@ const Home: React.FC = () => {
                           // ========================================================================
                           // ✅ STEP 2.5: Mark user as "in Team Battle" (NEW FIX)
                           // ========================================================================
-                          console.log("[Home] Step 2.5: Setting user as in Team Battle");
 
                           try {
                             await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
                               isInTeamBattle: true,
                               gameType: showRapidTeamBattleSetup ? "rapid_fire" : "team_battle",
                             });
-                            console.log("[Home] ✅ Step 2.5: User marked as in Team Battle");
                           } catch (err) {
                             console.error("[Home] ⚠️ Step 2.5: Failed to set Team Battle status (non-critical):", err);
                           }
@@ -898,18 +889,15 @@ const Home: React.FC = () => {
                           // ========================================================================
                           // STEP 3: Invalidate queries to force fresh refetch when modal opens
                           // ========================================================================
-                          console.log("[Home] Step 3: Invalidating queries for fresh data");
 
                           queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
 
-                          console.log("[Home] ✅ Step 3: Queries invalidated");
 
                           // ========================================================================
                           // STEP 4: Open modal after cleanup is complete
                           // ========================================================================
-                          console.log("[Home] ✅ All cleanup complete - opening Team Battle modal");
                           setShowTeamBattleSetup(true);
 
                         } catch (error) {

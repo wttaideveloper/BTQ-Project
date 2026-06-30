@@ -214,7 +214,6 @@ const AuthPage: React.FC = () => {
                         credentials: 'include'
                       });
                       const data = await response.json();
-                      console.log('Manual login response:', data);
                       alert('Manual login test: ' + (response.ok ? 'Success' : 'Failed') + 
                             '\nStatus: ' + response.status + 
                             '\nResponse: ' + JSON.stringify(data));

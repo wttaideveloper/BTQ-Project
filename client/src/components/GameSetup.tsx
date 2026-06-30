@@ -79,12 +79,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
 
   // Reset component state when mounted (returning from a game)
   useEffect(() => {
-    console.log('🔄 GameSetup component mounted - performing full reset');
     
     // IMPORTANT: Close any existing WebSocket from previous games
-    console.log('🔌 Closing any existing WebSocket connection...');
     closeGameSocket();
-    console.log('✅ WebSocket closed');
     
     setShowJoinForm(false);
     setIsCreatingGame(false);
@@ -95,7 +92,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
     sessionStorage.removeItem('currentGameId');
     sessionStorage.removeItem('questionRead');
     
-    console.log('✅ GameSetup reset complete - ready for new game');
   }, []);
   
   // Multiplayer game functions
@@ -109,22 +105,17 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
       return;
     }
     
-    console.log('🎮 CREATE NEW GAME clicked - clearing ALL previous data');
     
     // STEP 1: Close old WebSocket connection completely
-    console.log('🔌 Closing old WebSocket connection...');
     closeGameSocket();
-    console.log('✅ Old WebSocket closed');
     
     // STEP 2: Clear ALL session storage from previous games
     sessionStorage.clear(); // Clear everything
-    console.log('✅ All session storage cleared');
     
     // STEP 3: Reset all local state
     setGameId('');
     setIsJoiningGame(false);
     setShowJoinForm(true); // Keep the form showing
-    console.log('✅ Local state reset');
     
     // STEP 4: Set creating state
     setIsCreatingGame(true);
@@ -132,15 +123,12 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
     // STEP 5: Generate completely new game ID
     const newGameId = uuidv4().substring(0, 8);
     setGameId(newGameId);
-    console.log('✅ New Game ID generated:', newGameId);
     
     // STEP 6: Store only the new game ID
     sessionStorage.setItem('currentGameId', newGameId);
     
     // STEP 7: Create FRESH WebSocket connection
-    console.log('🔌 Creating fresh WebSocket connection...');
     const socket = setupGameSocket();
-    console.log('✅ Fresh WebSocket created');
     
     // STEP 9: Setup event handlers
     let cleanupDone = false;
@@ -150,7 +138,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
       if (cleanupDone) return;
       cleanupDone = true;
       
-      console.log('🧹 Cleaning up WebSocket listeners and timeout');
       socket.removeEventListener('open', handleOpen);
       socket.removeEventListener('message', handleMessage);
       socket.removeEventListener('error', handleError);
@@ -158,7 +145,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
     };
     
     const handleOpen = () => {
-      console.log('📡 WebSocket OPEN event fired - sending create_game message');
       
       // Send the create game message
       socket.send(JSON.stringify({
@@ -174,16 +160,13 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
         }
       }));
       
-      console.log('📤 create_game message sent to server');
     };
     
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('📨 WebSocket message:', data.type);
         
         if (data.type === 'game_created') {
-          console.log('✅ Game created successfully!');
           
           toast({
             title: "Game Created",
@@ -227,7 +210,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
     
     // STEP 10: Timeout to prevent infinite "Creating..." state
     timeoutId = setTimeout(() => {
-      console.log('⏱️ Game creation timeout (10s) - cleaning up');
       cleanup();
       setIsCreatingGame(false);
       toast({
@@ -237,7 +219,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
       });
     }, 10000);
     
-    console.log('✅ All handlers setup complete, waiting for server response...');
   };
   
   const joinMultiplayerGame = () => {
@@ -259,32 +240,24 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
       return;
     }
     
-    console.log('🎮 JOIN GAME clicked - clearing ALL previous data');
     
     // STEP 1: Close old WebSocket connection completely
-    console.log('🔌 Closing old WebSocket connection...');
     closeGameSocket();
-    console.log('✅ Old WebSocket closed');
     
     // STEP 2: Clear ALL session storage from previous games
     sessionStorage.clear(); // Clear everything
-    console.log('✅ All session storage cleared');
     
     // STEP 3: Reset state
     setIsCreatingGame(false);
-    console.log('✅ Local state reset');
     
     // STEP 4: Set joining state
     setIsJoiningGame(true);
     
     // STEP 5: Store the game ID we're joining
     sessionStorage.setItem('currentGameId', gameId);
-    console.log('✅ Joining game ID:', gameId);
     
     // STEP 6: Create FRESH WebSocket connection
-    console.log('🔌 Creating fresh WebSocket connection...');
     const socket = setupGameSocket();
-    console.log('✅ Fresh WebSocket created');
     
     // STEP 7: Setup event handlers
     let cleanupDone = false;
@@ -294,7 +267,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
       if (cleanupDone) return;
       cleanupDone = true;
       
-      console.log('🧹 Cleaning up WebSocket listeners and timeout');
       socket.removeEventListener('open', handleOpen);
       socket.removeEventListener('message', handleMessage);
       socket.removeEventListener('error', handleError);
@@ -302,7 +274,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
     };
     
     const handleOpen = () => {
-      console.log('📡 WebSocket OPEN event fired - sending join_game message');
       
       // Send the join game message
       socket.send(JSON.stringify({
@@ -311,16 +282,13 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
         gameId
       }));
       
-      console.log('📤 join_game message sent to server');
     };
     
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('📨 WebSocket message:', data.type);
         
         if (data.type === 'player_joined') {
-          console.log('✅ Successfully joined game!');
           
           toast({
             title: "Game Joined",
@@ -340,7 +308,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
           
           setIsJoiningGame(false);
         } else if (data.type === 'error') {
-          console.log('❌ Error joining game:', data.message);
           toast({
             title: "Failed to Join Game",
             description: data.message,
@@ -373,7 +340,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
     
     // STEP 8: Timeout to prevent infinite "Joining..." state
     timeoutId = setTimeout(() => {
-      console.log('⏱️ Game join timeout (10s) - cleaning up');
       cleanup();
       setIsJoiningGame(false);
       toast({
@@ -383,16 +349,13 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
       });
     }, 10000);
     
-    console.log('✅ All handlers setup complete, waiting for server response...');
   };
 
   const handleStartGame = () => {
     if (config.gameMode === 'single') {
-      console.log('🎮 Starting SINGLE PLAYER - clearing ALL previous data');
       
       // Clear ALL session storage for single player
       sessionStorage.clear();
-      console.log('✅ All session storage cleared for single player');
       
       // Single player game
       onStartGame({
@@ -636,7 +599,6 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
               <div className="sticky top-0 z-10 bg-white pb-2 flex justify-between items-center">
                 <Button 
                   onClick={() => {
-                    console.log('⬅️ Back button clicked - resetting state');
                     setShowJoinForm(false);
                     setIsCreatingGame(false);
                     setIsJoiningGame(false);

@@ -157,13 +157,11 @@ export class QuestionValidationService {
     
     for (const question of questions) {
       try {
-        console.log(`Storing question: ${question.text?.substring(0, 50)}...`);
         
         // Store directly without any validation
         const storedQuestion = await database.createQuestion(question);
         storedQuestions.push(storedQuestion);
         
-        console.log(`✅ Successfully stored question with ID: ${storedQuestion.id}`);
       } catch (error) {
         console.error(`❌ Failed to store question: ${question.text.substring(0, 50)}...`, error);
         // Continue with other questions even if one fails

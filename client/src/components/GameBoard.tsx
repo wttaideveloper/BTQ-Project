@@ -89,9 +89,6 @@ const GameBoard: React.FC<GameBoardProps> = ({
           try {
             // Make sure voice status is loaded (especially for first question)
             await voiceService.getVoiceStatus();
-            console.log(
-              `🔊 Voice service ready - reading Question ${currentQuestion} with session ${newSessionId}`
-            );
 
             // Only speak if the document is visible and component is still mounted
             // CRITICAL: Only read if this question hasn't been read yet to prevent overlap
@@ -102,20 +99,11 @@ const GameBoard: React.FC<GameBoardProps> = ({
             ) {
               // Just read the question number and question text - no player turn announcements
               const textToSpeak = `Question ${currentQuestion}: ${question}`;
-              console.log(
-                `📢 Starting narration for Question ${currentQuestion}: "${textToSpeak.substring(
-                  0,
-                  50
-                )}..."`
-              );
               await voiceService.speakWithClonedVoice(
                 textToSpeak,
                 newSessionId
               );
             } else {
-              console.log(
-                `⏭️ Skipping narration for Question ${currentQuestion} - already read or paused`
-              );
             }
           } catch (error) {
             console.error("❌ Error reading question:", error);
@@ -133,7 +121,6 @@ const GameBoard: React.FC<GameBoardProps> = ({
           // Only clear if this is still the active session
           const currentSession = voiceService.getCurrentSession();
           if (currentSession === newSessionId) {
-            console.log(`🧹 Cleaning up session ${newSessionId}`);
             voiceService.clearSession();
           }
         };
@@ -210,7 +197,6 @@ const GameBoard: React.FC<GameBoardProps> = ({
   // Cleanup effect to stop voice when component unmounts
   useEffect(() => {
     return () => {
-      console.log("🧹 GameBoard unmounting - clearing voice session");
       voiceService.clearSession();
     };
   }, []);

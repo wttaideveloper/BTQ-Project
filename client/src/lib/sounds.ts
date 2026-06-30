@@ -144,7 +144,6 @@ function selectMaleVoice(utterance: SpeechSynthesisUtterance, voices: SpeechSynt
     
     if (matchingVoice) {
       utterance.voice = matchingVoice;
-      console.log('Selected male voice:', matchingVoice.name);
       return;
     }
   }
@@ -158,7 +157,6 @@ function selectMaleVoice(utterance: SpeechSynthesisUtterance, voices: SpeechSynt
   
   if (usVoice) {
     utterance.voice = usVoice;
-    console.log('Selected US voice:', usVoice.name);
     return;
   }
   
@@ -170,17 +168,14 @@ function selectMaleVoice(utterance: SpeechSynthesisUtterance, voices: SpeechSynt
   
   if (anyEnglishVoice) {
     utterance.voice = anyEnglishVoice;
-    console.log('Selected English voice:', anyEnglishVoice.name);
   } else {
     // Force lower pitch as fallback to make any voice sound more masculine
     utterance.pitch = 0.7;
-    console.log('No male voice found, using default with lower pitch');
   }
 }
 
 // Initialize sounds
 export function initSounds() {
-  console.log("Initializing sound system...");
   
   // Preload sounds
   Object.values(SoundEffects).forEach(sound => {
@@ -190,10 +185,8 @@ export function initSounds() {
   // Check browser audio capabilities
   const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
   if (AudioContext) {
-    console.log("AudioContext is supported");
     try {
       const audioContext = new AudioContext();
-      console.log("Audio context state:", audioContext.state);
     } catch (err) {
       console.error("Error creating audio context:", err);
     }
@@ -206,7 +199,6 @@ export function initSounds() {
     // Play and immediately stop to test if audio works
     const testId = SoundEffects.tick.play();
     SoundEffects.tick.stop(testId);
-    console.log("Audio test completed");
   } catch (err) {
     console.error("Error during audio test:", err);
   }
@@ -223,10 +215,6 @@ export function initSounds() {
     voiceEnabled = savedVoicePreference === 'true';
   }
   
-  console.log("Sound system initialized", {
-    soundEnabled,
-    voiceEnabled
-  });
 }
 
 // Play sound effect with error handling

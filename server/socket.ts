@@ -223,14 +223,12 @@ export async function resetBattleState(options: BattleResetOptions): Promise<voi
     newStatus
   } = options;
 
-  console.log(`[resetBattleState] 🔄 Resetting battle ${battleId} | reason: ${reason} | delete: ${deleteBattle}`);
 
   // ========================================================================
   // STEP 1: Clear in-memory ready state (always)
   // ========================================================================
   if (teamBattleReadyState.has(battleId)) {
     teamBattleReadyState.delete(battleId);
-    console.log(`[resetBattleState] ✅ Cleared in-memory ready state for battle ${battleId}`);
   }
 
   // ========================================================================
@@ -248,7 +246,6 @@ export async function resetBattleState(options: BattleResetOptions): Promise<voi
       }
 
       await database.deleteTeamBattle(battleId);
-      console.log(`[resetBattleState] ✅ Deleted battle ${battleId} from database`);
 
       // If we have battle participants, clear their team battle status/mode
       if (battleRecord) {
@@ -277,7 +274,6 @@ export async function resetBattleState(options: BattleResetOptions): Promise<voi
             console.error(`[resetBattleState] Failed to clear user ${uid} team battle status:`, err);
           }
         }
-        console.log(`[resetBattleState] Cleared team battle status for ${uniqueIds.length} participants of deleted battle ${battleId}`);
       }
     } catch (err) {
       console.error(`[resetBattleState] ❌ Failed to delete battle ${battleId}:`, err);
@@ -286,7 +282,6 @@ export async function resetBattleState(options: BattleResetOptions): Promise<voi
     // Reset ready timestamps in DB (set to NULL)
     try {
       await database.resetTeamReadyState(battleId);
-      console.log(`[resetBattleState] ✅ Reset ready timestamps for battle ${battleId}`);
     } catch (err) {
       console.error(`[resetBattleState] ❌ Failed to reset ready timestamps for battle ${battleId}:`, err);
     }
@@ -295,7 +290,6 @@ export async function resetBattleState(options: BattleResetOptions): Promise<voi
     if (newStatus) {
       try {
         await database.updateTeamBattle(battleId, { status: newStatus });
-        console.log(`[resetBattleState] ✅ Updated battle ${battleId} status to "${newStatus}"`);
       } catch (err) {
         console.error(`[resetBattleState] ❌ Failed to update battle ${battleId} status:`, err);
       }
@@ -319,10 +313,8 @@ export async function resetBattleState(options: BattleResetOptions): Promise<voi
     for (const userId of notifyUserIds) {
       sendToUser(userId, notifyPayload);
     }
-    console.log(`[resetBattleState] ✅ Notified ${notifyUserIds.length} users of ready state reset`);
   }
 
-  console.log(`[resetBattleState] ✅ Battle ${battleId} reset complete | reason: ${reason}`);
 }
 
 // ============================================================================
@@ -349,7 +341,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
 
   const gameSession = gameSessions.get(gameId);
   if (!gameSession) {
-    console.log(`[markPlayerAsLeft] No gameSession for ${gameId}, skipping`);
     return false;
   }
 
@@ -360,7 +351,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
 
   // Idempotent — skip if already marked as left
   if (gameSession.leftPlayerIds.has(userId)) {
-    console.log(`[markPlayerAsLeft] User ${userId} already LEFT gameId ${gameId}, skipping (idempotent)`);
     return false; // already processed
   }
 
@@ -368,7 +358,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
   // STEP 1: Mark as LEFT in the gameSession (permanent, irreversible)
   // ========================================================================
   gameSession.leftPlayerIds.add(userId);
-  console.log(`[markPlayerAsLeft] ✅ User ${userId} marked as LEFT in gameId ${gameId} | reason: ${reason}`);
 
   // ========================================================================
   // STEP 2: Remove from in-memory teams[].members (prevents endTeamBattle
@@ -380,7 +369,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
         const idx = team.members.findIndex((m: any) => m.userId === userId);
         if (idx !== -1) {
           const removedMember = team.members.splice(idx, 1)[0];
-          console.log(`[markPlayerAsLeft] ✅ Removed user ${userId} (${removedMember?.username || 'unknown'}) from team ${team.name || team.id} members array`);
         }
       }
     }
@@ -393,7 +381,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
     const playerIdx = gameSession.players.findIndex((p: Player) => p.userId === userId);
     if (playerIdx !== -1) {
       gameSession.players.splice(playerIdx, 1);
-      console.log(`[markPlayerAsLeft] ✅ Removed user ${userId} from players array`);
     }
   }
 
@@ -402,7 +389,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
   // Always attempt to delete the entry so the user becomes available immediately.
   // ========================================================================
   activeTeamMemberships.delete(userId);
-  console.log(`[markPlayerAsLeft] ✅ Ensured user ${userId} removed from activeTeamMemberships`);
 
   // Broadcast availability update so lobby clients immediately see this user as available.
   // Use the same online status broadcast used when users come online / teams change.
@@ -441,7 +427,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
           if (Object.keys(updates).length > 0) {
             try {
               await database.updateTeamBattle(battle.id, updates);
-              console.log(`[markPlayerAsLeft] ✅ Removed user ${userId} from team_battles teammates for battle ${battle.id}`);
             } catch (err) {
               console.error(`[markPlayerAsLeft] ❌ Failed to update team_battles for ${battle.id}:`, err);
             }
@@ -475,7 +460,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
     }
   }
   if (clearedCount > 0) {
-    console.log(`[markPlayerAsLeft] ✅ Cleared gameId/gameSessionId on ${clearedCount} connection(s) for user ${userId}`);
   }
 
   // ========================================================================
@@ -499,7 +483,6 @@ async function markPlayerAsLeft(options: MarkPlayerAsLeftOptions): Promise<boole
     console.error(`[markPlayerAsLeft] Failed to broadcast online status:`, err);
   }
 
-  console.log(`[markPlayerAsLeft] ✅ User ${userId} fully detached from gameId ${gameId} | reason: ${reason}`);
   return true; // player was newly marked as left
 }
 
@@ -525,7 +508,6 @@ async function persistPlayerLeftToDB(gameId: string, userId: number): Promise<vo
     }
 
     if (!battle) {
-      console.log(`[persistPlayerLeftToDB] No battle found for gameId ${gameId}, skipping DB persist`);
       return;
     }
 
@@ -534,38 +516,32 @@ async function persistPlayerLeftToDB(gameId: string, userId: number): Promise<vo
 
     if (battle.teamACaptainId === userId) {
       // Player was Team A captain — handled by captain transfer logic elsewhere
-      console.log(`[persistPlayerLeftToDB] User ${userId} was Team A captain of battle ${battle.id}`);
     }
 
     if (battle.teamBCaptainId === userId) {
       // Player was Team B captain — handled by captain transfer logic elsewhere
-      console.log(`[persistPlayerLeftToDB] User ${userId} was Team B captain of battle ${battle.id}`);
     }
 
     // Remove from teamATeammates if present
     const teamATeammates = battle.teamATeammates || [];
     if (teamATeammates.includes(userId)) {
       updates.teamATeammates = teamATeammates.filter((id: number) => id !== userId);
-      console.log(`[persistPlayerLeftToDB] ✅ Removed user ${userId} from teamATeammates of battle ${battle.id}`);
     }
 
     // Remove from teamBTeammates if present
     const teamBTeammates = battle.teamBTeammates || [];
     if (teamBTeammates.includes(userId)) {
       updates.teamBTeammates = teamBTeammates.filter((id: number) => id !== userId);
-      console.log(`[persistPlayerLeftToDB] ✅ Removed user ${userId} from teamBTeammates of battle ${battle.id}`);
     }
 
     if (Object.keys(updates).length > 0) {
       await database.updateTeamBattle(battle.id, updates);
-      console.log(`[persistPlayerLeftToDB] ✅ DB updated for battle ${battle.id}`);
     }
 
     // Additive: mark player as LEFT in team_battle_players if that table/column exists.
     // This is the DB-authoritative LEFT flag used by authenticate and gameplay guards.
     try {
       await database.markTeamBattlePlayerLeft(battle.id, userId);
-      console.log(`[persistPlayerLeftToDB] ✅ Marked user ${userId} as LEFT in team_battle_players for battle ${battle.id}`);
     } catch (err) {
       // Tolerant — database method logs internally if not supported.
     }
@@ -672,7 +648,6 @@ function updateConnectionLastSeen(clientId: string) {
 // Initialize connection lastSeen when client first connects
 function initializeConnectionLastSeen(clientId: string) {
   connectionLastSeen.set(clientId, Date.now());
-  console.log(`[Socket] 🔗 Initialized lastSeen for client: ${clientId}`);
 }
 
 // Periodic cleanup of stale connections (every 60 seconds - less aggressive)
@@ -684,7 +659,6 @@ setInterval(() => {
     const timeSinceLastSeen = now - lastSeen;
     if (timeSinceLastSeen > STALE_CONNECTION_THRESHOLD) {
       const client = clients.get(clientId);
-      console.log(`[Socket] ⚠️ Detected stale connection: ${clientId} (user: ${client?.userId}, idle: ${Math.round(timeSinceLastSeen / 1000)}s)`);
       staleClientIds.push(clientId);
     }
   }
@@ -697,12 +671,10 @@ setInterval(() => {
       if (client.ws && client.ws.readyState === 1) {
         // Connection is still open - might be alive but idle
         // Update lastSeen and skip cleanup this round
-        console.log(`[Socket] 🔄 Connection ${clientId} (user: ${client.userId}) appears stale but WebSocket is OPEN - giving grace period`);
         connectionLastSeen.set(clientId, Date.now() - (STALE_CONNECTION_THRESHOLD / 2)); // Give 50% more time
         continue;
       }
 
-      console.log(`[Socket] 🧹 Cleaning up truly stale connection: ${clientId} (user: ${client.userId}, wsState: ${client.ws?.readyState})`);
 
       // Remove from userConnections
       if (client.userId) {
@@ -730,7 +702,6 @@ setInterval(() => {
   }
 
   if (staleClientIds.length > 0) {
-    console.log(`[Socket] 🧹 Processed ${staleClientIds.length} stale connection check(s)`);
   }
 }, 60000); // Check every 60 seconds (less aggressive)
 
@@ -748,7 +719,6 @@ setInterval(async () => {
     await database.getUser(1);
     const duration = Date.now() - startTime;
     lastDbPingTime = Date.now();
-    console.log(`[Database] 💓 Keep-alive ping successful (${duration}ms)`);
   } catch (error: any) {
     console.error(`[Database] ❌ Keep-alive ping failed:`, error?.message || error);
     // Connection might be dead - the next actual request will re-establish it
@@ -909,9 +879,6 @@ export async function expireAllPendingRequestsAndInvitationsForUser(userId: numb
       });
     }
 
-    console.log(
-      `[expireAllPendingRequestsAndInvitationsForUser] Expired ${pendingRequests.length} join requests and ${pendingInvitations.length} invitations for user ${userId}`
-    );
   } catch (error) {
     console.error(
       "[expireAllPendingRequestsAndInvitationsForUser] Error expiring requests/invitations:",
@@ -1016,13 +983,11 @@ export function setupWebSocketServer(server: Server) {
 
               if (hasReconnected) {
                 // User reconnected - cancel the disconnect
-                console.log(`[Disconnect Grace Period] User ${client.userId} reconnected, cancelling disconnect`);
                 pendingDisconnects.delete(clientId);
                 return;
               }
 
               // User didn't reconnect - process the disconnect
-              console.log(`[Disconnect Grace Period] Processing disconnect for user ${pendingDisconnect.userId} after grace period`);
               pendingDisconnects.delete(clientId);
 
               // Use values from pendingDisconnect (they're guaranteed to exist)
@@ -1255,7 +1220,6 @@ export function setupWebSocketServer(server: Server) {
           };
 
           pendingDisconnects.set(clientId, pendingDisconnect);
-          console.log(`[Disconnect Grace Period] Started grace period for user ${client.userId}, client ${clientId}`);
           // Don't process disconnect immediately - wait for grace period
         }
 
@@ -1270,7 +1234,6 @@ export function setupWebSocketServer(server: Server) {
             // in case of race conditions or edge cases.
             // ================================================================
             if (client.userId && hasPlayerLeft(client.gameId, client.userId)) {
-              console.log(`[ws.close] ⏭️ User ${client.userId} already LEFT gameId ${client.gameId}, skipping disconnect handler`);
             } else {
               // Handle team battle disconnect
               try {
@@ -1374,7 +1337,6 @@ function handleGameEvent(clientId: string, event: GameEvent) {
         if (leaveGameSession?.gameType === "team_battle") {
           // LIFECYCLE GUARD: Skip if player already LEFT
           if (client.userId && hasPlayerLeft(client.gameId, client.userId)) {
-            console.log(`[leave_game] ⏭️ User ${client.userId} already LEFT, skipping`);
           } else {
             // Team battle: use proper handler that cleans up "busy" status
             handleTeamBattlePlayerDisconnect(clientId, client.gameId, client.userId);
@@ -1521,7 +1483,6 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
     // Cancel any pending disconnects for this user (they reconnected)
     for (const [pendingClientId, pending] of pendingDisconnects.entries()) {
       if (pending.userId === userId && pending.gameSessionId === client.gameSessionId) {
-        console.log(`[Disconnect Grace Period] User ${userId} reconnected, cancelling pending disconnect for client ${pendingClientId}`);
         clearTimeout(pending.timeout);
         pending.cancelled = true;
         pendingDisconnects.delete(pendingClientId);
@@ -1534,8 +1495,6 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
       existingConns.push(clientId);
     }
     userConnections.set(userId, existingConns);
-    console.log(`[Socket Auth] User ${userId} authenticated with clientId ${clientId}`);
-    console.log(`[Socket Auth] userConnections.get(${userId}):`, userConnections.get(userId));
 
     // Check if user is in any active team and restore their game state
     // Get all teams from all game sessions
@@ -1579,7 +1538,6 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
       // ====================================================================
       const leftCheck = hasPlayerLeftAnyActiveGame(userId);
       if (leftCheck.left) {
-        console.log(`[handleAuthenticate] ⛔ User ${userId} has LEFT gameId ${leftCheck.gameId} — NOT restoring battle state`);
         // Don't set gameSessionId or gameId — player starts clean
         client.gameSessionId = undefined;
         client.gameId = undefined;
@@ -1599,7 +1557,6 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
             // CRITICAL FIX: Skip finished battles - don't restore stale state
             // This prevents "play again" scenarios from seeing old ready states
             if (battle.status === "finished") {
-              console.log(`[handleAuthenticate] Skipping finished battle ${battle.id} - not restoring state`);
               // Don't restore any team context for finished battles
               client.gameSessionId = undefined;
             } else {
@@ -1607,7 +1564,6 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
               try {
                 const dbLeft = await database.getTeamBattlePlayerLeftStatus(battle.id, userId);
                 if (dbLeft === true) {
-                  console.log(`[handleAuthenticate] ⛔ DB indicates user ${userId} has LEFT battle ${battle.id} — not restoring`);
                   client.gameSessionId = undefined;
                   client.gameId = undefined;
                 }
@@ -1631,7 +1587,6 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
             // If battle status is "playing" (IN_GAME), send team_battle_started event
             // This ensures client navigates even if in-memory gameSessions is empty
             if (battle.status === "playing") {
-              console.log(`[handleAuthenticate] Database shows battle ${battle.id} is playing, sending team_battle_started`);
               sendToClient(clientId, {
                 type: "team_battle_started",
                 gameId: battle.id, // Use battle ID as gameId
@@ -1659,7 +1614,6 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
         if (activeBattleSession) {
           // User is in an active battle - set gameId to battle session ID
           client.gameId = activeBattleSession.id;
-          console.log(`[handleAuthenticate] User ${userId} reconnected during active battle, set gameId: ${activeBattleSession.id}`);
 
           // Send battle started event if battle is playing
           if (activeBattleSession.status === "playing") {
@@ -1733,7 +1687,6 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
       // Cancel any pending disconnects for this user with this gameSessionId (they reconnected)
       for (const [pendingClientId, pending] of pendingDisconnects.entries()) {
         if (pending.userId === userId && pending.gameSessionId === userTeam.gameSessionId) {
-          console.log(`[Disconnect Grace Period] User ${userId} reconnected with gameSessionId ${userTeam.gameSessionId}, cancelling pending disconnect for client ${pendingClientId}`);
           clearTimeout(pending.timeout);
           pending.cancelled = true;
           pendingDisconnects.delete(pendingClientId);
@@ -3025,12 +2978,8 @@ async function handleMarkNotificationRead(clientId: string, event: GameEvent) {
 // Helper function to send message to all connections of a user
 export function sendToUser(userId: number, message: GameEvent) {
   const connections = userConnections.get(userId) || [];
-  console.log(`[sendToUser] Sending to userId ${userId}, type: ${message.type}`);
-  console.log(`[sendToUser] Found ${connections.length} connection(s) for user ${userId}`);
-  console.log(`[sendToUser] Message:`, message);
 
   for (const clientId of connections) {
-    console.log(`[sendToUser] Sending to clientId: ${clientId}`);
     sendToClient(clientId, message);
   }
 }
@@ -3048,12 +2997,10 @@ function sendToGame(gameId: string, message: GameEvent) {
 function sendToClient(clientId: string, message: GameEvent) {
   const client = clients.get(clientId);
   if (!client) {
-    console.log(`[sendToClient] Client ${clientId} not found`);
     return;
   }
 
   if (!client.ws) {
-    console.log(`[sendToClient] Client ${clientId} has no websocket`);
     return;
   }
 
@@ -3063,7 +3010,6 @@ function sendToClient(clientId: string, message: GameEvent) {
 
   try {
     client.ws.send(JSON.stringify(message));
-    console.log(`[sendToClient] ✅ Successfully sent ${message.type} to client ${clientId}`);
   } catch (error) {
     console.error(`[sendToClient] ❌ Failed to send to client ${clientId}:`, error);
     // Silent error handling
@@ -3510,7 +3456,6 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
     return;
 
   try {
-    console.log(`[handleSubmitTeamAnswer] Received submit from clientId=${clientId} user=${client.userId} teamId=${event.teamId} questionId=${event.questionId} answerId=${event.answerId}`);
     // ====================================================================
     // AUTHORITATIVE VALIDATION: client.gameId is the ONLY trusted source.
     // event.gameId is NEVER used — prevents stale events from old sessions.
@@ -3520,14 +3465,11 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
       if (event.gameSessionId) {
         const maybeSession = gameSessions.get(event.gameSessionId);
         if (maybeSession && Array.isArray(maybeSession.teams) && maybeSession.teams.some((t: any) => t.id === event.teamId)) {
-          console.log(`[handleSubmitTeamAnswer] Info: setting client.gameId from event.gameSessionId for user ${client.userId}`);
           client.gameId = event.gameSessionId;
         } else {
-          console.log(`[handleSubmitTeamAnswer] ⛔ Rejected: invalid event.gameSessionId for user ${client.userId}`);
           return;
         }
       } else {
-        console.log(`[handleSubmitTeamAnswer] ⛔ Rejected: no client.gameId for user ${client.userId}`);
         return;
       }
     }
@@ -3539,9 +3481,6 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         client.userId
       );
       if (dbLeft === true) {
-        console.log(
-          `[handleSubmitTeamAnswer] ⛔ DB indicates user ${client.userId} has LEFT battle ${client.gameId} — ignoring event`
-        );
         return;
       }
     } catch (err) {
@@ -3550,15 +3489,11 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
 
     // LIFECYCLE GUARD: Reject if player has LEFT this game (in-memory)
     if (hasPlayerLeft(client.gameId, client.userId)) {
-      console.log(
-        `[handleSubmitTeamAnswer] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`
-      );
       sendToClient(clientId, { type: "error", message: "You have left this battle" });
       return;
     }
 
     const gameSession = client.gameId ? gameSessions.get(client.gameId) || null : null;
-    console.log(`[handleSubmitTeamAnswer] PHASE BEFORE SUBMIT for gameId=${client.gameId}:`, (gameSession as any)?.phase);
 
     // If the session is in toss phase, route to toss handler and return immediately.
     if (gameSession && (gameSession as any).phase === "toss") {
@@ -3572,7 +3507,6 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         return;
       } else {
         // No matching team in game session for this toss; ignore to be safe.
-        console.log(`[handleSubmitTeamAnswer] ⏭️ Toss phase active but sessionTeam not found for teamId=${event.teamId}`);
         return;
       }
     }
@@ -3588,7 +3522,6 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         }
         return; // MUST return to prevent normal question pipeline
       } else {
-        console.log(`[handleSubmitTeamAnswer] ⏭️ Rapid-fire active but sessionTeam not found for teamId=${event.teamId}`);
         return;
       }
     }
@@ -3624,7 +3557,6 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         sessionTeam.memberAnswers[event.questionId] = {};
       }
 
-      console.log(`[handleSubmitTeamAnswer] Storing member answer for user=${client.userId} team=${sessionTeam.id} question=${event.questionId} answer=${event.answerId}`);
       sessionTeam.memberAnswers[event.questionId][client.userId.toString()] = {
         answerId: event.answerId,
         submittedAt: new Date(),
@@ -3659,7 +3591,6 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         const tossQ = (gameSession as any).tossQuestion;
         const correctAnswer = tossQ.answers?.find((a: any) => a.isCorrect);
         const isCorrect = !!(correctAnswer && event.answerId === correctAnswer.id);
-        console.log(`[Toss] Submission by user=${client.userId} team=${sessionTeam.id} answer=${event.answerId} correct=${isCorrect}`);
         // Send immediate feedback to submitting client
         sendToClient(clientId, {
           type: "team_battle_toss_feedback",
@@ -3689,7 +3620,6 @@ async function handleSubmitTeamAnswer(clientId: string, event: GameEvent) {
         if (isCorrect) {
           // First correct submission wins the toss
           if (!(gameSession as any).tossWinnerTeamId) {
-            console.log(`[Toss] Finalizing toss winner due to immediate correct submission: team=${sessionTeam.id} user=${client.userId}`);
             await finalizeTossWinner(client.gameId, sessionTeam.id, client.userId);
           }
         }
@@ -4144,9 +4074,6 @@ async function handleTeamOptionSelected(clientId: string, event: GameEvent) {
     // AUTHORITATIVE VALIDATION: client.gameId is the ONLY trusted source.
     // ====================================================================
     if (!client.gameId) {
-      console.log(
-        `[handleTeamOptionSelected] ⛔ Rejected: no client.gameId for user ${client.userId}`
-      );
       return;
     }
 
@@ -4157,9 +4084,6 @@ async function handleTeamOptionSelected(clientId: string, event: GameEvent) {
         client.userId
       );
       if (dbLeft === true) {
-        console.log(
-          `[handleTeamOptionSelected] ⛔ DB indicates user ${client.userId} has LEFT battle ${client.gameId} — ignoring event`
-        );
         return;
       }
     } catch (err) {
@@ -4167,9 +4091,6 @@ async function handleTeamOptionSelected(clientId: string, event: GameEvent) {
     }
 
     if (hasPlayerLeft(client.gameId, client.userId)) {
-      console.log(
-        `[handleTeamOptionSelected] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`
-      );
       return;
     }
 
@@ -4297,16 +4218,12 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
     const gameSession = client.gameId ? gameSessions.get(client.gameId) || null : null;
     if (gameSession && (gameSession as any).phase === "toss") {
       // Silently ignore finalize attempts during toss phase (do not send error)
-      console.log(`[handleFinalizeTeamAnswer] Silently ignoring finalize during toss phase for client ${client.userId}`);
       return;
     }
     // ====================================================================
     // AUTHORITATIVE VALIDATION: client.gameId is the ONLY trusted source.
     // ====================================================================
     if (!client.gameId) {
-      console.log(
-        `[handleFinalizeTeamAnswer] ⛔ Rejected: no client.gameId for user ${client.userId}`
-      );
       return;
     }
 
@@ -4317,9 +4234,6 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
         client.userId
       );
       if (dbLeft === true) {
-        console.log(
-          `[handleFinalizeTeamAnswer] ⛔ DB indicates user ${client.userId} has LEFT battle ${client.gameId} — ignoring event`
-        );
         return;
       }
     } catch (err) {
@@ -4327,9 +4241,6 @@ async function handleFinalizeTeamAnswer(clientId: string, event: GameEvent) {
     }
 
     if (hasPlayerLeft(client.gameId, client.userId)) {
-      console.log(
-        `[handleFinalizeTeamAnswer] ⛔ Rejected: user ${client.userId} has LEFT gameId ${client.gameId}`
-      );
       sendToClient(clientId, { type: "error", message: "You have left this battle" });
       return;
     }
@@ -4718,11 +4629,9 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
 
       // Guard 2: Battle must exist and be in "forming" phase
       if (!freshBattle) {
-        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - battle ${battle.id} not found`);
         return;
       }
       if (freshBattle.status !== "forming") {
-        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - battle already in phase: ${freshBattle.status}`);
         return; // Already transitioned - don't double-start
       }
 
@@ -4730,7 +4639,6 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
       const teamAExists = Boolean(freshBattle.teamACaptainId && freshBattle.teamAName);
       const teamBExists = Boolean(freshBattle.teamBCaptainId && freshBattle.teamBName);
       if (!teamAExists || !teamBExists) {
-        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - incomplete teams: A=${teamAExists}, B=${teamBExists}`);
         return;
       }
 
@@ -4738,18 +4646,15 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
       const teamAReadyAt = freshBattle.teamAReadyAt;
       const teamBReadyAt = freshBattle.teamBReadyAt;
       if (!teamAReadyAt || !teamBReadyAt) {
-        console.log(`[handleTeamBattleReady] ⚠️ Skipping countdown - ready timestamps missing: A=${!!teamAReadyAt}, B=${!!teamBReadyAt}`);
         return;
       }
 
-      console.log(`[handleTeamBattleReady] ✅ All invariant guards passed - proceeding with countdown`);
 
       try {
         // Update battle status to "ready" (COUNTDOWN phase) in database
         await database.updateTeamBattle(battle.id, {
           status: "ready", // COUNTDOWN phase
         });
-        console.log(`[handleTeamBattleReady] ✅ Battle ${battle.id} status updated to "ready" (COUNTDOWN phase)`);
 
         // Broadcast countdown to all participants
         const countdownSeconds = 5;
@@ -4836,7 +4741,6 @@ async function broadcastReadyState(
     serverTime: Date.now(),
   };
 
-  console.log(`[broadcastReadyState] 📢 Notifying ${participantIds.size} participants to refetch state for battle ${battleId}`);
 
   // Send to all participants via sendToUser (handles multiple connections per user)
   for (const userId of Array.from(participantIds)) {
@@ -5611,18 +5515,15 @@ async function handleAcceptTeamInvitation(clientId: string, event: GameEvent) {
 async function handleStartTeamBattle(clientId: string, event: GameEvent) {
   const client = clients.get(clientId);
   if (!client || !client.userId || !event.gameSessionId) {
-    console.log(`[handleStartTeamBattle] Missing client, userId, or gameSessionId`);
     return;
   }
 
   try {
-    console.log(`[handleStartTeamBattle] User ${client.userId} starting battle for session ${event.gameSessionId}`);
 
     // Get battles for this session
     const battles = await database.getTeamBattlesByGameSession(event.gameSessionId);
 
     if (battles.length === 0) {
-      console.log(`[handleStartTeamBattle] No battles found for session ${event.gameSessionId}`);
       sendToClient(clientId, {
         type: "error",
         message: "No team battle found for this session. Please create teams first.",
@@ -5634,7 +5535,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     const battle = battles.find(b => b.status === 'forming') || battles[0];
 
     if (!battle) {
-      console.log(`[handleStartTeamBattle] No forming battle found`);
       sendToClient(clientId, {
         type: "error",
         message: "No active battle found. Please create teams first.",
@@ -5647,7 +5547,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     const isTeamBCaptain = battle.teamBCaptainId === client.userId;
 
     if (!isTeamACaptain && !isTeamBCaptain) {
-      console.log(`[handleStartTeamBattle] User ${client.userId} is not a captain`);
       sendToClient(clientId, {
         type: "error",
         message: "Only team captains can start battles",
@@ -5657,7 +5556,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
 
     // Validate both teams exist and have at least 1 member
     if (!battle.teamBCaptainId || !battle.teamBName) {
-      console.log(`[handleStartTeamBattle] Team B not created yet`);
       sendToClient(clientId, {
         type: "error",
         message: "Opposing team not created yet. Waiting for opponent captain to accept invitation.",
@@ -5670,7 +5568,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     const teamBSize = 1 + (battle.teamBTeammates?.length || 0);
 
     if (teamASize < 1 || teamBSize < 1) {
-      console.log(`[handleStartTeamBattle] Teams too small: Team A: ${teamASize}, Team B: ${teamBSize}`);
       sendToClient(clientId, {
         type: "error",
         message: `Both teams need at least 1 member. Current: Team A has ${teamASize}, Team B has ${teamBSize}`,
@@ -5678,7 +5575,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       return;
     }
 
-    console.log(`[handleStartTeamBattle] ✅ Basic validation passed: ${teamASize}v${teamBSize} battle ready`);
 
     // CRITICAL: Get all teams in the session (derived from team battles) and validate COMPREHENSIVELY
     // This ensures teams are properly registered before phase advancement
@@ -5686,7 +5582,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
 
     // CRITICAL VALIDATION #1: Exactly 2 teams must exist
     if (allTeams.length !== 2) {
-      console.log(`[handleStartTeamBattle] ❌ Invalid team count: ${allTeams.length} (expected 2)`);
       sendToClient(clientId, {
         type: "error",
         message: `Invalid team configuration: Found ${allTeams.length} teams. Need exactly 2 teams to start battle.`,
@@ -5697,7 +5592,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     // CRITICAL VALIDATION #2: Each team must have a captain
     for (const team of allTeams) {
       if (!team.captainId) {
-        console.log(`[handleStartTeamBattle] ❌ Team ${team.id} missing captain`);
         sendToClient(clientId, {
           type: "error",
           message: `Team ${team.name} is missing a captain. Cannot start battle.`,
@@ -5708,7 +5602,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       // Verify captain is in members list
       const captainInMembers = team.members.some((m: any) => m.userId === team.captainId && m.role === "captain");
       if (!captainInMembers) {
-        console.log(`[handleStartTeamBattle] ❌ Team ${team.id} captain ${team.captainId} not in members list`);
         sendToClient(clientId, {
           type: "error",
           message: `Team ${team.name} captain is not properly registered. Cannot start battle.`,
@@ -5725,7 +5618,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     );
 
     if (eligibleTeams.length < 2) {
-      console.log(`[handleStartTeamBattle] ❌ Not enough eligible teams: ${eligibleTeams.length}`);
       sendToClient(clientId, {
         type: "error",
         message: "Need 2 teams with at least 1 member each to start battle",
@@ -5738,7 +5630,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
     const participantIds = new Set<number>();
     for (const team of eligibleTeams) {
       if (!team.captainId || typeof team.captainId !== 'number') {
-        console.log(`[handleStartTeamBattle] ❌ Team ${team.id} has no valid captain`);
         sendToClient(clientId, {
           type: "error",
           message: `Team ${team.name} has no valid captain. Cannot start battle.`,
@@ -5752,7 +5643,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
         if (memberUserId && typeof memberUserId === 'number') {
           participantIds.add(memberUserId);
         } else {
-          console.log(`[handleStartTeamBattle] ❌ Invalid member in team ${team.id}:`, member);
           sendToClient(clientId, {
             type: "error",
             message: `Team ${team.name} has invalid member data. Cannot start battle.`,
@@ -5764,7 +5654,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
 
     // CRITICAL VALIDATION #5: Verify we have participants from both teams
     if (participantIds.size < 2) {
-      console.log(`[handleStartTeamBattle] ❌ Insufficient participants: ${participantIds.size}`);
       sendToClient(clientId, {
         type: "error",
         message: "Need at least 2 participants (one from each team) to start battle",
@@ -5772,7 +5661,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       return;
     }
 
-    console.log(`[handleStartTeamBattle] ✅ All validations passed: ${eligibleTeams.length} teams, ${participantIds.size} participants`);
 
     // Use eligible teams
     const readyTeams = eligibleTeams;
@@ -5804,7 +5692,6 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
         status: "playing", // IN_GAME phase
         startedAt: new Date(),
       });
-      console.log(`[handleStartTeamBattle] ✅ Battle ${battle.id} status updated to "playing" (IN_GAME phase) with ${readyTeams.length} teams and ${allPlayers.length} players`);
     } catch (error) {
       console.error(`[handleStartTeamBattle] ❌ Failed to update battle status:`, error);
       sendToClient(clientId, {
@@ -5923,7 +5810,6 @@ async function startTeamBattleQuestions(gameId: string) {
   if (!gameSession) return;
 
   try {
-    console.log(`[TeamBattle] Starting to load questions for gameId: ${gameId}`);
 
     // Collect all user IDs from all team members to exclude their recent questions
     const allUserIds: number[] = [];
@@ -5939,7 +5825,6 @@ async function startTeamBattleQuestions(gameId: string) {
       }
     }
 
-    console.log(`[TeamBattle] Found ${allUserIds.length} unique users in teams: [${allUserIds.join(', ')}]`);
 
     // Get questions excluded by ALL team members (union of all their recent questions)
     let allExcludedQuestionIds: string[] = [];
@@ -5958,7 +5843,6 @@ async function startTeamBattleQuestions(gameId: string) {
         }
       }
       allExcludedQuestionIds = Array.from(excludedSet);
-      console.log(`[TeamBattle] Excluding ${allExcludedQuestionIds.length} questions recently seen by any team member`);
     }
 
     // Use the first user ID for tracking purposes (needed for toss and question selection)
@@ -6069,7 +5953,6 @@ async function startTeamBattleQuestions(gameId: string) {
       if (historyFiltered.length > 0) {
         // We have some questions after history filtering - use them
         filteredQuestions = historyFiltered;
-        console.log(`[TeamBattle] Filtered from ${validQuestions.length} to ${filteredQuestions.length} questions after excluding team history`);
       } else {
         // All questions were filtered out - use original questions anyway
         // (we'll reuse them to ensure variety)
@@ -6078,7 +5961,6 @@ async function startTeamBattleQuestions(gameId: string) {
       }
     }
 
-    console.log(`[TeamBattle] Using ${filteredQuestions.length} questions for battle (will ensure 10 total)`);
 
     // CRITICAL: Ensure we always have exactly 10 UNIQUE questions
     // Use filteredQuestions (after history filtering) as the base
@@ -6119,7 +6001,6 @@ async function startTeamBattleQuestions(gameId: string) {
           }
         }
 
-        console.log(`[TeamBattle] After additional fetch: ${finalQuestions.length} unique questions`);
       } catch (error) {
         console.error(`[TeamBattle] Failed to fetch additional questions:`, error);
       }
@@ -6164,12 +6045,10 @@ async function startTeamBattleQuestions(gameId: string) {
     }
     finalQuestions = validatedQuestions;
 
-    console.log(`[TeamBattle] Final: ${finalQuestions.length} unique questions for gameId: ${gameId}`);
 
     gameSession.questions = finalQuestions;
     gameSession.currentQuestionIndex = 0;
 
-    console.log(`[TeamBattle] Successfully loaded ${gameSession.questions.length} valid questions for gameId: ${gameId}, teams: ${gameSession.teams?.length || 0}`);
 
     // Track question history for ALL team members (non-blocking)
     // This ensures users don't see the same questions in future games
@@ -6186,7 +6065,6 @@ async function startTeamBattleQuestions(gameId: string) {
                 difficulty: question.difficulty,
               });
             }
-            console.log(`[TeamBattle] Tracked question history for user ${userId} (${finalQuestions.length} questions)`);
           } catch (error) {
             console.error(`[TeamBattle] Failed to track question history for user ${userId}:`, error);
             // Non-critical error - continue even if history tracking fails
@@ -6202,10 +6080,8 @@ async function startTeamBattleQuestions(gameId: string) {
     // If toss was initialized and still active, wait for its promise to resolve.
     const session = gameSessions.get(gameId);
     if (session && (session as any).phase === "toss" && (session as any)._tossPromise) {
-      console.log(`[startTeamBattleQuestions] Waiting for toss to complete for gameId: ${gameId}`);
       try {
         await (session as any)._tossPromise;
-        console.log(`[startTeamBattleQuestions] Toss completed for gameId: ${gameId}`);
       } catch (err) {
         console.error(`[startTeamBattleQuestions] Error waiting for tossPromise for gameId ${gameId}:`, err);
       }
@@ -6217,7 +6093,6 @@ async function startTeamBattleQuestions(gameId: string) {
     setTimeout(() => {
       const s = gameSessions.get(gameId);
       if (s && s.questions && s.questions.length > 0) {
-        console.log(`[startTeamBattleQuestions] Questions loaded (${s.questions.length}), sending first question for gameId: ${gameId}`);
         sendTeamBattleQuestion(gameId);
       } else {
         console.error(`[startTeamBattleQuestions] Questions not loaded for gameId: ${gameId}, retrying...`);
@@ -6225,7 +6100,6 @@ async function startTeamBattleQuestions(gameId: string) {
         setTimeout(() => {
           const retrySession = gameSessions.get(gameId);
           if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
-            console.log(`[startTeamBattleQuestions] Questions loaded on retry (${retrySession.questions.length}), sending first question for gameId: ${gameId}`);
             sendTeamBattleQuestion(gameId);
           } else {
             // Still no questions - notify all clients and end battle gracefully
@@ -6269,7 +6143,6 @@ function sendTeamBattleQuestion(gameId: string) {
 
   // If this session is configured for rapid-fire, delegate to the rapid pipeline
   if ((gameSession as any).mode === "rapid_fire" || (gameSession as any).gameType === "rapid_fire") {
-    console.log(`[TeamBattle] sendTeamBattleQuestion redirected to rapid pipeline for gameId: ${gameId}`);
     try {
       // Ensure we use the rapid pipeline which emits only team_battle_rapid_question
       sendRapidFireQuestion(gameId);
@@ -6286,7 +6159,6 @@ function sendTeamBattleQuestion(gameId: string) {
 
   // Prevent sending normal questions while toss phase is active
   if ((gameSession as any).phase === "toss") {
-    console.log(`[TeamBattle] sendTeamBattleQuestion skipped because toss phase is active for gameId: ${gameId}`);
     return;
   }
 
@@ -6308,7 +6180,6 @@ function sendTeamBattleQuestion(gameId: string) {
       setTimeout(() => {
         const retrySession = gameSessions.get(gameId);
         if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
-          console.log(`[TeamBattle] Questions loaded after ${retryCount + 1} retries, sending question for gameId: ${gameId}`);
           (retrySession as any).questionRetryCount = 0; // Reset retry count
           sendTeamBattleQuestion(gameId);
         } else {
@@ -6343,7 +6214,6 @@ function sendTeamBattleQuestion(gameId: string) {
     // Check if we've actually run out of questions or if there's an issue
     if (currentIndex >= gameSession.questions.length && gameSession.questions.length > 0) {
       // Legitimately out of questions - only end if we have questions and have gone through them all
-      console.log(`[TeamBattle] All questions completed for gameId: ${gameId}. Index: ${currentIndex}, Total: ${gameSession.questions.length}`);
       endTeamBattle(gameId);
     } else if (gameSession.questions.length === 0) {
       // Questions not loaded yet - wait and retry
@@ -6351,7 +6221,6 @@ function sendTeamBattleQuestion(gameId: string) {
       setTimeout(() => {
         const retrySession = gameSessions.get(gameId);
         if (retrySession && retrySession.questions && retrySession.questions.length > 0) {
-          console.log(`[TeamBattle] Questions loaded, retrying sendTeamBattleQuestion for gameId: ${gameId}`);
           sendTeamBattleQuestion(gameId);
         } else {
           console.error(`[TeamBattle] Questions still not loaded after retry for gameId: ${gameId}`);
@@ -6393,7 +6262,6 @@ function sendTeamBattleQuestion(gameId: string) {
   // Fallback: if no teamSide is set, use team order
   if (!answeringTeam && gameSession.teams.length >= 2) {
     answeringTeam = isTeamATurn ? gameSession.teams[0] : gameSession.teams[1];
-    console.log(`[TeamBattle] Using team order fallback. Question ${questionNumber}, isTeamATurn: ${isTeamATurn}, using team: ${answeringTeam.name}`);
   }
 
   // Find the opposing team
@@ -6453,7 +6321,6 @@ function sendTeamBattleQuestion(gameId: string) {
     if (c.gameId === gameId) return false; // Already included above
     // If this client's userId is in players but gameId isn't set, set it and include them
     if (playersByUserId.has(c.userId)) {
-      console.log(`[sendTeamBattleQuestion] Client ${c.id} has userId ${c.userId} in game but gameId not set. Setting gameId now.`);
       c.gameId = gameId;
       c.gameSessionId = gameSession.teams?.[0]?.gameSessionId || "";
       return true;
@@ -6527,7 +6394,6 @@ function sendTeamBattleQuestion(gameId: string) {
     }
   }
 
-  console.log(`[TeamBattle] Sent question ${questionNumber} to ${allGameClients.length} clients (${gameClients.length} with gameId set, ${additionalClients.length} additional). Answering team: ${answeringTeam.name}`);
 
   gameSession.questionTimeout = setTimeout(() => {
     processTeamBattleAnswers(gameId);
@@ -6546,7 +6412,6 @@ async function processTeamBattleAnswers(gameId: string) {
   // CRITICAL: Prevent duplicate processing of the same question
   // If we're already processing this question, return early
   if ((gameSession as any).isProcessingAnswers) {
-    console.log(`[TeamBattle] Already processing answers for gameId: ${gameId}, skipping duplicate call`);
     return;
   }
 
@@ -6723,12 +6588,10 @@ async function processTeamBattleAnswers(gameId: string) {
 
   if (nextIndex >= gameSession.questions.length) {
     // Battle completed - give teams a moment to see final results
-    console.log(`[TeamBattle] All questions completed for gameId: ${gameId}. Index: ${nextIndex}, Total: ${gameSession.questions.length}`);
     (gameSession as any).isProcessingAnswers = false; // Reset flag
     setTimeout(() => endTeamBattle(gameId), 2000);
   } else {
     // Next question - send after a brief delay to show results
-    console.log(`[TeamBattle] Moving to question ${nextIndex + 1} (index ${nextIndex}) for gameId: ${gameId}`);
     (gameSession as any).isProcessingAnswers = false; // Reset flag before sending next question
     setTimeout(() => {
       sendTeamBattleQuestion(gameId);
@@ -6787,7 +6650,6 @@ async function handleTossSubmission(
 
     // If correct and toss not yet decided -> finalize winner
     if (isCorrect && !(gameSession as any).tossWinnerTeamId) {
-      console.log(`[Toss] finalize from handleTossSubmission: team=${sessionTeam.id} user=${client.userId}`);
       await finalizeTossWinner(client.gameId!, sessionTeam.id, client.userId);
       return;
     }
@@ -7027,7 +6889,6 @@ function sendRapidFireQuestion(gameId: string) {
   const currentIndex = gameSession.currentQuestionIndex || 0;
   const question = gameSession.questions ? gameSession.questions[currentIndex] : null;
   if (!question) {
-    console.log(`[RapidFire] No more questions available for gameId ${gameId} at index ${currentIndex}. Ending battle.`);
     endTeamBattle(gameId, "rapid_fire_complete");
     return;
   }
@@ -7269,9 +7130,6 @@ async function evaluateRapidFireFinalizedAnswer(
     allTeamsFinalizedRapidQuestion(gameSession, questionId) &&
     !isRapidFireQuestionResolved(gameSession, questionId)
   ) {
-    console.log(
-      `[RapidFire] All teams finalized incorrectly for ${questionId}. Moving to next question.`
-    );
     if ((gameSession as any)._rapidQuestionTimeout) {
       clearTimeout((gameSession as any)._rapidQuestionTimeout);
       (gameSession as any)._rapidQuestionTimeout = undefined;
@@ -7462,7 +7320,6 @@ async function handleRapidFireSubmission(
       });
 
       if (allTeamsParticipated && !isRapidFireQuestionResolved(gameSession, qid)) {
-        console.log(`[RapidFire] All solo teams answered incorrectly for ${qid}. Moving to next question.`);
 
         if ((gameSession as any)._rapidQuestionTimeout) {
           clearTimeout((gameSession as any)._rapidQuestionTimeout);
@@ -7561,15 +7418,12 @@ async function endTeamBattle(gameId: string, reason?: string) {
           if (member.userId && typeof member.userId === 'number' && !leftPlayers.has(member.userId)) {
             activeTeamMemberships.delete(member.userId);
             removedUserIds.push(member.userId);
-            console.log(`[endTeamBattle] Removed user ${member.userId} (${member.username || 'unknown'}) from activeTeamMemberships`);
           } else if (member.userId && leftPlayers.has(member.userId)) {
-            console.log(`[endTeamBattle] ⏭️ Skipping LEFT player ${member.userId} — already detached`);
           }
         }
       }
     }
     if (leftPlayers.size > 0) {
-      console.log(`[endTeamBattle] ℹ️ ${leftPlayers.size} player(s) were already LEFT and skipped during cleanup`);
     }
 
     // Clean up game session
@@ -7579,13 +7433,11 @@ async function endTeamBattle(gameId: string, reason?: string) {
     setTimeout(async () => {
       try {
         await broadcastOnlineStatusUpdate();
-        console.log(`[endTeamBattle] ✅ Broadcasted online status update after removing ${removedUserIds.length} users from activeTeamMemberships`);
 
         // Additional broadcast after a longer delay to catch any missed clients
         setTimeout(async () => {
           try {
             await broadcastOnlineStatusUpdate();
-            console.log(`[endTeamBattle] ✅ Second broadcast sent for reliability`);
           } catch (retryError) {
             console.error(`[endTeamBattle] Second broadcast failed:`, retryError);
           }
@@ -7596,14 +7448,12 @@ async function endTeamBattle(gameId: string, reason?: string) {
         setTimeout(async () => {
           try {
             await broadcastOnlineStatusUpdate();
-            console.log(`[endTeamBattle] ✅ Retry: Broadcasted online status update`);
           } catch (retryError) {
             console.error(`[endTeamBattle] Retry failed:`, retryError);
           }
         }, 500);
       }
     }, 300); // Increased from 100ms to 300ms for better reliability
-    console.log(`[endTeamBattle] Battle ended for gameId: ${gameId}, ${removedUserIds.length} participants marked as available`);
   } catch (error) {
     console.error(`[endTeamBattle] Error ending battle:`, error);
 
@@ -7634,7 +7484,6 @@ async function endTeamBattle(gameId: string, reason?: string) {
             if (member.userId && typeof member.userId === 'number' && !leftPlayersOnError.has(member.userId)) {
               activeTeamMemberships.delete(member.userId);
               removedUserIdsOnError.push(member.userId);
-              console.log(`[endTeamBattle] Error cleanup: Removed user ${member.userId} from activeTeamMemberships`);
             }
           }
         }
@@ -7643,7 +7492,6 @@ async function endTeamBattle(gameId: string, reason?: string) {
       setTimeout(async () => {
         try {
           await broadcastOnlineStatusUpdate();
-          console.log(`[endTeamBattle] ✅ Error path: Broadcasted online status update for ${removedUserIdsOnError.length} users`);
         } catch (cleanupError) {
           console.error(`[endTeamBattle] Error broadcasting in cleanup:`, cleanupError);
           setTimeout(async () => {
@@ -7681,7 +7529,6 @@ async function autoFinalizeTeamAnswer(teamId: string, questionId: string) {
 
     // Safety: Do not auto-finalize during toss phase or for toss question ids
     if (parentGameSession && (parentGameSession as any).phase === "toss") {
-      console.log(`[autoFinalizeTeamAnswer] Skipping auto-finalize because gameId=${parentGameSession.id} is in toss phase`);
       return;
     }
 
@@ -7775,7 +7622,6 @@ async function handleTeamBattlePlayerDisconnect(
   // LIFECYCLE CHECK: If player already LEFT, skip entirely (idempotent)
   // ========================================================================
   if (hasPlayerLeft(gameId, userId)) {
-    console.log(`[handleTeamBattlePlayerDisconnect] User ${userId} already LEFT gameId ${gameId}, skipping`);
     return;
   }
 
@@ -8182,15 +8028,12 @@ async function declareTeamBattleWinner(
           if (member.userId && typeof member.userId === 'number' && !leftPlayersWin.has(member.userId)) {
             activeTeamMemberships.delete(member.userId);
             removedUserIds.push(member.userId);
-            console.log(`[declareTeamBattleWinner] Removed user ${member.userId} (${member.username || 'unknown'}) from activeTeamMemberships`);
           } else if (member.userId && leftPlayersWin.has(member.userId)) {
-            console.log(`[declareTeamBattleWinner] ⏭️ Skipping LEFT player ${member.userId} — already detached`);
           }
         }
       }
     }
     if (leftPlayersWin.size > 0) {
-      console.log(`[declareTeamBattleWinner] ℹ️ ${leftPlayersWin.size} player(s) were already LEFT and skipped`);
     }
 
     // Clean up game session
@@ -8200,14 +8043,12 @@ async function declareTeamBattleWinner(
     setTimeout(async () => {
       try {
         await broadcastOnlineStatusUpdate();
-        console.log(`[declareTeamBattleWinner] ✅ Broadcasted online status update after removing ${removedUserIds.length} users from activeTeamMemberships`);
       } catch (error) {
         console.error(`[declareTeamBattleWinner] Error broadcasting online status update:`, error);
         // Retry once after a short delay
         setTimeout(async () => {
           try {
             await broadcastOnlineStatusUpdate();
-            console.log(`[declareTeamBattleWinner] ✅ Retry: Broadcasted online status update`);
           } catch (retryError) {
             console.error(`[declareTeamBattleWinner] Retry failed:`, retryError);
           }
@@ -8244,7 +8085,6 @@ async function declareTeamBattleWinner(
             if (member.userId && typeof member.userId === 'number' && !leftPlayersOnWinError.has(member.userId)) {
               activeTeamMemberships.delete(member.userId);
               removedUserIdsOnError.push(member.userId);
-              console.log(`[declareTeamBattleWinner] Error cleanup: Removed user ${member.userId} from activeTeamMemberships`);
             }
           }
         }
@@ -8253,7 +8093,6 @@ async function declareTeamBattleWinner(
       setTimeout(async () => {
         try {
           await broadcastOnlineStatusUpdate();
-          console.log(`[declareTeamBattleWinner] ✅ Error path: Broadcasted online status update for ${removedUserIdsOnError.length} users`);
         } catch (cleanupError) {
           console.error(`[declareTeamBattleWinner] Error broadcasting in cleanup:`, cleanupError);
         }
@@ -8385,7 +8224,6 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
       // CRITICAL FIX: If battle is playing but questions aren't loaded yet, send team_battle_started
       // instead of trying to send a question that doesn't exist
       if (battleSession.status === "playing" && (!battleSession.questions || battleSession.questions.length === 0)) {
-        console.log(`[handleGetGameState] Battle is playing but questions not loaded yet for gameId: ${battleSession.id}`);
         sendToClient(clientId, {
           type: "team_battle_started",
           gameId: battleSession.id,
@@ -8688,7 +8526,6 @@ async function handlePlayerLeavingTeamBattle(clientId: string, event: GameEvent)
     // LIFECYCLE CHECK: If player already LEFT, skip entirely (idempotent)
     // ========================================================================
     if (hasPlayerLeft(gameSessionId, userId)) {
-      console.log(`[handlePlayerLeavingTeamBattle] User ${userId} already LEFT, skipping`);
       return;
     }
 

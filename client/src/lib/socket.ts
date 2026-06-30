@@ -100,14 +100,11 @@ let pingInterval: NodeJS.Timeout | null = null;
 const PING_INTERVAL_MS = 25000;
 
 export function setupGameSocket(userId?: number): WebSocket {
-  console.log('setupGameSocket called with userId:', userId);
-  console.log('Current socket state:', socket?.readyState);
   
   // Reset reconnection attempts when explicitly setting up socket
   reconnectAttempts = 0;
 
   if (socket && socket.readyState === WebSocket.OPEN) {
-    console.log('Socket already open, reusing connection');
     // If socket is already open and we have a userId, send authenticate event
     if (userId && userId !== authenticatedUserId) {
       authenticateUser(userId);
@@ -117,7 +114,6 @@ export function setupGameSocket(userId?: number): WebSocket {
   
   // Close existing socket if it's not open
   if (socket) {
-    console.log('Closing existing socket with state:', socket.readyState);
     try {
       socket.close();
     } catch (e) {
@@ -132,7 +128,6 @@ export function setupGameSocket(userId?: number): WebSocket {
   const host = window.location.host || 'localhost:5001';
   const wsUrl = `${protocol}//${host}/ws`;
   
-  console.log('Creating new WebSocket connection to:', wsUrl);
   
   try {
     socket = new WebSocket(wsUrl);
@@ -142,7 +137,6 @@ export function setupGameSocket(userId?: number): WebSocket {
   }
   
   socket.addEventListener('open', () => {
-    console.log('WebSocket connected successfully');
     reconnectAttempts = 0;
     
     // Start ping interval to keep connection alive
@@ -157,7 +151,6 @@ export function setupGameSocket(userId?: number): WebSocket {
     
     // If we have a userId, authenticate the connection
     if (userId) {
-      console.log('Authenticating user:', userId);
       authenticateUser(userId);
     }
   });
@@ -167,21 +160,17 @@ export function setupGameSocket(userId?: number): WebSocket {
       const data = JSON.parse(event.data);
       
       // Log all messages for debugging
-      console.log('[WS Client] Message received:', data.type, data);
       
       // CRITICAL FIX #7: Ensure event listeners are properly registered
       // Auto-register event type if it doesn't exist (prevents missing events)
       if (!eventListeners[data.type]) {
         eventListeners[data.type] = [];
-        console.log(`[WS Client] Auto-registered event type: ${data.type}`);
       }
       
       // Notify listeners for this event type
       const listeners = eventListeners[data.type] || [];
-      console.log(`[WS Client] Found ${listeners.length} listener(s) for ${data.type}`);
       listeners.forEach(callback => {
         try {
-          console.log(`[WS Client] Calling listener for ${data.type}`);
           callback(data);
         } catch (error) {
           console.error(`[WS Client] Error in listener for ${data.type}:`, error);
@@ -202,7 +191,6 @@ export function setupGameSocket(userId?: number): WebSocket {
   });
   
   socket.addEventListener('close', () => {
-    console.log('WebSocket closed');
     const wasAuthenticated = authenticatedUserId;
     socket = null;
     
@@ -216,14 +204,12 @@ export function setupGameSocket(userId?: number): WebSocket {
     if (reconnectAttempts < maxReconnectAttempts) {
       reconnectAttempts++;
       const delay = Math.min(1000 * (2 ** reconnectAttempts), 30000); // Exponential backoff with max 30s
-      console.log(`WebSocket reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
       
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
       }
       
       reconnectTimeout = setTimeout(() => {
-        console.log('Attempting WebSocket reconnection...');
         // Re-authenticate with previous user ID on reconnect
         setupGameSocket(wasAuthenticated || undefined);
       }, delay);
@@ -391,9 +377,7 @@ export function onEvent(eventType: string, callback: (data: any) => void) {
     eventListeners[eventType] = [];
   }
   eventListeners[eventType].push(callback);
-  console.log(`[WS Client] Registered listener for '${eventType}'. Total listeners: ${eventListeners[eventType].length}`);
   return () => {
-    console.log(`[WS Client] Removing listener for '${eventType}'`);
     removeListener(eventType, callback);
   };
 }

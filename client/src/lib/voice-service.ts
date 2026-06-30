@@ -53,37 +53,31 @@ class VoiceService {
   async speakWithClonedVoice(text: string, sessionId?: string): Promise<void> {
     // Check if voice service has been stopped
     if (this.isStopped) {
-      console.log('⚠️ Voice service stopped, skipping narration:', text.substring(0, 50) + '...');
       return;
     }
 
     // If sessionId provided and it doesn't match current session, abort immediately
     if (sessionId && this.currentVoiceSession && sessionId !== this.currentVoiceSession) {
-      console.log('⚠️ Old session detected, aborting narration:', text.substring(0, 50) + '...', `Provided: ${sessionId}, Current: ${this.currentVoiceSession}`);
       return;
     }
 
     // Set the session if provided
     if (sessionId && !this.currentVoiceSession) {
       this.currentVoiceSession = sessionId;
-      console.log('🎯 Session initialized:', sessionId);
     }
 
     // Check if we're already speaking the exact same text (prevents duplicate overlap)
     if (this.isSpeaking && this.currentSpeechText === text) {
-      console.log('⚠️ Skipping duplicate narration:', text.substring(0, 50) + '...');
       return;
     }
     
     // If already speaking, stop current speech and start new one immediately for smoother transitions
     if (this.isSpeaking) {
-      console.log('Voice already speaking, stopping current and starting new:', text.substring(0, 50) + '...');
       this.stopAllAudio(false); // Stop current but allow new narration
       // Wait a moment for the stop to take effect
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    console.log('Starting to speak:', text.substring(0, 50) + '...', sessionId ? `[Session: ${sessionId}]` : '');
     this.isSpeaking = true;
     this.currentSpeechStartTime = Date.now();
     this.currentSpeechText = text;
@@ -116,7 +110,6 @@ class VoiceService {
 
       // Check if session is still valid after fetch completes
       if (requestSessionId && this.currentVoiceSession !== requestSessionId) {
-        console.log('⚠️ Session changed during fetch, aborting audio playback');
         this.isSpeaking = false;
         this.currentAbortController = null;
         return;
@@ -130,7 +123,6 @@ class VoiceService {
       
       // Final check before playing audio
       if (requestSessionId && this.currentVoiceSession !== requestSessionId) {
-        console.log('⚠️ Session changed after audio generation, aborting playback');
         this.isSpeaking = false;
         this.currentAbortController = null;
         return;
@@ -143,7 +135,6 @@ class VoiceService {
     } catch (error) {
       // Check if this was an abort
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('✅ Voice request aborted successfully');
         this.isSpeaking = false;
         this.currentAbortController = null;
         return;
@@ -159,15 +150,12 @@ class VoiceService {
 
   // Process the speech queue
   private async processQueue(): Promise<void> {
-    console.log(`Queue status: ${this.speechQueue.length} items, speaking: ${this.isSpeaking}, stopped: ${this.isStopped}`);
     if (this.speechQueue.length > 0 && !this.isSpeaking && !this.isStopped) {
       const nextText = this.speechQueue.shift();
       if (nextText) {
-        console.log('Processing queued speech:', nextText.substring(0, 50) + '...');
         await this.speakWithClonedVoice(nextText);
       }
     } else if (this.speechQueue.length === 0) {
-      console.log('Queue is empty, voice system ready');
     }
   }
 
@@ -180,7 +168,6 @@ class VoiceService {
         
         // Validate session before playing
         if (sessionId && this.currentVoiceSession !== sessionId) {
-          console.log('⚠️ Session invalid, not playing cached audio');
           return;
         }
         
@@ -201,7 +188,6 @@ class VoiceService {
 
       // Validate session before creating new audio
       if (sessionId && this.currentVoiceSession !== sessionId) {
-        console.log('⚠️ Session invalid, not creating new audio');
         return;
       }
 
@@ -231,7 +217,6 @@ class VoiceService {
 
   // Handle audio end event
   private handleAudioEnd = () => {
-    console.log('Audio finished, processing queue...');
     this.isSpeaking = false;
     this.currentSpeechStartTime = null;
     this.currentSpeechText = '';
@@ -240,7 +225,6 @@ class VoiceService {
 
   // Handle audio error event
   private handleAudioError = () => {
-    console.log('Audio error, processing queue...');
     this.isSpeaking = false;
     this.currentSpeechStartTime = null;
     this.currentSpeechText = '';
@@ -272,7 +256,6 @@ class VoiceService {
 
   // Stop all audio playback. If blockNew is true, prevent any new narration from starting
   stopAllAudio(blockNew: boolean = false): void {
-    console.log('🛑 Stopping all audio and voice narration', { blockNew });
     
     // Abort any ongoing fetch request
     if (this.currentAbortController) {
@@ -289,7 +272,6 @@ class VoiceService {
         this.currentAudioElement.removeEventListener('ended', this.handleAudioEnd);
         this.currentAudioElement.removeEventListener('error', this.handleAudioError);
       } catch (e) {
-        console.log('Error stopping current audio:', e);
       }
       this.currentAudioElement = null;
     }
@@ -320,7 +302,6 @@ class VoiceService {
 
   // Start a new voice session (call when question changes)
   startNewSession(sessionId: string): void {
-    console.log('🎯 Starting new voice session:', sessionId);
     // Stop any ongoing audio from previous session
     this.stopAllAudio(false);
     // Set new session - this must happen AFTER stopAllAudio
@@ -329,7 +310,6 @@ class VoiceService {
 
   // Clear current session
   clearSession(): void {
-    console.log('🧹 Clearing voice session');
     this.stopAllAudio(false);
     this.currentVoiceSession = null;
   }
@@ -341,7 +321,6 @@ class VoiceService {
 
   // Reset the stopped flag (call when starting a new game)
   reset(): void {
-    console.log('🔄 Resetting voice service');
     this.isStopped = false;
   }
 

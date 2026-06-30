@@ -303,7 +303,6 @@ export default function TeamBattleGame() {
       try {
         const data = JSON.parse(event.data);
         // Debug: log incoming messages for game page handlers
-        console.log("[TeamBattleGame] Message received:", data.type, data);
 
         switch (data.type) {
           case "connection_established":
@@ -323,7 +322,6 @@ export default function TeamBattleGame() {
             // Handle game state restoration on page refresh/reconnect
             // Don't redirect if user is explicitly exiting
             if (isExitingRef.current) {
-              console.log("[TeamBattleGame] Ignoring game_state_restored - user is exiting");
               break;
             }
 
@@ -357,7 +355,6 @@ export default function TeamBattleGame() {
             // No active game found - redirect to setup page
             // Don't redirect if user is explicitly exiting
             if (isExitingRef.current) {
-              console.log("[TeamBattleGame] Ignoring no_active_game - user is exiting");
               break;
             }
 
@@ -1227,7 +1224,6 @@ export default function TeamBattleGame() {
           apiRequest("POST", "/api/team-battle/cleanup")
             .then(() => {
               cleanupSucceeded = true;
-              console.log("[TeamBattleGame] Server-side cleanup completed on exit");
             }),
           // Timeout promise
           new Promise<void>((_, reject) => {
@@ -1238,7 +1234,6 @@ export default function TeamBattleGame() {
         ]);
       } catch (err) {
         // Timeout or other error - try fallback
-        console.log("[TeamBattleGame] Cleanup request failed or timed out, trying fallback:", err);
 
         // Fallback: Use sendBeacon if available (works even during page unload)
         // Note: This is a best-effort fallback, may not work perfectly with JSON parsing
@@ -1249,17 +1244,13 @@ export default function TeamBattleGame() {
             formData.append('cleanup', 'true');
             const success = navigator.sendBeacon('/api/team-battle/cleanup', formData);
             if (success) {
-              console.log("[TeamBattleGame] Cleanup sent via sendBeacon (fallback)");
             } else {
-              console.log("[TeamBattleGame] sendBeacon returned false");
             }
           } catch (beaconErr) {
-            console.log("[TeamBattleGame] sendBeacon also failed:", beaconErr);
           }
         }
 
         // Don't throw - allow navigation to continue even if cleanup fails
-        console.log("[TeamBattleGame] Cleanup timeout or error (non-critical):", err);
       }
     };
 
@@ -1271,7 +1262,6 @@ export default function TeamBattleGame() {
           return; // Success, exit retry loop
         } catch (err) {
           if (attempt === maxRetries) {
-            console.log("[TeamBattleGame] Cleanup failed after all retries");
             // Don't throw - allow navigation to continue
             return;
           }
@@ -1914,7 +1904,6 @@ export default function TeamBattleGame() {
                     isInTeamBattle: false,
                     gameType: null,
                   });
-                  console.log("[TeamBattleGame] Reset isInTeamBattle=false when returning home");
                 } catch (err) {
                   console.error("[TeamBattleGame] Failed to reset Team Battle status:", err);
                   // Continue to home anyway

@@ -214,7 +214,6 @@ const Game: React.FC = () => {
   } = useQuery({
     queryKey: ["/api/game/questions", category, difficulty, gameId],
     queryFn: async () => {
-      console.log("🔄 Fetching questions with params:", { category, difficulty, gameId });
       try {
         const result = await getGameQuestions(
           category,
@@ -230,7 +229,6 @@ const Game: React.FC = () => {
             : 20,
           gameId
         );
-        console.log("✅ Questions fetched successfully:", result?.length || 0, "questions");
         return result;
       } catch (err) {
         console.error("❌ Error in queryFn:", err);
@@ -284,7 +282,6 @@ const Game: React.FC = () => {
 
   // Function to reset game state for PLAY AGAIN functionality
   const resetGameState = () => {
-    console.log("🔄 Resetting game state for PLAY AGAIN");
 
     // Reset all game state
     setCurrentQuestionIndex(0);
@@ -353,9 +350,7 @@ const Game: React.FC = () => {
       queryKey: ["/api/game/questions", category, difficulty, newGameId],
     });
 
-    console.log("🎮 New game session created:", newGameId);
 
-    console.log("✅ Game state reset complete, new game ID:", newGameId);
   };
 
   // Initialize sounds and socket connection
@@ -380,20 +375,9 @@ const Game: React.FC = () => {
       queryClient.invalidateQueries({
         queryKey: ["/api/game/questions", category, difficulty, gameId],
       });
-      console.log("🔄 Invalidated question cache for fresh game with gameId:", gameId);
     }
 
     // Log game configuration for debugging
-    console.log("🎮 Game Configuration:", {
-      gameMode,
-      gameType,
-      category,
-      difficulty,
-      playerCount,
-      playerNames,
-      gameId,
-      isFreshGame,
-    });
 
     // Initialize voice service and get voice status
     const initializeVoice = async () => {
@@ -401,7 +385,6 @@ const Game: React.FC = () => {
         // Reset voice service for new game
         voiceService.reset();
         await voiceService.getVoiceStatus();
-        console.log("Voice service initialized successfully");
       } catch (error) {
         console.error("Failed to initialize voice service:", error);
       }
@@ -446,9 +429,6 @@ const Game: React.FC = () => {
       });
 
       return () => {
-        console.log(
-          "🧹 Multiplayer game cleanup - closing socket and stopping voice"
-        );
         socket.close();
         // Clean up any ongoing speech when leaving the game
         voiceService.stopAllAudio(true);
@@ -458,9 +438,6 @@ const Game: React.FC = () => {
 
     // Clean up any ongoing speech when leaving the game
     return () => {
-      console.log(
-        "🧹 Game component unmounting - stopping all voice and sounds"
-      );
       voiceService.stopAllAudio(true);
       stopSpeaking();
 
@@ -603,16 +580,12 @@ const Game: React.FC = () => {
       setGameEnded(true);
 
       // Stop voice narration when game ends (for all game modes)
-      console.log(
-        `🎮 Game ended (${gameMode} mode) - stopping voice narration`
-      );
       voiceService.stopAllAudio(false);
       stopSpeaking();
 
       // Clear gameId from sessionStorage when game ends
       // This ensures next game will get fresh questions
       sessionStorage.removeItem("currentGameId");
-      console.log("🧹 Cleared gameId from sessionStorage after game ended");
 
       // Clear all question read flags from session storage
       sessionStorage.removeItem("questionRead");
@@ -624,16 +597,6 @@ const Game: React.FC = () => {
       if (gameMode === "single") {
         const saveSinglePlayerScore = async () => {
           try {
-            console.log("Saving single player score:", {
-              score: score,
-              correctAnswers: correctAnswers,
-              incorrectAnswers: incorrectAnswers,
-              averageTime: stats.averageTime.toString(),
-              category: category,
-              difficulty: difficulty,
-              gameType: gameType,
-              totalQuestions: questions?.length || 10,
-            });
 
             const response = await fetch("/api/single-player/scores", {
               method: "POST",
@@ -654,7 +617,6 @@ const Game: React.FC = () => {
             });
 
             if (response.ok) {
-              console.log("Single player score saved successfully");
               // Trigger leaderboard refresh by invalidating the query
               if (window.location.pathname === "/leaderboard") {
                 window.location.reload();
@@ -672,7 +634,6 @@ const Game: React.FC = () => {
         // Save local multiplayer scores for each player
         const saveLocalMultiplayerScores = async () => {
           try {
-            console.log("Saving local multiplayer scores for all players");
 
             // Save scores for each player with their actual names
             for (let i = 0; i < playerCount; i++) {
@@ -680,20 +641,6 @@ const Game: React.FC = () => {
               const playerName = playerNames[i];
 
               if (playerStat && playerName) {
-                console.log(`Saving score for ${playerName}:`, {
-                  gameSessionId: gameId,
-                  playerName: playerName,
-                  playerIndex: i,
-                  score: playerStat.score,
-                  correctAnswers: playerStat.correctAnswers,
-                  incorrectAnswers: playerStat.incorrectAnswers,
-                  averageTime: playerStat.averageTime.toString(),
-                  category: category,
-                  difficulty: difficulty,
-                  gameType: "local-multi", // Mark as local multiplayer
-                  totalQuestions: questions?.length || 10,
-                  playerCount: playerCount,
-                });
 
                 const response = await fetch("/api/multiplayer/scores", {
                   method: "POST",
@@ -717,9 +664,6 @@ const Game: React.FC = () => {
                 });
 
                 if (response.ok) {
-                  console.log(
-                    `Local multiplayer score saved successfully for ${playerName}`
-                  );
                 } else {
                   console.error(
                     `Failed to save local multiplayer score for ${playerName}`
@@ -729,15 +673,6 @@ const Game: React.FC = () => {
             }
 
             // Log final game results for debugging
-            console.log("Final Local Multiplayer Game Results:", {
-              gameId,
-              playerCount,
-              playerNames,
-              playerStats: playerStats.map((stat: any, index: number) => ({
-                name: playerNames[index],
-                ...stat,
-              })),
-            });
 
             // Trigger leaderboard refresh
             if (window.location.pathname === "/leaderboard") {
@@ -790,29 +725,6 @@ const Game: React.FC = () => {
       }
 
       if (gameMode === "multi") {
-        console.log("🎮 GAME ENDED - About to show leaderboard");
-        console.log("🎮 GameMode:", gameMode);
-        console.log("🎮 GameId:", gameId);
-        console.log(
-          "🎮 GameId includes 'local-multi':",
-          gameId.includes("local-multi")
-        );
-        console.log("🎮 Global Variables:", {
-          correctAnswers,
-          incorrectAnswers,
-          score,
-        });
-        console.log("🎮 PlayerStats Array:", playerStats);
-        console.log(
-          "🎮 PlayerStats Mapped:",
-          playerStats.map((stat: any, idx: number) => ({
-            name: playerNames[idx],
-            score: stat.score,
-            correctAnswers: stat.correctAnswers,
-            incorrectAnswers: stat.incorrectAnswers,
-            avgTime: stat.averageTime,
-          }))
-        );
         setShowLeaderboard(true);
       }
     }
@@ -851,10 +763,8 @@ const Game: React.FC = () => {
             difficulty: currentQuestion.difficulty,
           }),
         }).catch((err) => {
-          console.log("Analytics tracking failed (non-critical):", err);
         });
       } catch (err) {
-        console.log("Analytics tracking error (non-critical):", err);
       }
     }
 
@@ -920,19 +830,6 @@ const Game: React.FC = () => {
             (playerStat.correctAnswers + playerStat.incorrectAnswers + 1),
         };
 
-        console.log(
-          `🎯 Multiplayer Score Update - ${playerNames[currentPlayerIndex]}:`,
-          {
-            correct: updatedStats[currentPlayerIndex].correctAnswers,
-            incorrect: updatedStats[currentPlayerIndex].incorrectAnswers,
-            score: updatedStats[currentPlayerIndex].score,
-            allPlayerStats: updatedStats.map((stat, idx) => ({
-              name: playerNames[idx],
-              correct: stat.correctAnswers,
-              score: stat.score,
-            })),
-          }
-        );
 
         return updatedStats;
       });
@@ -1119,9 +1016,6 @@ const Game: React.FC = () => {
             <button
               onClick={() => {
                 // Stop voice narration before navigating
-                console.log(
-                  "🏠 HOME button clicked - stopping voice narration"
-                );
                 voiceService.stopAllAudio(true);
                 stopSpeaking();
                 setLocation("/");
@@ -1133,9 +1027,6 @@ const Game: React.FC = () => {
             </button>
             <button
               onClick={() => {
-                console.log(
-                  "🔄 PLAY AGAIN button clicked - resetting game state"
-                );
 
                 // Stop voice narration
                 voiceService.stopAllAudio(true);
@@ -1145,7 +1036,6 @@ const Game: React.FC = () => {
                 resetGameState();
 
                 // The questions query will automatically refetch with the new gameId
-                console.log("✅ PLAY AGAIN - game reset complete");
               }}
               className="bg-gradient-to-r from-accent to-accent-dark hover:from-accent/90 hover:to-accent-dark/90 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 md:px-8 rounded-xl transition-all duration-200 shadow-lg flex items-center justify-center gap-2 w-full sm:w-auto min-w-0"
             >
@@ -1345,15 +1235,6 @@ const Game: React.FC = () => {
                     avgTime: playerStats[index]?.averageTime || 0,
                     isCurrentUser: false,
                   }));
-                  console.log(
-                    "🏆 Leaderboard Data (Local Multiplayer):",
-                    playersData
-                  );
-                  console.log("🏆 Raw PlayerStats:", playerStats);
-                  console.log(
-                    "🏆 LeaderboardData from server:",
-                    leaderboardData
-                  );
                   return playersData;
                 })()
               : // If we have server data (online multiplayer), use it
@@ -1370,11 +1251,6 @@ const Game: React.FC = () => {
                     avgTime: playerStats[index]?.averageTime || 0,
                     isCurrentUser: false, // For local multiplayer, no "current user" concept
                   }));
-                  console.log(
-                    "🏆 Leaderboard Data (Multiplayer):",
-                    playersData
-                  );
-                  console.log("🏆 Raw PlayerStats:", playerStats);
                   return playersData;
                 })()
               : // For single player, use the original approach
@@ -1391,7 +1267,6 @@ const Game: React.FC = () => {
           }
           isGameOver={gameEnded}
           onPlayAgain={() => {
-            console.log("🔄 PLAY AGAIN (Leaderboard) - resetting game state");
 
             // Reset gameEnded flag FIRST to prevent redirect
             setGameEnded(false);
@@ -1406,11 +1281,9 @@ const Game: React.FC = () => {
             // Close leaderboard modal
             setShowLeaderboard(false);
 
-            console.log("✅ PLAY AGAIN (Leaderboard) - game reset complete");
           }}
           onClose={() => {
             // Stop voice narration before closing/navigating
-            console.log("❌ Leaderboard closed - stopping voice narration");
             voiceService.stopAllAudio(true);
             stopSpeaking();
 
@@ -1460,7 +1333,6 @@ const Game: React.FC = () => {
                 variant="outline"
                 onClick={() => {
                   // Stop voice narration before exiting
-                  console.log("🚪 Exit to Home - stopping voice narration");
                   voiceService.stopAllAudio(true);
                   stopSpeaking();
 
@@ -1489,7 +1361,6 @@ const Game: React.FC = () => {
           onClaim={handleClaimReward}
           onClose={() => {
             // Stop voice narration when closing reward modal
-            console.log("🏆 Reward modal closed - stopping voice narration");
             voiceService.stopAllAudio(true);
             stopSpeaking();
 

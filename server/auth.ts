@@ -32,9 +32,6 @@ async function comparePasswords(supplied: string, stored: string) {
 
 export function setupAuth(app: Express) {
   // Debug environment variables
-  console.log(" Auth setup - Environment check:");
-  console.log("DATABASE_URL:", process.env.DATABASE_URL ? "SET" : "NOT SET");
-  console.log("SESSION_SECRET:", process.env.SESSION_SECRET ? "SET" : "NOT SET");
 
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "bible-trivia-secret-key",
@@ -130,7 +127,6 @@ export function setupAuth(app: Express) {
     if (req.user?.id) {
       try {
         await database.setUserTeamBattleStatus(req.user.id, false);
-        console.log(`[Logout] Reset isInTeamBattle=false for user ${req.user.id}`);
       } catch (err) {
         console.error("[Logout] Failed to reset Team Battle status:", err);
         // Continue with logout anyway
@@ -227,7 +223,6 @@ async function createInitialAdmin() {
         password: await hashPassword("admin123"),
         isAdmin: true
       });
-      console.log("Created initial admin user: admin / admin123");
     }
   } catch (err) {
     console.error("Failed to create initial admin user:", err);

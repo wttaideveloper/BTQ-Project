@@ -177,7 +177,6 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
       // Clear cache and force refetch online users when entering team battle
       queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
       refetchOnlineUsers();
-      console.log("[TeamBattleSetup Page] Force refreshed online users on entry");
     }
   }, [user?.id, gameSessionId, queryClient, refetchOnlineUsers]);
 
@@ -249,7 +248,6 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
             gameType: isRapidFire ? "rapid_fire" : "team_battle",
           });
   
-          console.log("User set as available for battle");
         } catch (error) {
           console.error(error);
         }
@@ -262,7 +260,6 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
           isInTeamBattle: false,
         }).catch(() => {});
   
-        console.log("User removed from Team Battle on unmount");
       };
     }
   }, [user?.id]);
@@ -378,7 +375,6 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
       debouncedRefetch();
     });
     const offTeamBattleStarted = onEvent("team_battle_started", (data: any) => {
-      console.log("[TeamBattleSetup Page] Received team_battle_started event:", data);
 
       // CRITICAL: Only navigate if this session matches the current page session
       // This prevents navigation when user is on a different page/session
@@ -395,16 +391,11 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
         // Navigate to game when WebSocket confirms battle started
         setLocation(`/team-battle-game?session=${targetSessionId}`);
       } else {
-        console.log("[TeamBattleSetup Page] Ignoring team_battle_started for different session:", {
-          received: targetSessionId,
-          current: gameSessionId,
-        });
       }
     });
 
     // CRITICAL FIX: Listen for online_users_updated to immediately refresh available opponents
     const offOnlineUsersUpdated = onEvent("online_users_updated", () => {
-      console.log("[TeamBattleSetup Page] Received online_users_updated event, invalidating cache");
       // Immediately invalidate and refetch online users list
       queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
       queryClient.refetchQueries({ queryKey: ["/api/users/team-battle-available"] });
@@ -913,25 +904,16 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
           if (phaseData.participantIds && Array.isArray(phaseData.participantIds)) {
             const isParticipant = phaseData.participantIds.includes(user.id);
             if (!isParticipant) {
-              console.log(
-                `[TeamBattleSetup Page] User ${user.id} is not a registered participant. Teams: ${phaseData.teamsCount}, Participants: ${phaseData.participantIds.length}`
-              );
               // Don't navigate - user is not authorized
               if (checkInterval) clearInterval(checkInterval);
               return;
             }
           } else if (phaseData.teamsCount !== 2) {
             // If participantIds not provided, check teams count as fallback
-            console.log(
-              `[TeamBattleSetup Page] Invalid teams count: ${phaseData.teamsCount}, not navigating`
-            );
             if (checkInterval) clearInterval(checkInterval);
             return;
           }
 
-          console.log(
-            `[TeamBattleSetup Page] Server phase is IN_GAME, user is authorized, forcing navigation to game`
-          );
           setLocation(`/team-battle-game?session=${gameSessionId}`);
           if (checkInterval) clearInterval(checkInterval);
           return;

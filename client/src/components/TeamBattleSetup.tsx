@@ -186,12 +186,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   useEffect(() => {
     if (open) {
-      console.log("[TeamBattleSetup] 🔄 PHASE 1: Starting hard reset on modal open");
 
       // ========================================================================
       // STEP 1: Reset ALL local component state to initial values
       // ========================================================================
-      console.log("[TeamBattleSetup] Step 1: Resetting all component state");
 
       // Core session state
       setGameSessionId(null); // Will be generated fresh in Phase 3
@@ -228,12 +226,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       // Ref state
       shouldSendLeaveEventRef.current = false;
 
-      console.log("[TeamBattleSetup] ✅ Step 1: All component state reset");
 
       // ========================================================================
       // STEP 2: Remove ALL Team Battle related React Query cache
       // ========================================================================
-      console.log("[TeamBattleSetup] Step 2: Removing all Team Battle cache");
 
       // Use removeQueries (not invalidate) to completely clear cache
       queryClient.removeQueries({
@@ -250,7 +246,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         }
       });
 
-      console.log("[TeamBattleSetup] ✅ Step 2: All Team Battle cache removed");
 
       // ========================================================================
       // STEP 3: Socket Safety Guard - Track current session ID
@@ -259,8 +254,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       // This is handled in the socket message handler below
       // We'll use a ref to track the "current session" and ignore old events
 
-      console.log("[TeamBattleSetup] ✅ PHASE 1: Hard reset complete");
-      console.log("[TeamBattleSetup] ⏳ Phase 2 (server cleanup) will be triggered next");
 
     } else {
       // Modal closed - minimal cleanup
@@ -301,12 +294,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     const performServerCleanup = async () => {
       // Prevent multiple simultaneous cleanup calls
       if (isCleanupInProgress) {
-        console.log("[TeamBattleSetup] ⏸️ Cleanup already in progress, skipping");
         return;
       }
 
       isCleanupInProgress = true;
-      console.log("[TeamBattleSetup] 🧹 PHASE 2: Starting server-side cleanup");
 
       try {
         // Call cleanup endpoint and await completion
@@ -316,7 +307,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         if (!isMounted) return; // Component unmounted, don't update state
 
         if (result.success) {
-          console.log("[TeamBattleSetup] ✅ PHASE 2: Server cleanup completed", result.stats);
         } else {
           console.warn("[TeamBattleSetup] ⚠️ PHASE 2: Server cleanup completed with warnings", result);
         }
@@ -326,8 +316,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           setCleanupComplete(true);
           cleanupCompleteRef.current = true; // Update ref for socket guard
         }
-        console.log("[TeamBattleSetup] ✅ PHASE 2: Cleanup process finished");
-        console.log("[TeamBattleSetup] ⏳ Ready for Phase 3 (fresh session start)");
       } catch (error) {
         // Non-critical error - log but continue
         console.error("[TeamBattleSetup] ⚠️ PHASE 2: Server cleanup failed (non-critical, continuing):", error);
@@ -363,7 +351,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   useEffect(() => {
     if (!open || !user || !cleanupComplete) return;
 
-    console.log("[TeamBattleSetup] 🆕 PHASE 3: Starting fresh session");
 
     // ========================================================================
     // STEP 1: Generate NEW gameSessionId (never reuse old ones)
@@ -375,7 +362,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     currentSessionIdRef.current = newSessionId;
     sessionStartedAtRef.current = sessionStartTime;
 
-    console.log(`[TeamBattleSetup] ✅ Step 1: Generated new session ID: ${newSessionId} at ${sessionStartTime}`);
 
     // ========================================================================
     // STEP 2: Update socket safety guard to accept events for this session
@@ -385,7 +371,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     // ========================================================================
     // STEP 3: Trigger fresh data fetches (only after session is created)
     // ========================================================================
-    console.log("[TeamBattleSetup] Step 3: Triggering fresh data fetches");
 
     // Invalidate queries to trigger fresh fetches
     // The queries are already enabled when modal is open, so invalidating
@@ -404,9 +389,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       queryClient.refetchQueries({ queryKey: ["/api/teams/available"] });
     }, 50); // Small delay for UI polish only
 
-    console.log("[TeamBattleSetup] ✅ Step 3: Fresh data fetches triggered");
-    console.log("[TeamBattleSetup] ✅ PHASE 3: Fresh session started successfully");
-    console.log(`[TeamBattleSetup] 🎯 Ready for user interaction with session: ${newSessionId}`);
   }, [open, user, cleanupComplete, queryClient, createGameSession]);
 
   // ============================================================================
@@ -421,7 +403,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
     // Ping battle state API every 90 seconds to keep database warm
     const keepAliveInterval = setInterval(() => {
-      console.log("[TeamBattleSetup] 💓 Lobby keep-alive ping...");
       refetchBattleState();
     }, 90 * 1000); // Every 90 seconds
 
@@ -457,25 +438,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           if (phaseData.participantIds && Array.isArray(phaseData.participantIds)) {
             const isParticipant = phaseData.participantIds.includes(user.id);
             if (!isParticipant) {
-              console.log(
-                `[TeamBattleSetup] User ${user.id} is not a registered participant. Teams: ${phaseData.teamsCount}, Participants: ${phaseData.participantIds.length}`
-              );
               // Don't navigate - user is not authorized
               if (checkInterval) clearInterval(checkInterval);
               return;
             }
           } else if (phaseData.teamsCount !== 2) {
             // If participantIds not provided, check teams count as fallback
-            console.log(
-              `[TeamBattleSetup] Invalid teams count: ${phaseData.teamsCount}, not navigating`
-            );
             if (checkInterval) clearInterval(checkInterval);
             return;
           }
 
-          console.log(
-            `[TeamBattleSetup] Server phase is IN_GAME, user is authorized, forcing navigation to game`
-          );
           setHasNavigatedToGame(true);
           setCountdown(null); // Clear countdown
           onClose();
@@ -567,7 +539,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           if (isCriticalUIEvent) {
             // If we have a current session, it must match
             if (currentSession !== null && wsSessionId !== currentSession) {
-              console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring ${data.type} from different session ${wsSessionId} (current: ${currentSession})`);
               return;
             }
             // If no current session yet:
@@ -575,25 +546,21 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             // - OR allow if it matches the component's current gameSessionId (joining an existing lobby)
             if (currentSession === null) {
               if (!isCleanupComplete && wsSessionId !== gameSessionId) {
-                console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring ${data.type} (cleanup not complete yet)`);
                 return;
               }
               // Cleanup is complete, Phase 3 is in progress - allow event
               // This handles edge case where event arrives right as Phase 3 creates session
-              console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Allowing ${data.type} during Phase 3 transition (session: ${wsSessionId})`);
               // Don't return - allow the event through
             }
           } else {
             // For non-critical events, strict checking
             // If we don't have a current session yet (still in Phase 1/2), ignore
             if (currentSession === null) {
-              console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring event ${data.type} from old session ${wsSessionId} (no current session yet)`);
               return;
             }
 
             // If event session doesn't match current session, ignore
             if (wsSessionId !== currentSession) {
-              console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring event ${data.type} from old session ${wsSessionId} (current: ${currentSession})`);
               return;
             }
 
@@ -604,7 +571,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 : new Date(data.timestamp).getTime();
 
               if (eventTimestamp < sessionStartedAt) {
-                console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring event ${data.type} from before session start (event: ${eventTimestamp}, session: ${sessionStartedAt})`);
                 return;
               }
             }
@@ -619,7 +585,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         if (!wsSessionId) {
           const allowedGlobalEvents = ["online_users_updated", "team_battle_ended"];
           if (!allowedGlobalEvents.includes(data.type) && currentSessionIdRef.current === null) {
-            console.log(`[TeamBattleSetup] 🛡️ Socket Guard: Ignoring global event ${data.type} (no active session yet)`);
             return;
           }
         }
@@ -731,7 +696,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "invitation_expired": {
             // Handle when an invitation expires because another player accepted first
-            console.log("[WebSocket] invitation_expired received", data);
 
             // Invalidate invitations to update the UI
             queryClient.invalidateQueries({
@@ -748,7 +712,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "teams_updated":
           case "team_update": {
-            console.log("[WebSocket] teams_updated received, refetching battle state from API...");
             if (wsSessionId) {
               if (wsSessionId !== gameSessionId) {
                 setGameSessionId(wsSessionId);
@@ -788,7 +751,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           case "team_ready_status": {
             // CRITICAL: Validate battle ID matches current battle
             if (data.teamBattleId && userTeam?.teamBattleId && data.teamBattleId !== userTeam.teamBattleId) {
-              console.log(`[TeamBattleSetup] ⚠️ Ignoring team_ready_status for different battle: ${data.teamBattleId} vs ${userTeam.teamBattleId}`);
               break;
             }
 
@@ -796,12 +758,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             // DB-AUTHORITATIVE: Socket event is a NOTIFICATION only
             // Always refetch from API for authoritative state
             // ================================================================
-            console.log(`[TeamBattleSetup] 📨 team_ready_status notification received, refetching from API...`);
 
             // CRITICAL FIX: Handle ready state reset when opponent leaves
             // Show toast to explain why ready status was reset
             if (data.reason === "opponent_left") {
-              console.log(`[TeamBattleSetup] 🔄 Ready state reset because opponent left`);
               toast({
                 title: "Ready status reset",
                 description: "Opponent team left the lobby",
@@ -857,11 +817,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           case "ready_status_response": {
             // CRITICAL: Validate battle ID matches current battle
             if (data.teamBattleId && userTeam?.teamBattleId && data.teamBattleId !== userTeam.teamBattleId) {
-              console.log(`[TeamBattleSetup] ⚠️ Ignoring ready_status_response for different battle: ${data.teamBattleId} vs ${userTeam.teamBattleId}`);
               break;
             }
 
-            console.log(`[TeamBattleSetup] 📨 ready_status_response received, updating local state and refetching from API...`);
 
             if (
               data.teamAReady !== undefined &&
@@ -899,7 +857,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           }
 
           case "team_battle_countdown": {
-            console.log("[TeamBattleSetup] 📨 team_battle_countdown received, setting countdown and refetching...");
             const seconds = typeof data.seconds === "number" ? data.seconds : 5;
             if (wsSessionId && wsSessionId !== gameSessionId) {
               setGameSessionId(wsSessionId);
@@ -915,13 +872,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           // CRITICAL FIX #2: Add team_battle_started handler in modal component
           case "team_battle_started": {
-            console.log("[TeamBattleSetup Modal] Received team_battle_started event:", data);
             const targetSessionId = data.gameSessionId || wsSessionId || gameSessionId;
 
             // CRITICAL: Only navigate if modal is open, we have a valid session, and haven't navigated yet
             // Note: teams query is defined later, so we'll check it in the navigation effect instead
             if (open && targetSessionId && !hasNavigatedToGame) {
-              console.log("[TeamBattleSetup Modal] Received team_battle_started, will navigate via effect");
               // CRITICAL: Set flag immediately to prevent double navigation
               setHasNavigatedToGame(true);
               // Clear countdown to prevent countdown-based navigation
@@ -935,7 +890,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               // CRITICAL FIX #5: Standardize URL parameter to use 'session'
               setLocation(`/team-battle-game?session=${targetSessionId}`);
             } else if (!open) {
-              console.log("[TeamBattleSetup Modal] Received team_battle_started but modal is closed, ignoring");
             }
             break;
           }
@@ -994,7 +948,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "team_member_removed": {
             // Handle when a team member is removed by captain - show popup instead of redirect
-            console.log("[WebSocket] team_member_removed received", data);
             setMemberRemovedInfo({
               captainName: data.captainName || "The captain",
               teamName: data.teamName || "the team",
@@ -1013,7 +966,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "captain_left_team": {
             // Handle when captain leaves - show popup to team members
-            console.log("[WebSocket] captain_left_team received", data);
             setCaptainLeftInfo({
               captainName: data.captainName || "The captain",
               teamName: data.teamName || "your team",
@@ -1085,7 +1037,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           case "online_users_updated": {
             // CRITICAL FIX: Immediately invalidate online users cache when battle ends
             // This ensures opponents appear as available immediately after battle ends
-            console.log("[TeamBattleSetup Modal] Received online_users_updated event, invalidating cache");
             queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
             // Also invalidate teams to ensure consistency
             if (wsSessionId) {
@@ -1100,7 +1051,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "team_battle_ended": {
             // Immediately refresh available opponents when battle ends
-            console.log("[TeamBattleSetup Modal] Battle ended, refreshing available opponents");
             queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
             if (wsSessionId) {
               queryClient.invalidateQueries({ queryKey: ["/api/teams", wsSessionId] });
@@ -1137,12 +1087,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       // Only update if it's different (prevents unnecessary updates)
       if (currentSessionIdRef.current !== gameSessionId) {
         currentSessionIdRef.current = gameSessionId;
-        console.log(`[TeamBattleSetup] 🔐 Socket Guard: Current session set to ${gameSessionId} (Phase 3)`);
       }
     } else if (!open) {
       currentSessionIdRef.current = null;
       sessionStartedAtRef.current = null;
-      console.log(`[TeamBattleSetup] 🔐 Socket Guard: Current session cleared (modal closed)`);
     }
   }, [open, gameSessionId]);
 
@@ -1174,23 +1122,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     queryKey: ["/api/teams", gameSessionId],
     queryFn: async () => {
       if (!gameSessionId) return [];
-      console.log(
-        "[TeamBattleSetup] Fetching teams for gameSessionId:",
-        gameSessionId
-      );
       const res = await apiRequest(
         "GET",
         `/api/teams?gameSessionId=${gameSessionId}`
       );
       const data = await res.json();
-      console.log(
-        "[TeamBattleSetup] Teams fetched:",
-        data.map((t: Team) => ({
-          id: t.id,
-          name: t.name,
-          membersCount: t.members.length,
-        }))
-      );
       return data;
     },
     enabled: open && !!user && !!gameSessionId && cleanupComplete,
@@ -1435,7 +1371,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
     // Use effectiveCountdown (prefers DB-authoritative value)
     if (effectiveCountdown === 0 && isInAnyTeam) {
-      console.log("[TeamBattleSetup] Countdown reached 0, navigating to game");
       // CRITICAL: Set flag immediately to prevent double navigation
       setHasNavigatedToGame(true);
       // Clear countdown to prevent re-triggering
@@ -1449,7 +1384,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     // FALLBACK #2: If countdown is null but we have a session, check if game might have started
     // DB-AUTHORITATIVE: Check dbPhase for navigation trigger
     if (effectiveCountdown === null && gameSessionId && isInAnyTeam && dbPhase === "started") {
-      console.log("[TeamBattleSetup] DB phase is 'started', navigating to game");
       setHasNavigatedToGame(true);
       onClose();
       setLocation(`/team-battle-game?session=${gameSessionId}`);
@@ -1740,7 +1674,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         setTimeout(() => {
           // Only refetch if still loading (not yet confirmed)
           if (isReadyLoading) {
-            console.log(`[handleReadyToPlay] Refetch attempt at ${delay}ms...`);
             forceRefetchBattleState();
           }
         }, delay);
@@ -1778,7 +1711,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           gameType: isRapidFire ? "rapid_fire" : "team_battle",
         });
 
-        console.log("✅ User entered battle mode:", isRapidFire ? "rapid_fire" : "team_battle");
       } catch (err) {
         console.error("Failed to set battle mode:", err);
       }
@@ -1791,7 +1723,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         isInTeamBattle: false,
       }).catch(() => { });
 
-      console.log("❌ User exited battle mode");
     };
   }, [user?.id, isRapidFire]);
 
@@ -2386,47 +2317,30 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       teamId: string;
       userId: number;
     }) => {
-      console.log("[TeamBattleSetup] Calling remove member API", {
-        teamId,
-        userId,
-      });
       const res = await apiRequest(
         "PATCH",
         `/api/teams/${teamId}/remove-member`,
         { userId }
       );
       const data = await res.json();
-      console.log("[TeamBattleSetup] Remove member API response", {
-        status: res.status,
-        data,
-      });
       if (!res.ok) {
         throw new Error(data.message || "Failed to remove member");
       }
       return data;
     },
     onSuccess: (data, variables) => {
-      console.log("[TeamBattleSetup] removeMemberMutation onSuccess called", {
-        data,
-        variables,
-      });
       toast({
         title: "Member Removed",
         description: "Member removed from team.",
       });
       // Invalidate teams data to force fresh fetch
-      console.log("[TeamBattleSetup] Invalidating teams queries");
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
       // Refresh available teams list so removed spots appear in join-as-member
       queryClient.invalidateQueries({ queryKey: ["/api/teams/available"] });
       // Also manually refetch teams to ensure immediate update
       refetchTeams();
-      console.log(
-        "[TeamBattleSetup] Queries invalidated and manual refetch called"
-      );
     },
     onError: (error: any) => {
-      console.log("[TeamBattleSetup] removeMemberMutation onError", error);
       toast({
         title: "Error",
         description: error.message || "Failed to remove member",
@@ -2690,14 +2604,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                       // where the current user is captain, so we just need to match exact teamId
                       const matches = jr.teamId === team.id;
 
-                      console.log(
-                        `[TeamBattleSetup] Join request ${jr.id}:`,
-                        `\n  jr.teamId="${jr.teamId}"`,
-                        `\n  team.id="${team.id}"`,
-                        `\n  matches=${matches}`,
-                        `\n  jr.requesterUsername="${jr.requesterUsername}"`,
-                        `\n  team.name="${team.name}"`
-                      );
                       return matches;
                     })}
                     onAcceptJoinRequest={(jrId) =>

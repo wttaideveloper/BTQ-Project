@@ -26,7 +26,6 @@ function Router() {
   // Stop voice narration when route changes (except when entering game)
   useEffect(() => {
     if (location !== '/play' && location !== '/game' && location !== '/team-battle-game') {
-      console.log(`🔄 Route changed to ${location} - stopping voice narration`);
       voiceService.stopAllAudio(true); // Block future narration
       stopSpeaking();
     }
@@ -53,7 +52,6 @@ function Router() {
 function App() {
   // Global voice cleanup on app mount
   useEffect(() => {
-    console.log('🚀 App mounted - ensuring voice is stopped');
     voiceService.stopAllAudio(true); // Block future narration
     stopSpeaking();
     

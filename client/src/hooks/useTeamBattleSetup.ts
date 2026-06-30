@@ -182,7 +182,6 @@ export function useTeamBattleSetup(gameSessionId?: string, gameType?: string) {
 
     // ✅ NEW: Listen for Team Battle availability updates
     const offAvailabilityUpdated = onEvent("team_battle_availability_updated", () => {
-      console.log("[useTeamBattleSetup] Team Battle availability updated, refetching");
       refetchOnlineUsers();
     });
 

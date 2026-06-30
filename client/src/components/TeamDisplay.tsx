@@ -62,12 +62,6 @@ const TeamDisplay = ({
   onRejectJoinRequest,
   onRemoveMember,
 }: TeamDisplayProps) => {
-  console.log(
-    "[TeamDisplay] Rendering for team:",
-    team.name,
-    "members:",
-    team.members.map((m) => m.username)
-  );
 
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
@@ -207,10 +201,6 @@ const TeamDisplay = ({
       </div>
 
       {(() => {
-        console.log(
-          `[TeamDisplay] Team: ${team.name}, isCaptain: ${isCaptain}, joinRequests:`,
-          joinRequests
-        );
         return null;
       })()}
       {isCaptain && joinRequests?.length > 0 && (
@@ -222,9 +212,6 @@ const TeamDisplay = ({
             {joinRequests
               .filter((jr) => jr.teamId === team.id && jr.status === "pending")
               .map((jr) => {
-                console.log(
-                  `[TeamDisplay] Rendering join request for ${jr.requesterUsername}`
-                );
                 return (
                   <li
                     key={jr.id}
@@ -237,9 +224,6 @@ const TeamDisplay = ({
                       <Button
                         size="sm"
                         onClick={() => {
-                          console.log(
-                            `[TeamDisplay] Accepting join request ${jr.id}`
-                          );
                           onAcceptJoinRequest?.(jr.id);
                         }}
                         className="bg-green-600 hover:bg-green-700 text-white flex-1 sm:flex-none text-xs sm:text-sm"
@@ -250,9 +234,6 @@ const TeamDisplay = ({
                         size="sm"
                         variant="outline"
                         onClick={() => {
-                          console.log(
-                            `[TeamDisplay] Rejecting join request ${jr.id}`
-                          );
                           onRejectJoinRequest?.(jr.id);
                         }}
                         className="border-red-300 text-red-600 hover:bg-red-50 flex-1 sm:flex-none text-xs sm:text-sm"

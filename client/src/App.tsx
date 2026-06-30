@@ -13,6 +13,7 @@ import Leaderboard from "@/pages/Leaderboard";
 import TeamBattleGame from "@/pages/TeamBattleGame";
 import TeamBattleSetup from "@/pages/TeamBattleSetup";
 import GameHistory from "@/pages/GameHistory";
+import Contact from "@/pages/Contact";
 import { useEffect } from "react";
 import { voiceService } from "./lib/voice-service";
 import { stopSpeaking } from "./lib/sounds";
@@ -70,6 +71,7 @@ function Router() {
       <Route path="/team-battle-game" component={TeamBattleGame} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/game-history" component={GameHistory} />
+      <Route path="/contact" component={Contact} />
       <Route path="/admin">
         <AdminGate>
           <AdminPanel />

@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { ChevronDown, HelpCircle, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+  ChevronDown,
+  Target,
+  Users,
+  Swords,
+  Zap,
+  Trophy,
+  Sparkles,
+  Mail,
+  type LucideIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface FAQItem {
@@ -15,216 +20,239 @@ interface FAQItem {
 
 interface FAQSectionData {
   title: string;
+  icon: LucideIcon;
+  accent: "gold" | "teal" | "purple" | "blue";
   items: FAQItem[];
 }
 
 const faqData: FAQSectionData[] = [
   {
-    title: "Single Player Mode",
+    title: "Solo Quiz",
+    icon: Target,
+    accent: "blue",
     items: [
       {
-        question: "How does Single Player mode work?",
+        question: "How do I start a solo game?",
         answer:
-          "Choose between Question-Based (answer 10 questions at your own pace with 20 seconds per question) or Time-Based (answer as many questions as you can in 15 minutes with 20 questions). You can pause anytime and your progress auto-saves!",
+          'Tap "Solo Quiz" on the home screen, pick Question-Based (10 questions) or Time-Based (15-minute round), then choose your category and difficulty. Hit Start Solo Quiz and you\'re in!',
       },
       {
-        question: "Can I pause and resume my game?",
+        question: "Can I pause and come back later?",
         answer:
-          "Yes! Click pause anytime. Your progress is automatically saved, so you can resume exactly where you left off whenever you're ready.",
+          "Yes. Solo games auto-save your progress. Use Continue Playing on the home screen to pick up exactly where you left off.",
       },
       {
         question: "What rewards can I earn?",
         answer:
-          "Earn rewards based on correct answers: 5+ for a free book, 9+ for a FaithIQ cap, 12+ for a t-shirt (perfect score only)!",
+          "Strong scores unlock rewards: 5+ correct answers earns a free book, 9+ a FaithIQ cap, and a perfect 12/12 can earn a t-shirt!",
       },
     ],
   },
   {
-    title: "Multiplayer Mode",
+    title: "Play with Friends",
+    icon: Users,
+    accent: "teal",
     items: [
       {
-        question: "How do I play with friends on one device?",
+        question: "How does same-device multiplayer work?",
         answer:
-          "Select Multiplayer mode and choose Real-time. You can play with 2-3 players on the same device. Enter player names and take turns answering questions!",
+          'Tap "Play with Friends" on the home screen. Add 2–3 player names, choose your settings, and start. Everyone plays on one phone or tablet — pass the device when it\'s the next player\'s turn.',
       },
       {
-        question: "Can I pause in Multiplayer?",
+        question: "How does turn-taking work?",
         answer:
-          "No, multiplayer runs continuously to keep it fair for all players. Make sure everyone is ready before starting!",
+          "Each player answers on their turn. Scores are tracked separately so you can see who's winning throughout the game.",
       },
       {
-        question: "How does scoring work?",
+        question: "Can we pause a friends game?",
         answer:
-          "Each player takes turns answering questions. Your individual scores are tracked separately, and you can see who's winning as you play!",
+          "Same-device games run continuously to keep turns fair. Make sure everyone is ready before you tap Start Game.",
       },
     ],
   },
   {
-    title: "Team Battle Mode",
+    title: "Team Battle",
+    icon: Swords,
+    accent: "purple",
     items: [
       {
-        question: "How does Team Battle work?",
+        question: "What is Team Battle?",
         answer:
-          "Create or join a team, then challenge another team! Team members suggest answers and vote together. The captain makes the final decision on which answer to submit.",
+          "Two teams compete live online. Create or join a team, invite teammates, enter the ready lobby, and battle through 10 alternating team questions. A toss decides who goes first.",
       },
       {
-        question: "How do I create or join a team?",
+        question: "How do I join a team?",
         answer:
-          "Go to Team Battle Setup from the home screen. You can create a new team as captain, or accept team invitations from other players.",
+          'Tap "Team Battle" on the home screen. Create a new team as captain, or accept an invite from the notifications bell. All teammates must mark Ready before the match starts.',
       },
       {
-        question: "What happens if someone disconnects?",
+        question: "What if a teammate disconnects?",
         answer:
-          "The team continues with remaining members. If the captain disconnects, another member is automatically promoted to keep the game going.",
+          "The game continues with remaining players. If the captain leaves, another member is promoted automatically so your team can keep playing.",
       },
     ],
   },
   {
-    title: "Game Features & Settings",
+    title: "Rapid Fire",
+    icon: Zap,
+    accent: "gold",
     items: [
       {
-        question: "What is the AI Bible guide?",
+        question: "How is Rapid Fire different from Team Battle?",
         answer:
-          "Your friendly AI avatar reads questions aloud, celebrates correct answers with encouraging messages, and provides helpful Bible context. You can toggle voice on/off in settings.",
+          "Rapid Fire uses the same team setup but with faster, timed rounds. It's ideal for a quick match when you want high energy and shorter questions.",
       },
       {
-        question: "Can I change game settings?",
+        question: "Do the same team rules apply?",
         answer:
-          "Yes! Adjust voice volume, sound effects, background music, and other preferences from the settings menu or during a paused game.",
+          "Yes — create or join a team, get everyone ready in the lobby, then compete. The captain leads answer submissions just like in standard Team Battle.",
+      },
+    ],
+  },
+  {
+    title: "Scores & Leaderboard",
+    icon: Trophy,
+    accent: "gold",
+    items: [
+      {
+        question: "Where can I see my stats?",
+        answer:
+          "Your home screen shows games played, rank, accuracy, and win streak. Tap Game History for detailed stats and past solo sessions, or Leaderboard to compare with other players.",
       },
       {
-        question: "What if the game freezes or I lose connection?",
+        question: "Does the AI host read questions aloud?",
         answer:
-          "Try refreshing your browser. Single player progress is auto-saved. For multiplayer/team games, try reconnecting quickly - the game continues for other players.",
+          "Yes! Dr. HB Holmes narrates questions and reacts to your answers. Toggle voice on or off from the in-game settings at any time.",
+      },
+      {
+        question: "Something went wrong — what should I do?",
+        answer:
+          "Refresh your browser. Solo progress is saved automatically. For Team Battle, reconnect quickly — other players can continue while you rejoin.",
       },
     ],
   },
 ];
 
-const FAQSection = () => {
-  const [openSections, setOpenSections] = useState<number[]>([]);
-  const [expandedQuestions, setExpandedQuestions] = useState<string[]>([]);
+const accentStyles = {
+  gold: {
+    section: "border-accent/25 hover:border-accent/40",
+    header: "bg-accent/10",
+    icon: "home-icon-gold",
+  },
+  teal: {
+    section: "border-teal-500/25 hover:border-teal-500/40",
+    header: "bg-teal-500/10",
+    icon: "home-icon-teal",
+  },
+  purple: {
+    section: "border-purple-400/25 hover:border-purple-400/40",
+    header: "bg-purple-500/10",
+    icon: "home-icon-purple",
+  },
+  blue: {
+    section: "border-blue-400/25 hover:border-blue-400/40",
+    header: "bg-blue-500/10",
+    icon: "home-icon-blue",
+  },
+};
+
+interface FAQSectionProps {
+  onOpenTutorial?: () => void;
+  onContact?: () => void;
+}
+
+const FAQSection = ({ onOpenTutorial, onContact }: FAQSectionProps) => {
+  const [openSection, setOpenSection] = useState<number | null>(0);
+  const [expandedQuestion, setExpandedQuestion] = useState<string | null>(
+    null
+  );
 
   const toggleSection = (index: number) => {
-    setOpenSections((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
-    );
+    setOpenSection((prev) => (prev === index ? null : index));
+    setExpandedQuestion(null);
   };
 
   const toggleQuestion = (questionId: string) => {
-    setExpandedQuestions((prev) =>
-      prev.includes(questionId)
-        ? prev.filter((id) => id !== questionId)
-        : [...prev, questionId]
-    );
+    setExpandedQuestion((prev) => (prev === questionId ? null : questionId));
   };
 
   return (
-    <div className="space-y-3 sm:space-y-4 w-full">
-      {/* Header */}
-      <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-4 px-1">
-        <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 shadow-lg">
-          <HelpCircle className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-        </div>
-        <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-white">
-          Help Center
-        </h3>
-      </div>
+    <div className="home-glass-card rounded-2xl p-4 sm:p-5 space-y-3">
+      {faqData.map((section, sectionIndex) => {
+        const styles = accentStyles[section.accent];
+        const isOpen = openSection === sectionIndex;
+        const SectionIcon = section.icon;
 
-      {/* FAQ Sections */}
-      <div className="space-y-2 sm:space-y-3">
-        {faqData.map((section, sectionIndex) => (
+        return (
           <div
-            key={sectionIndex}
-            className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-lg sm:rounded-xl border border-white/20 overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300"
+            key={section.title}
+            className={cn(
+              "rounded-xl border overflow-hidden transition-colors duration-200",
+              styles.section,
+              isOpen ? "bg-white/[0.04]" : "bg-white/[0.02]"
+            )}
           >
-            {/* Section Header */}
             <button
+              type="button"
               onClick={() => toggleSection(sectionIndex)}
               className={cn(
-                "w-full px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-4 flex items-center justify-between",
-                "bg-gradient-to-r from-purple-600/30 to-blue-600/30",
-                "hover:from-purple-600/40 hover:to-blue-600/40",
-                "transition-all duration-300",
-                openSections.includes(sectionIndex) &&
-                  "from-purple-600/40 to-blue-600/40"
+                "w-full px-3 sm:px-4 py-3 sm:py-3.5 flex items-center gap-3 text-left transition-colors",
+                isOpen && styles.header
               )}
             >
-              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                <div
-                  className={cn(
-                    "flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-lg",
-                    "bg-gradient-to-br from-purple-500 to-blue-500",
-                    "flex items-center justify-center",
-                    "text-white text-xs sm:text-sm font-bold"
-                  )}
-                >
-                  {sectionIndex + 1}
-                </div>
-                <h4 className="text-sm sm:text-base md:text-lg font-semibold text-white text-left truncate">
-                  {section.title}
-                </h4>
+              <div
+                className={cn(
+                  "w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm",
+                  styles.icon
+                )}
+              >
+                <SectionIcon className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.25} />
               </div>
+              <span className="flex-1 font-semibold text-white text-sm sm:text-base">
+                {section.title}
+              </span>
               <ChevronDown
                 className={cn(
-                  "h-4 w-4 sm:h-5 sm:w-5 text-white/90 flex-shrink-0 ml-2",
-                  "transition-transform duration-300",
-                  openSections.includes(sectionIndex) && "rotate-180"
+                  "h-4 w-4 text-white/50 shrink-0 transition-transform duration-200",
+                  isOpen && "rotate-180 text-accent"
                 )}
               />
             </button>
 
-            {/* Section Content */}
-            {openSections.includes(sectionIndex) && (
-              <div className="p-2 sm:p-3 md:p-4 space-y-2 sm:space-y-3 bg-black/20">
+            {isOpen && (
+              <div className="px-3 pb-3 sm:px-4 sm:pb-4 space-y-2 border-t border-white/10">
                 {section.items.map((item, itemIndex) => {
                   const questionId = `${sectionIndex}-${itemIndex}`;
-                  const isExpanded = expandedQuestions.includes(questionId);
+                  const isExpanded = expandedQuestion === questionId;
 
                   return (
                     <div
-                      key={itemIndex}
-                      className={cn(
-                        "bg-white/5 rounded-lg border border-white/10",
-                        "hover:bg-white/10 hover:border-white/20",
-                        "transition-all duration-300",
-                        "overflow-hidden"
-                      )}
+                      key={questionId}
+                      className="rounded-lg border border-white/10 overflow-hidden bg-black/15"
                     >
-                      {/* Question */}
                       <button
+                        type="button"
                         onClick={() => toggleQuestion(questionId)}
-                        className="w-full px-3 py-3 sm:px-4 sm:py-3 text-left flex items-start gap-2 sm:gap-3"
+                        className="w-full px-3 py-2.5 sm:py-3 text-left flex items-start gap-2 sm:gap-3 hover:bg-white/5 transition-colors"
                       >
-                        <div className="flex-shrink-0 mt-0.5">
-                          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center">
-                            <span className="text-white text-xs font-bold">
-                              Q
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h5 className="font-semibold text-white text-xs sm:text-sm md:text-base leading-relaxed pr-8">
-                            {item.question}
-                          </h5>
-                        </div>
+                        <span className="text-accent font-bold text-xs mt-0.5 shrink-0">
+                          Q
+                        </span>
+                        <span className="flex-1 text-sm text-white/90 font-medium leading-snug pr-2">
+                          {item.question}
+                        </span>
                         <ChevronDown
                           className={cn(
-                            "h-4 w-4 text-white/70 flex-shrink-0 mt-0.5",
-                            "transition-transform duration-300",
-                            isExpanded && "rotate-180"
+                            "h-4 w-4 text-white/40 shrink-0 mt-0.5 transition-transform duration-200",
+                            isExpanded && "rotate-180 text-accent"
                           )}
                         />
                       </button>
-
-                      {/* Answer */}
                       {isExpanded && (
-                        <div className="px-3 pb-3 sm:px-4 sm:pb-4 pl-10 sm:pl-12 md:pl-14">
-                          <div className="bg-gradient-to-br from-blue-600/20 to-purple-600/20 rounded-lg p-3 sm:p-4 border-l-4 border-blue-400">
-                            <p className="text-white/80 text-xs sm:text-sm leading-relaxed">
-                              {item.answer}
-                            </p>
-                          </div>
+                        <div className="px-3 pb-3 sm:px-4 sm:pb-3.5 pl-7 sm:pl-8">
+                          <p className="text-sm text-white/65 leading-relaxed border-l-2 border-accent/50 pl-3">
+                            {item.answer}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -233,34 +261,59 @@ const FAQSection = () => {
               </div>
             )}
           </div>
-        ))}
-      </div>
+        );
+      })}
 
-      {/* Support Card */}
-      <div className="bg-gradient-to-br from-purple-600/20 to-blue-600/20 backdrop-blur-sm rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 border border-white/30 shadow-lg mt-4 sm:mt-6">
-        <div className="flex items-start gap-3 sm:gap-4">
-          <div className="flex-shrink-0">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
-              <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+        <div className="flex flex-col gap-3 p-4 rounded-xl bg-accent/10 border border-accent/20">
+          <div className="flex items-start gap-3">
+            <div className="home-icon-gold w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-white text-sm sm:text-base">
+                New to FaithIQ?
+              </h4>
+              <p className="text-white/60 text-xs sm:text-sm mt-0.5 leading-relaxed">
+                Walk through every game mode with our interactive tutorial.
+              </p>
             </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <h4 className="font-bold text-white mb-1.5 sm:mb-2 text-sm sm:text-base md:text-lg flex items-center gap-2">
-              Need More Help?
-            </h4>
-            <p className="text-white/70 text-xs sm:text-sm leading-relaxed">
-              We're here to help! Contact our support team through the settings
-              menu, or check out the in-game tutorial for a visual walkthrough
-              of all features.
-            </p>
+          {onOpenTutorial && (
             <Button
-              variant="outline"
               size="sm"
-              className="mt-3 sm:mt-4 bg-white/10 hover:bg-white/20 text-white border-white/30 text-xs sm:text-sm px-3 py-1.5 sm:px-4 sm:py-2"
+              className="bg-accent hover:bg-accent/90 text-primary font-semibold w-full"
+              onClick={onOpenTutorial}
             >
-              Contact Support
+              Open Tutorial
             </Button>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 p-4 rounded-xl bg-teal-500/10 border border-teal-500/20">
+          <div className="flex items-start gap-3">
+            <div className="home-icon-teal w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+              <Mail className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-white text-sm sm:text-base">
+                Still need help?
+              </h4>
+              <p className="text-white/60 text-xs sm:text-sm mt-0.5 leading-relaxed">
+                Reach our support team for bugs, account issues, or feedback.
+              </p>
+            </div>
           </div>
+          {onContact && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="home-btn-outline w-full font-semibold"
+              onClick={onContact}
+            >
+              Contact Us
+            </Button>
+          )}
         </div>
       </div>
     </div>

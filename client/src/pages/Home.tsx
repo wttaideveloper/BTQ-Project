@@ -41,6 +41,7 @@ import {
   Bell,
   HelpCircle,
   ChevronDown,
+  ChevronRight,
   Zap,
   Target,
   Flame,
@@ -50,6 +51,7 @@ import {
   History,
   ArrowRight,
   Swords,
+  Mail,
 } from "lucide-react";
 import GameSetup, { GameConfig } from "@/components/GameSetup";
 import TeamBattleSetup from "@/components/TeamBattleSetup";
@@ -754,46 +756,106 @@ const Home: React.FC = () => {
         </section>
 
         {/* Footer links */}
-        <section className="flex flex-wrap gap-3 justify-center pt-2 pb-4">
-          <Button
-            variant="ghost"
-            className="text-white/70 hover:text-white hover:bg-white/10"
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pt-2">
+          <button
+            type="button"
             onClick={() => setLocation("/leaderboard")}
+            className="home-action-card home-action-card--gold group flex items-center gap-4 p-4 sm:p-5 rounded-2xl text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
           >
-            <Trophy className="mr-2 h-4 w-4" /> Leaderboard
-          </Button>
-          <Button
-            variant="ghost"
-            className="text-white/70 hover:text-white hover:bg-white/10"
+            <div className="home-icon-gold w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+              <Trophy className="h-6 w-6" strokeWidth={2.25} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-white text-base sm:text-lg">
+                Leaderboard
+              </h3>
+              <p className="text-sm text-white/60 mt-0.5">
+                Top players, ranks & scores
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-white/30 group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
+          </button>
+          <button
+            type="button"
             onClick={() => setLocation("/game-history")}
+            className="home-action-card home-action-card--purple group flex items-center gap-4 p-4 sm:p-5 rounded-2xl text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
           >
-            <History className="mr-2 h-4 w-4" /> Game History
-          </Button>
+            <div className="home-icon-purple w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+              <History className="h-6 w-6" strokeWidth={2.25} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-white text-base sm:text-lg">
+                Game History
+              </h3>
+              <p className="text-sm text-white/60 mt-0.5">
+                Stats, past games & progress
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-white/30 group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setLocation("/contact")}
+            className="home-action-card home-action-card--teal group flex items-center gap-4 p-4 sm:p-5 rounded-2xl text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] sm:col-span-2 lg:col-span-1"
+          >
+            <div className="home-icon-teal w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+              <Mail className="h-6 w-6" strokeWidth={2.25} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-white text-base sm:text-lg">
+                Contact Us
+              </h3>
+              <p className="text-sm text-white/60 mt-0.5">
+                Support, feedback & questions
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-white/30 group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0" />
+          </button>
         </section>
 
         {/* FAQ */}
-        <Collapsible open={showFAQ} onOpenChange={setShowFAQ}>
+        <Collapsible open={showFAQ} onOpenChange={setShowFAQ} className="mt-4">
           <CollapsibleTrigger asChild>
-            <Button
-              variant="ghost"
-              className="w-full home-btn-outline py-6 rounded-xl font-medium"
+            <button
+              type="button"
+              className="home-glass-card w-full flex items-center gap-3 sm:gap-4 p-4 sm:p-5 rounded-2xl text-left transition-all duration-300 hover:border-accent/30 group"
             >
-              <HelpCircle className="mr-2 h-5 w-5" />
-              Help & FAQ
+              <div className="home-icon-gold w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md">
+                <HelpCircle className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.25} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-white text-base sm:text-lg">
+                  Help & FAQ
+                </h3>
+                <p className="text-sm text-white/55 mt-0.5">
+                  Game modes, scoring & tips
+                </p>
+              </div>
               <ChevronDown
-                className={`ml-auto h-4 w-4 transition-transform ${
-                  showFAQ ? "rotate-180" : ""
-                }`}
+                className={cn(
+                  "h-5 w-5 text-white/40 group-hover:text-accent transition-all shrink-0",
+                  showFAQ && "rotate-180 text-accent"
+                )}
               />
-            </Button>
+            </button>
           </CollapsibleTrigger>
-          <CollapsibleContent className="mt-3">
-            <FAQSection />
+          <CollapsibleContent className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <FAQSection
+              onOpenTutorial={() => setShowWelcomeTutorial(true)}
+              onContact={() => setLocation("/contact")}
+            />
           </CollapsibleContent>
         </Collapsible>
 
-        <footer className="text-center text-white/40 text-xs py-4">
-          © {new Date().getFullYear()} FaithIQ. All rights reserved.
+        <footer className="text-center text-white/40 text-xs py-4 space-y-2">
+          <button
+            type="button"
+            onClick={() => setLocation("/contact")}
+            className="text-white/50 hover:text-accent transition-colors underline-offset-2 hover:underline"
+          >
+            Contact & Support
+          </button>
+          <p>© {new Date().getFullYear()} FaithIQ. All rights reserved.</p>
         </footer>
       </main>
 

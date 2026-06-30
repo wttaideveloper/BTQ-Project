@@ -71,6 +71,7 @@ import {
   getUnfinishedGame,
   getWinStreak,
 } from "@/lib/home-data";
+import holmesImagePath from "@assets/HP HOLMES.jpg";
 
 interface LeaderboardEntry {
   id: string;
@@ -437,35 +438,61 @@ const Home: React.FC = () => {
 
       <main className="max-w-6xl mx-auto px-4 pb-12 space-y-6 sm:space-y-8">
         {/* Hero */}
-        <section className="pt-6 sm:pt-10 text-center sm:text-left animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <p className="text-accent font-medium text-sm sm:text-base mb-1">
-            {getGreeting()}
-            {user ? `, ${user.username}` : ""}! 👋
-          </p>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-tight mb-3">
-            Ready to test your{" "}
-            <span className="text-accent">Bible knowledge</span>?
-          </h1>
-          <p className="text-white/80 text-base sm:text-lg max-w-xl mb-6">
-            Pick a game mode below and start playing in seconds. Great for solo
-            study, friends, or team competitions.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center sm:justify-start">
-            <Button
-              size="lg"
-              className="bg-accent hover:bg-accent/90 text-primary font-bold text-base px-8 h-12 rounded-xl shadow-lg shadow-accent/20"
-              onClick={() => setShowSoloDialog(true)}
-            >
-              <Play className="mr-2 h-5 w-5" /> Start Solo Quiz
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="home-btn-outline h-12 rounded-xl px-8 font-semibold"
-              onClick={() => setShowWelcomeTutorial(true)}
-            >
-              <HelpCircle className="mr-2 h-5 w-5" /> How It Works
-            </Button>
+        <section className="pt-6 sm:pt-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8 lg:gap-10">
+            <div className="text-center sm:text-left flex-1 min-w-0">
+              <p className="text-accent font-medium text-sm sm:text-base mb-1">
+                {getGreeting()}
+                {user ? `, ${user.username}` : ""}! 👋
+              </p>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-tight mb-3">
+                Ready to test your{" "}
+                <span className="text-accent">Bible knowledge</span>?
+              </h1>
+              <p className="text-white/80 text-base sm:text-lg max-w-xl mx-auto sm:mx-0 mb-6">
+                Pick a game mode below and start playing in seconds. Great for
+                solo study, friends, or team competitions.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center sm:justify-start">
+                <Button
+                  size="lg"
+                  className="bg-accent hover:bg-accent/90 text-primary font-bold text-base px-8 h-12 rounded-xl shadow-lg shadow-accent/20"
+                  onClick={() => setShowSoloDialog(true)}
+                >
+                  <Play className="mr-2 h-5 w-5" /> Start Solo Quiz
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="home-btn-outline h-12 rounded-xl px-8 font-semibold"
+                  onClick={() => setShowWelcomeTutorial(true)}
+                >
+                  <HelpCircle className="mr-2 h-5 w-5" /> How It Works
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-center lg:justify-end flex-shrink-0 pb-6 lg:pb-0">
+              <div className="relative text-center">
+                <div
+                  className="absolute inset-0 bg-accent/20 rounded-full blur-2xl scale-125 animate-pulse"
+                  aria-hidden
+                />
+                <div className="relative z-10">
+                  <img
+                    src={holmesImagePath}
+                    alt="Kingdom Genius Dr. HB Holmes - Bible Trivia Quiz Master"
+                    className="w-36 h-36 sm:w-40 sm:h-40 md:w-44 md:h-44 object-cover rounded-full border-4 border-accent shadow-2xl mx-auto"
+                  />
+                  <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-accent text-primary px-5 py-1.5 rounded-full font-bold text-sm whitespace-nowrap shadow-lg z-20">
+                    Dr. HB Holmes
+                  </div>
+                </div>
+                <p className="relative z-10 mt-8 text-sm text-white/60 max-w-[220px] mx-auto">
+                  Your Bible trivia host
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 

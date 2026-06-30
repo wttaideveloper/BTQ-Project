@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Users, Crown, Mail, UserPlus, Clock, Check, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { markOpenTeamBattleSetup } from "@/lib/team-battle-navigation";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -390,7 +391,8 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
             // Show loader and redirect to individual team battle game interface
             setShowRedirectLoader(true);
             setTimeout(() => {
-              window.location.href = `/team-battle?gameSessionId=${gameSessionId}`;
+              markOpenTeamBattleSetup();
+              window.location.href = "/";
             }, 1500);
             break;
 

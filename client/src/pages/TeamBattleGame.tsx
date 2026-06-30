@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { markOpenTeamBattleSetup } from "@/lib/team-battle-navigation";
 import { setupGameSocket, sendGameEvent, closeGameSocket } from "@/lib/socket";
 import { registerNavigationProtection, unregisterNavigationProtection } from "@/lib/navigationGuard";
 import { apiRequest } from "@/lib/queryClient";
@@ -107,6 +108,11 @@ export default function TeamBattleGame() {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  const goToTeamBattleSetup = () => {
+    markOpenTeamBattleSetup();
+    setLocation("/");
+  };
+
   const [gameState, setGameState] = useState<GameState>({ phase: "waiting" });
   const gameStateRef = useRef<GameState>(gameState);
   const isRapidFireRef = useRef<boolean>(false);
@@ -144,6 +150,114 @@ export default function TeamBattleGame() {
   const [showRapidRules, setShowRapidRules] = useState(false);
   const [rapidRulesCountdown, setRapidRulesCountdown] = useState(5);
   const hasShownRapidRules = useRef(false);
+  const pendingBattleQuestionRef = useRef<any>(null);
+  const tossTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tossInstructionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showTossResultRef = useRef(false);
+  const showTossInstructionRef = useRef(false);
+  const showTossRetryInstructionRef = useRef(false);
+  const tossTransitionDoneRef = useRef(false);
+
+  useEffect(() => {
+    showTossResultRef.current = showTossResult;
+  }, [showTossResult]);
+
+  useEffect(() => {
+    showTossInstructionRef.current = showTossInstruction;
+  }, [showTossInstruction]);
+
+  useEffect(() => {
+    showTossRetryInstructionRef.current = showTossRetryInstruction;
+  }, [showTossRetryInstruction]);
+
+  const isTossOverlayActive =
+    showTossInstruction || showTossRetryInstruction || showTossResult;
+
+  const dismissTossInstruction = () => {
+    if (tossInstructionTimerRef.current) {
+      clearTimeout(tossInstructionTimerRef.current);
+      tossInstructionTimerRef.current = null;
+    }
+    setShowTossInstruction(false);
+    setShowTossRetryInstruction(false);
+  };
+
+  const applyBattleQuestionFromEvent = (data: any) => {
+    if (!data.question) {
+      console.error("Received team_battle_question without question data:", data);
+      toast({
+        title: "Error",
+        description: "Received invalid question data. Please wait...",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (isRapidFireRef.current) {
+      console.warn(
+        "[TeamBattleGame] Ignoring team_battle_question because rapid-fire mode is active"
+      );
+      return;
+    }
+
+    setGameState((prev) => ({
+      ...prev,
+      phase: "question",
+      currentQuestion: data.question,
+      questionNumber: data.questionNumber,
+      totalQuestions: data.totalQuestions,
+      timeRemaining: data.timeLimit ? Math.floor(data.timeLimit / 1000) : 15,
+      timeLimit: data.timeLimit || 15000,
+      isYourTurn: data.isYourTurn !== false,
+      answeringTeamName: data.answeringTeamName,
+    }));
+
+    setSelectedAnswer(null);
+    setHasSubmitted(false);
+    setTeamAnswer(null);
+    setMemberAnswers({});
+    setSuggestions({});
+    setWaitingForResults(false);
+    setCorrectAnswerId(null);
+    setLastRoundCorrect(null);
+    setShowRoundFeedback(false);
+  };
+
+  const completeTossTransition = () => {
+    if (tossTransitionDoneRef.current) return;
+    tossTransitionDoneRef.current = true;
+
+    if (tossTransitionTimerRef.current) {
+      clearTimeout(tossTransitionTimerRef.current);
+      tossTransitionTimerRef.current = null;
+    }
+    setShowTossResult(false);
+    setTossResultData(null);
+
+    const pending = pendingBattleQuestionRef.current;
+    if (pending) {
+      pendingBattleQuestionRef.current = null;
+      applyBattleQuestionFromEvent(pending);
+      return;
+    }
+
+    setGameState((prev) =>
+      prev.phase === "toss"
+        ? { ...prev, phase: "playing", currentQuestion: undefined }
+        : prev
+    );
+  };
+
+  const scheduleTossInstructionDismiss = (isRetry: boolean) => {
+    dismissTossInstruction();
+    if (isRetry) {
+      setShowTossRetryInstruction(true);
+    } else {
+      setShowTossInstruction(true);
+    }
+    tossInstructionTimerRef.current = setTimeout(() => {
+      dismissTossInstruction();
+    }, 4000);
+  };
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -154,10 +268,21 @@ export default function TeamBattleGame() {
   }, [connected]);
 
   useEffect(() => {
-    if (lastRoundCorrect !== null) {
+    if (
+      lastRoundCorrect !== null &&
+      gameStateRef.current.phase !== "toss" &&
+      !showTossResultRef.current
+    ) {
       setShowRoundFeedback(true);
     }
   }, [lastRoundCorrect]);
+
+  useEffect(() => {
+    return () => {
+      if (tossTransitionTimerRef.current) clearTimeout(tossTransitionTimerRef.current);
+      if (tossInstructionTimerRef.current) clearTimeout(tossInstructionTimerRef.current);
+    };
+  }, []);
 
   // Effect to show Rapid Fire rules when game starts
   useEffect(() => {
@@ -334,7 +459,7 @@ export default function TeamBattleGame() {
                   description: "This battle has already finished. Redirecting to setup.",
                 });
                 setTimeout(() => {
-                  setLocation("/team-battle");
+                  goToTeamBattleSetup();
                 }, 2000);
               } else {
                 // Team exists but battle may not have started - set phase to ready
@@ -363,14 +488,9 @@ export default function TeamBattleGame() {
               description: data.message || "No active team battle found. Redirecting to team setup.",
               variant: "destructive",
             });
-            setTimeout(() => {
-              // Redirect to team battle setup page with the session ID if available
-              if (gameSessionId) {
-                setLocation(`/team-battle?session=${gameSessionId}`);
-              } else {
-                setLocation("/team-battle");
-              }
-            }, 2000);
+              setTimeout(() => {
+                goToTeamBattleSetup();
+              }, 2000);
             break;
 
 
@@ -421,16 +541,8 @@ export default function TeamBattleGame() {
             // Check if this is a retry toss (based on message content)
             const isRetry = data.message && data.message.includes("Both teams answered incorrectly");
 
-            if (isRetry) {
-              setShowTossRetryInstruction(true);
-              // Auto-hide after 5 seconds
-              setTimeout(() => setShowTossRetryInstruction(false), 5000);
-            } else {
-              // Initial toss instruction
-              setShowTossInstruction(true);
-              // Auto-hide after 5 seconds
-              setTimeout(() => setShowTossInstruction(false), 5000);
-            }
+            scheduleTossInstructionDismiss(isRetry);
+            tossTransitionDoneRef.current = false;
 
             setGameState((prev) => ({
               ...prev,
@@ -452,60 +564,52 @@ export default function TeamBattleGame() {
             setWaitingForResults(false);
             setCorrectAnswerId(null);
             setLastRoundCorrect(null);
-
-            // Show toast only if not initial instruction to avoid clutter, or show simpler toast
-            if (!showTossInstruction) {
-              toast({
-                title: isRetry ? "Toss Retry" : "Toss Question",
-                description: data.message || "First correct answer wins the toss — hurry!",
-                duration: 3000,
-              });
-            }
+            setShowRoundFeedback(false);
             break;
 
           case "team_battle_toss_result": {
-            // Hide any active toss dialogs
-            setShowTossInstruction(false);
-            setShowTossRetryInstruction(false);
+            dismissTossInstruction();
 
-            // Show toss winner and continue. Resolve player's team from current state
             const winnerTeamId = data.winnerTeamId;
             const winnerUserId = data.winnerUserId || data.userId;
 
-            // Determine if this client belongs to the winning team:
-            // 1) Prefer checking team membership (if teams are available)
-            // 2) Fallback to comparing winnerUserId to current user
             let isYourTeamWinner = false;
             if (winnerTeamId && gameState.teams && gameState.teams.length > 0 && user) {
               const winningTeamInState = gameState.teams.find((t) => t.id === winnerTeamId);
               if (winningTeamInState) {
                 isYourTeamWinner = winningTeamInState.members?.some((m: any) => m.userId === user.id) === true;
               } else {
-                // If winnerTeamId not found in state yet, fallback to winnerUserId compare
                 isYourTeamWinner = winnerUserId === user?.id;
               }
             } else {
               isYourTeamWinner = winnerUserId === user?.id;
             }
 
-            // Find winning team name
             let winnerTeamName = "Opponent";
             if (winnerTeamId && gameState.teams) {
               winnerTeamName = gameState.teams.find((t) => t.id === winnerTeamId)?.name || "Opponent";
             }
 
-            // Show Toss Result Dialog
+            // Clear toss answer feedback — toss result dialog replaces CORRECT modal
+            setLastRoundCorrect(null);
+            setShowRoundFeedback(false);
+            setCorrectAnswerId(null);
+            setHasSubmitted(false);
+
             setTossResultData({
               isWinner: isYourTeamWinner,
-              teamName: winnerTeamName
+              teamName: winnerTeamName,
             });
             setShowTossResult(true);
-            setTimeout(() => {
-              setShowTossResult(false);
-              setTossResultData(null);
-            }, 5000);
+            tossTransitionDoneRef.current = false;
 
-            // Ensure local team assignment reflects server's winner assignment:
+            if (tossTransitionTimerRef.current) {
+              clearTimeout(tossTransitionTimerRef.current);
+            }
+            tossTransitionTimerRef.current = setTimeout(() => {
+              completeTossTransition();
+            }, 4000);
+
             setGameState((prev) => {
               let updatedTeams = prev.teams;
               if (prev.teams && winnerTeamId) {
@@ -519,7 +623,8 @@ export default function TeamBattleGame() {
               const opposingTeam = updatedTeams?.find((team) => team.id !== playerTeam?.id);
               return {
                 ...prev,
-                phase: "playing",
+                phase: "toss",
+                currentQuestion: undefined,
                 teams: updatedTeams,
                 playerTeam: playerTeam || prev.playerTeam,
                 opposingTeam: opposingTeam || prev.opposingTeam,
@@ -529,14 +634,9 @@ export default function TeamBattleGame() {
           }
 
           case "team_battle_toss_feedback": {
-            // Use the same feedback/modal flow as regular questions
+            // Toss uses the winner dialog — do not open the standard CORRECT/INCORRECT modal
             if (typeof data.isCorrect === "boolean") {
-              const correctId = data.correctAnswerId || gameState.currentQuestion?.answers.find((a: any) => a.isCorrect)?.id || null;
-              setCorrectAnswerId(correctId);
-              setLastRoundCorrect(!!data.isCorrect);
-              // mark that we've submitted locally
               setHasSubmitted(true);
-              // show modal via lastRoundCorrect effect
             }
             break;
           }
@@ -650,46 +750,16 @@ export default function TeamBattleGame() {
             break;
 
           case "team_battle_question":
-            // Validate question data before setting state
-            if (!data.question) {
-              console.error("Received team_battle_question without question data:", data);
-              toast({
-                title: "Error",
-                description: "Received invalid question data. Please wait...",
-                variant: "destructive",
-              });
+            if (
+              showTossResultRef.current ||
+              showTossInstructionRef.current ||
+              showTossRetryInstructionRef.current ||
+              gameStateRef.current.phase === "toss"
+            ) {
+              pendingBattleQuestionRef.current = data;
               break;
             }
-            // Ignore normal question events when in Rapid Fire mode to prevent state overrides
-            if (isRapidFireRef.current) {
-              console.warn("[TeamBattleGame] Ignoring team_battle_question because rapid-fire mode is active");
-              break;
-            }
-
-            setGameState((prev) => ({
-              ...prev,
-              phase: "question",
-              currentQuestion: data.question,
-              questionNumber: data.questionNumber,
-              totalQuestions: data.totalQuestions,
-              // Server sends timeLimit in milliseconds, convert to seconds for display
-              // Always set timeRemaining to the full timeLimit when new question arrives
-              timeRemaining: data.timeLimit ? Math.floor(data.timeLimit / 1000) : 15,
-              timeLimit: data.timeLimit || 15000, // Store original milliseconds value
-              isYourTurn: data.isYourTurn !== false, // Default to true if not specified
-              answeringTeamName: data.answeringTeamName,
-            }));
-
-            // Reset answer state for BOTH teams when new question arrives
-            // This ensures clean state for both answering and waiting teams
-            setSelectedAnswer(null);
-            setHasSubmitted(false);
-            setTeamAnswer(null);
-            setMemberAnswers({});
-            setSuggestions({});
-            setWaitingForResults(false);
-            setCorrectAnswerId(null);
-            setLastRoundCorrect(null);
+            applyBattleQuestionFromEvent(data);
             break;
 
           case "team_answer_submitted":
@@ -991,11 +1061,7 @@ export default function TeamBattleGame() {
         });
         // Redirect to setup page with session ID if available
         setTimeout(() => {
-          if (gameSessionId) {
-            setLocation(`/team-battle?session=${gameSessionId}`);
-          } else {
-            setLocation("/team-battle");
-          }
+          goToTeamBattleSetup();
         }, 2000);
       }, 10000); // 10 seconds - reduced for faster feedback
 
@@ -1954,7 +2020,9 @@ export default function TeamBattleGame() {
     showRoundFeedback &&
     activeQuestionForFeedback &&
     correctAnswerId !== null &&
-    lastRoundCorrect !== null; // If lastRoundCorrect is set, it means it was our turn
+    lastRoundCorrect !== null &&
+    gameState.phase !== "toss" &&
+    !isTossOverlayActive;
 
 
 
@@ -1988,7 +2056,7 @@ export default function TeamBattleGame() {
       )}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
         {/* Team Scores Header - Show during game (normal or rapid fire) - even during preparing/loading phase */}
-        {((gameState.phase === "question") || (gameState.phase === "playing")) && gameState.playerTeam && gameState.opposingTeam && (
+        {((gameState.phase === "question") || (gameState.phase === "playing")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && (
           <div className="mb-3 sm:mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               {/* Your Team */}
@@ -2232,9 +2300,9 @@ export default function TeamBattleGame() {
           )}
         </div>
       )}
-      {gameState.phase === "playing" && currentRapidQuestion && renderRapidQuestionPhase()}
-      {gameState.phase === "question" && renderQuestionPhase()}
-      {gameState.phase === "toss" && renderTossPhase()}
+      {gameState.phase === "playing" && currentRapidQuestion && !isTossOverlayActive && renderRapidQuestionPhase()}
+      {gameState.phase === "question" && !isTossOverlayActive && renderQuestionPhase()}
+      {gameState.phase === "toss" && !showTossInstruction && !showTossRetryInstruction && !showTossResult && renderTossPhase()}
       {/* Results phase removed - goes directly to next question */}
       {gameState.phase === "finished" && renderFinishedPhase()}
 
@@ -2280,6 +2348,12 @@ export default function TeamBattleGame() {
                 The <span className="text-yellow-400 font-bold">first correct answer</span> decides who plays first!
               </p>
             </div>
+            <Button
+              className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold"
+              onClick={dismissTossInstruction}
+            >
+              Got it — Start Toss
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2305,6 +2379,12 @@ export default function TeamBattleGame() {
             <p className="text-sm text-white/60 italic">
               Be fast, but be accurate this time!
             </p>
+            <Button
+              className="bg-red-500 hover:bg-red-400 text-white font-bold"
+              onClick={dismissTossInstruction}
+            >
+              Ready for Retry
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2329,6 +2409,12 @@ export default function TeamBattleGame() {
                 ? "Get ready to answer the first battle question."
                 : "Prepare to defend! Your opponent gets the first question."}
             </p>
+            <Button
+              className={`font-bold ${tossResultData?.isWinner ? "bg-green-500 hover:bg-green-400 text-white" : "bg-orange-500 hover:bg-orange-400 text-white"}`}
+              onClick={completeTossTransition}
+            >
+              Continue to Battle
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

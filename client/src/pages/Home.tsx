@@ -72,6 +72,7 @@ import {
   getUnfinishedGame,
   getWinStreak,
 } from "@/lib/home-data";
+import { consumeOpenTeamBattleSetup } from "@/lib/team-battle-navigation";
 import holmesImagePath from "@assets/HP HOLMES.jpg";
 
 interface LeaderboardEntry {
@@ -155,6 +156,12 @@ const Home: React.FC = () => {
 
   // In-game streak from unfinished quiz; otherwise 0 until we persist streaks in DB
   const winStreak = getWinStreak(user?.id);
+
+  useEffect(() => {
+    if (user?.id && consumeOpenTeamBattleSetup()) {
+      setShowTeamBattleSetup(true);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     voiceService.stopAllAudio(true);

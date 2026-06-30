@@ -11,9 +11,9 @@ import AdminPanel from "@/pages/AdminPanel";
 import AuthPage from "@/pages/AuthPage";
 import Leaderboard from "@/pages/Leaderboard";
 import TeamBattleGame from "@/pages/TeamBattleGame";
-import TeamBattleSetup from "@/pages/TeamBattleSetup";
 import GameHistory from "@/pages/GameHistory";
 import Contact from "@/pages/Contact";
+import { markOpenTeamBattleSetup } from "@/lib/team-battle-navigation";
 import { useEffect } from "react";
 import { voiceService } from "./lib/voice-service";
 import { stopSpeaking } from "./lib/sounds";
@@ -26,6 +26,17 @@ function AuthLoadingScreen() {
       <Loader2 className="h-8 w-8 animate-spin text-accent" />
     </div>
   );
+}
+
+function TeamBattleSetupRedirect() {
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    markOpenTeamBattleSetup();
+    setLocation("/");
+  }, [setLocation]);
+
+  return <AuthLoadingScreen />;
 }
 
 function Router() {
@@ -67,7 +78,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/play" component={Game} />
       <Route path="/game" component={Game} />
-      <Route path="/team-battle" component={TeamBattleSetup} />
+      <Route path="/team-battle" component={TeamBattleSetupRedirect} />
       <Route path="/team-battle-game" component={TeamBattleGame} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/game-history" component={GameHistory} />

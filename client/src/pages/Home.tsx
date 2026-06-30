@@ -127,12 +127,15 @@ const Home: React.FC = () => {
   const { data: leaderboardData, isLoading: leaderboardLoading } = useQuery({
     queryKey: ["/api/leaderboard", "all"],
     queryFn: async () => {
-      const res = await fetch("/api/leaderboard?gameType=all");
+      const res = await fetch("/api/leaderboard?gameType=all", {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to fetch leaderboard");
       return res.json();
     },
     enabled: !!user,
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const pendingChallenges =
@@ -145,13 +148,22 @@ const Home: React.FC = () => {
     leaderboardData?.data?.slice(0, 5) || [];
   const allPlayers: LeaderboardEntry[] = leaderboardData?.data || [];
   const myEntry = allPlayers.find(
-    (p) => p.isCurrentUser || p.name === user?.username
+    (p) =>
+      p.isCurrentUser ||
+      p.name === user?.username ||
+      p.id === String(user?.id)
   );
   const myRank = myEntry
     ? allPlayers.findIndex(
-        (p) => p.isCurrentUser || p.name === user?.username
+        (p) =>
+          p.isCurrentUser ||
+          p.name === user?.username ||
+          p.id === String(user?.id)
       ) + 1
     : null;
+
+  // In-game streak from unfinished quiz; otherwise 0 until we persist streaks in DB
+  const winStreak = getWinStreak(user?.id);
 
   const activeChallenges = useMemo(() => {
     if (!challenges || !user) return [];
@@ -329,7 +341,7 @@ const Home: React.FC = () => {
     },
     {
       label: "Win Streak",
-      value: getWinStreak(user?.id),
+      value: winStreak,
       icon: Flame,
       iconClass: "home-stat-icon-orange",
     },

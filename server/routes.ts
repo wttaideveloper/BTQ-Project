@@ -1251,6 +1251,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get current user's single-player score history
+  app.get("/api/single-player/scores", ensureAuthenticated, async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const scores = await database.getSinglePlayerScores({
+        userId: req.user.id,
+      });
+
+      scores.sort(
+        (a: { timestamp?: string | Date }, b: { timestamp?: string | Date }) =>
+          new Date(b.timestamp ?? 0).getTime() -
+          new Date(a.timestamp ?? 0).getTime()
+      );
+
+      res.json(scores);
+    } catch (err) {
+      console.error("Failed to fetch single player scores:", err);
+      res.status(500).json({ message: "Failed to fetch scores" });
+    }
+  });
+
   // Submit single player score
   app.post(
     "/api/single-player/scores",

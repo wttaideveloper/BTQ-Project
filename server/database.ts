@@ -1315,14 +1315,9 @@ class PostgreSQLDatabase implements IDatabase {
         paramIndex++;
       }
 
-      const sql = `SELECT * FROM single_player_scores${whereClause} ORDER BY score DESC`;
+      const queryText = `SELECT * FROM single_player_scores${whereClause} ORDER BY score DESC`;
 
-      // Use the postgres client directly for parameterized queries
-      const client = postgres(
-        "postgresql://faithiq_user:faithiq_password123@localhost:5432/bible_trivia_db"
-      );
-      const result = await client.unsafe(sql, params);
-      await client.end();
+      const result = await sql.unsafe(queryText, params);
 
       return result;
     } catch (error) {
@@ -1497,12 +1492,7 @@ class PostgreSQLDatabase implements IDatabase {
       let leaderboardData = [];
 
       if (gameType === "single" || gameType === "all") {
-        // Use direct SQL query to get aggregated single player scores
-        const client = postgres(
-          "postgresql://faithiq_user:faithiq_password123@localhost:5432/bible_trivia_db"
-        );
-
-        let sql = `
+        let singlePlayerQuery = `
           SELECT 
             user_id as id,
             player_name as name,
@@ -1517,18 +1507,16 @@ class PostgreSQLDatabase implements IDatabase {
           FROM single_player_scores
         `;
 
-        // Add category filter if specified
         if (category && category !== "All Categories") {
-          sql += ` WHERE category = '${category}'`;
+          singlePlayerQuery += ` WHERE category = '${category}'`;
         }
 
-        sql += `
+        singlePlayerQuery += `
           GROUP BY user_id, player_name
           ORDER BY MAX(score) DESC
         `;
 
-        const singlePlayerResults = await client.unsafe(sql);
-        await client.end();
+        const singlePlayerResults = await sql.unsafe(singlePlayerQuery);
 
 
         const singlePlayerLeaderboard = singlePlayerResults.map((result) => ({
@@ -1556,12 +1544,7 @@ class PostgreSQLDatabase implements IDatabase {
       }
 
       if (gameType === "multi" || gameType === "all") {
-        // Get multiplayer scores from the multiplayer_scores table
-        const client = postgres(
-          "postgresql://faithiq_user:faithiq_password123@localhost:5432/bible_trivia_db"
-        );
-
-        let sql = `
+        let multiplayerQuery = `
           SELECT 
             player_name as name,
             MAX(score) as best_score,
@@ -1587,16 +1570,15 @@ class PostgreSQLDatabase implements IDatabase {
         }
 
         if (conditions.length > 0) {
-          sql += ` WHERE ${conditions.join(" AND ")}`;
+          multiplayerQuery += ` WHERE ${conditions.join(" AND ")}`;
         }
 
-        sql += `
+        multiplayerQuery += `
           GROUP BY player_name
           ORDER BY MAX(score) DESC, COUNT(*) DESC
         `;
 
-        const multiplayerResults = await client.unsafe(sql, params);
-        await client.end();
+        const multiplayerResults = await sql.unsafe(multiplayerQuery, params);
 
 
         const multiplayerLeaderboard = multiplayerResults.map((result) => ({

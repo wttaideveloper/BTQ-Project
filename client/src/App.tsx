@@ -1,9 +1,9 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "./hooks/use-auth";
-import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AuthProvider, useAuth } from "./hooks/use-auth";
+import { AdminGate } from "./components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Game from "@/pages/Game";
@@ -19,44 +19,76 @@ import { useEffect } from "react";
 import { voiceService } from "./lib/voice-service";
 import { stopSpeaking } from "./lib/sounds";
 import NavigationGuardProvider from "@/components/NavigationGuardProvider";
+import { Loader2 } from "lucide-react";
+
+function AuthLoadingScreen() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-[#1a1f3a] via-primary to-[#0f1428]">
+      <Loader2 className="h-8 w-8 animate-spin text-accent" />
+    </div>
+  );
+}
 
 function Router() {
   const [location] = useLocation();
-  
+  const { user, isLoading } = useAuth();
+
   // Stop voice narration when route changes (except when entering game)
   useEffect(() => {
-    if (location !== '/play' && location !== '/game' && location !== '/team-battle-game') {
-      voiceService.stopAllAudio(true); // Block future narration
+    if (
+      location !== "/play" &&
+      location !== "/game" &&
+      location !== "/team-battle-game"
+    ) {
+      voiceService.stopAllAudio(true);
       stopSpeaking();
     }
   }, [location]);
 
+  // Public auth page — no session required
+  if (location === "/auth") {
+    return (
+      <Switch>
+        <Route path="/auth" component={AuthPage} />
+      </Switch>
+    );
+  }
+
+  // Single auth check for all protected pages (avoids N parallel /api/user calls)
+  if (isLoading) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (!user) {
+    return <Redirect to="/auth" />;
+  }
+
   return (
     <Switch>
-      <ProtectedRoute path="/" component={Home} adminOnly={false} />
-      <ProtectedRoute path="/play" component={Game} adminOnly={false} />
-      <ProtectedRoute path="/game" component={Game} adminOnly={false} />
-      <ProtectedRoute path="/team-battle" component={TeamBattleSetup} adminOnly={false} />
-      <ProtectedRoute path="/team-battle-game" component={TeamBattleGame} adminOnly={false} />
-      <ProtectedRoute path="/leaderboard" component={Leaderboard} adminOnly={false} />
-      <ProtectedRoute path="/game-history" component={GameHistory} adminOnly={false} />
-      <ProtectedRoute path="/challenges" component={ChallengesPage} adminOnly={false} />
-      <ProtectedRoute path="/challenge/:id" component={ChallengePage} adminOnly={false} />
-      <Route path="/auth" component={AuthPage} />
-      <ProtectedRoute path="/admin" component={AdminPanel} adminOnly={true} />
+      <Route path="/" component={Home} />
+      <Route path="/play" component={Game} />
+      <Route path="/game" component={Game} />
+      <Route path="/team-battle" component={TeamBattleSetup} />
+      <Route path="/team-battle-game" component={TeamBattleGame} />
+      <Route path="/leaderboard" component={Leaderboard} />
+      <Route path="/game-history" component={GameHistory} />
+      <Route path="/challenges" component={ChallengesPage} />
+      <Route path="/challenge/:id" component={ChallengePage} />
+      <Route path="/admin">
+        <AdminGate>
+          <AdminPanel />
+        </AdminGate>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
 }
 
 function App() {
-  // Global voice cleanup on app mount
   useEffect(() => {
-    voiceService.stopAllAudio(true); // Block future narration
+    voiceService.stopAllAudio(true);
     stopSpeaking();
-    
-    // Clear all question read flags from session storage
-    sessionStorage.removeItem('questionRead');
+    sessionStorage.removeItem("questionRead");
     for (let i = 0; i <= 20; i++) {
       sessionStorage.removeItem(`questionRead_${i}`);
     }

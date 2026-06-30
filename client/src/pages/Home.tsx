@@ -1,10 +1,21 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
-
-// NOTE: Multiplayer functionality is disabled for this POC
-// Will be implemented in the next iteration
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -15,21 +26,13 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import holmesImagePath from "@assets/HP HOLMES.jpg";
 import {
   Play,
-  Settings,
   Sword,
-  Award,
   Database,
   LogIn,
   LogOut,
@@ -39,19 +42,44 @@ import {
   Bell,
   HelpCircle,
   ChevronDown,
-  Loader2,
   Zap,
+  Target,
+  Flame,
+  BookOpen,
+  Sparkles,
+  Medal,
+  History,
+  ArrowRight,
+  Swords,
 } from "lucide-react";
 import GameSetup, { GameConfig } from "@/components/GameSetup";
 import TeamBattleSetup from "@/components/TeamBattleSetup";
 import WelcomeTutorial from "@/components/WelcomeTutorial";
 import FAQSection from "@/components/FAQSection";
+import HomeActionCard from "@/components/home/HomeActionCard";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Challenge, Notification } from "@shared/schema";
 import { voiceService } from "@/lib/voice-service";
 import { stopSpeaking } from "@/lib/sounds";
+import {
+  getDailyVerse,
+  getDailyChallenge,
+  getGreeting,
+  getUnfinishedGame,
+  getWinStreak,
+} from "@/lib/home-data";
+
+interface LeaderboardEntry {
+  id: string;
+  name: string;
+  score: number;
+  gamesPlayed: number;
+  accuracy: number;
+  isCurrentUser?: boolean;
+}
 
 const Home: React.FC = () => {
   const [_, setLocation] = useLocation();
@@ -61,18 +89,23 @@ const Home: React.FC = () => {
   const [showRapidTeamBattleSetup, setShowRapidTeamBattleSetup] = useState(false);
   const [showWelcomeTutorial, setShowWelcomeTutorial] = useState(false);
   const [showFAQ, setShowFAQ] = useState(false);
-  const [titleEffect, setTitleEffect] = useState(false);
+  const [showSoloDialog, setShowSoloDialog] = useState(false);
   const [isLoadingTeamBattle, setIsLoadingTeamBattle] = useState(false);
   const [isLoadingRapidFire, setIsLoadingRapidFire] = useState(false);
+  const [unfinishedGame, setUnfinishedGame] = useState(
+    () => getUnfinishedGame()
+  );
+
   const { user, logoutMutation } = useAuth();
   const queryClient = useQueryClient();
 
-  // Game configuration state
   const [gameType, setGameType] = useState<"question" | "time">("question");
   const [category, setCategory] = useState("Bible Stories");
   const [difficulty, setDifficulty] = useState("Beginner");
 
-  // Get pending challenges count to display as a badge
+  const dailyVerse = useMemo(() => getDailyVerse(), []);
+  const dailyChallenge = useMemo(() => getDailyChallenge(), []);
+
   const { data: challenges } = useQuery({
     queryKey: ["/api/challenges"],
     queryFn: async () => {
@@ -82,7 +115,6 @@ const Home: React.FC = () => {
     enabled: !!user,
   });
 
-  // Get unread notifications count
   const { data: notifications } = useQuery({
     queryKey: ["/api/notifications"],
     queryFn: async () => {
@@ -92,26 +124,55 @@ const Home: React.FC = () => {
     enabled: !!user,
   });
 
-  // Count pending challenges and unread notifications
+  const { data: leaderboardData, isLoading: leaderboardLoading } = useQuery({
+    queryKey: ["/api/leaderboard", "all"],
+    queryFn: async () => {
+      const res = await fetch("/api/leaderboard?gameType=all");
+      if (!res.ok) throw new Error("Failed to fetch leaderboard");
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+
   const pendingChallenges =
     challenges?.filter((c: Challenge) => c.status === "pending") || [];
   const unreadNotifications =
     notifications?.filter((n: Notification) => !n.read) || [];
+  const latestNotifications = (notifications || []).slice(0, 5);
 
-  // Clean up voice narration when entering home page
+  const leaderboardEntries: LeaderboardEntry[] =
+    leaderboardData?.data?.slice(0, 5) || [];
+  const allPlayers: LeaderboardEntry[] = leaderboardData?.data || [];
+  const myEntry = allPlayers.find(
+    (p) => p.isCurrentUser || p.name === user?.username
+  );
+  const myRank = myEntry
+    ? allPlayers.findIndex(
+        (p) => p.isCurrentUser || p.name === user?.username
+      ) + 1
+    : null;
+
+  const activeChallenges = useMemo(() => {
+    if (!challenges || !user) return [];
+    return challenges.filter(
+      (c: Challenge) =>
+        c.status === "accepted" &&
+        ((c.challengerId === user.id && !c.challengerCompleted) ||
+          (c.challengeeId === user.id && !c.challengeeCompleted))
+    );
+  }, [challenges, user]);
+
   useEffect(() => {
-    voiceService.stopAllAudio(true); // Block future narration
+    voiceService.stopAllAudio(true);
     stopSpeaking();
-
-    // Clear all question read flags from session storage
     sessionStorage.removeItem("questionRead");
     for (let i = 0; i <= 20; i++) {
       sessionStorage.removeItem(`questionRead_${i}`);
     }
+    setUnfinishedGame(getUnfinishedGame());
   }, []);
 
-  // ✅ Reset Team Battle availability when user lands on Home page
-  // This handles ALL navigation scenarios: browser back, refresh, logo click, etc.
   useEffect(() => {
     if (user?.id) {
       const resetTeamBattleStatus = async () => {
@@ -121,74 +182,61 @@ const Home: React.FC = () => {
             gameType: null,
           });
         } catch (err) {
-          console.error("[Home] ⚠️ Failed to reset Team Battle status:", err);
-          // Non-critical, continue anyway
+          console.error("[Home] Failed to reset Team Battle status:", err);
         }
       };
-
       resetTeamBattleStatus();
     }
   }, [user?.id]);
 
-  // Animation effect for the title - Family Feud style flashing
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTitleEffect((prev) => !prev);
-    }, 1500);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Show welcome tutorial once per user account
   useEffect(() => {
     const userId = user?.id;
     const tutorialKey = `welcomeTutorialShown_${userId || "guest"}`;
-    const hasSeenTutorial = localStorage.getItem(tutorialKey);
-
-    if (!hasSeenTutorial) {
-      // Small delay to ensure page is fully loaded
+    if (!localStorage.getItem(tutorialKey)) {
       const timer = setTimeout(() => {
         setShowWelcomeTutorial(true);
         localStorage.setItem(tutorialKey, "true");
       }, 1000);
-
       return () => clearTimeout(timer);
     }
   }, [user?.id]);
 
   const handleStartGame = (config: GameConfig) => {
-    // Convert config to query params
     const params = new URLSearchParams();
-
-    // Handle special case for playerNames array
     Object.entries(config).forEach(([key, value]) => {
       if (key === "playerNames" && Array.isArray(value)) {
         params.append(key, encodeURIComponent(value.join(",")));
-      } else {
+      } else if (value !== undefined) {
         params.append(key, value.toString());
       }
     });
-
-    // Route to /play for game experience
     setLocation(`/play?${params.toString()}`);
   };
 
   const handleSinglePlayerStart = () => {
-    // Start single player game with selected configuration
-    const config: GameConfig = {
+    handleStartGame({
       gameMode: "single",
       gameType,
       category,
       difficulty,
       playerCount: 1,
       playerNames: [user?.username || "Player 1"],
-    };
+    });
+    setShowSoloDialog(false);
+  };
 
-    handleStartGame(config);
+  const handleDailyChallengeStart = () => {
+    handleStartGame({
+      gameMode: "single",
+      gameType: dailyChallenge.gameType,
+      category: dailyChallenge.category,
+      difficulty: dailyChallenge.difficulty,
+      playerCount: 1,
+      playerNames: [user?.username || "Player 1"],
+    });
   };
 
   const handleMultiplayerStart = () => {
-    // Open multiplayer setup modal with selected configuration
     const url = new URL(window.location.href);
     url.searchParams.set("mode", "multi");
     url.searchParams.set("gameType", gameType);
@@ -196,868 +244,698 @@ const Home: React.FC = () => {
     url.searchParams.set("difficulty", difficulty);
     window.history.replaceState({}, "", url.toString());
     setGameSetupKey((prev) => prev + 1);
+    setShowSoloDialog(false);
     setShowGameSetup(true);
   };
 
+  const handleContinueGame = () => {
+    if (!unfinishedGame) return;
+    setLocation(`/play?gameId=${unfinishedGame.gameId}`);
+  };
+
+  const clearTeamBattleCache = () => {
+    queryClient.removeQueries({ queryKey: ["/api/teams"] });
+    queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
+    queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
+    queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
+    queryClient.removeQueries({ queryKey: ["/api/users/online"] });
+    queryClient.removeQueries({ queryKey: ["/api/users/team-battle-available"] });
+  };
+
+  const handleEnterTeamBattle = async () => {
+    setIsLoadingTeamBattle(true);
+    try {
+      clearTeamBattleCache();
+      try {
+        const response = await apiRequest("POST", "/api/team-battle/cleanup");
+        await response.json();
+      } catch {
+        /* non-critical */
+      }
+      try {
+        await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
+          isInTeamBattle: true,
+          gameType: showRapidTeamBattleSetup ? "rapid_fire" : "team_battle",
+        });
+      } catch (err) {
+        console.error("[Home] Failed to set Team Battle status:", err);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/users/team-battle-available"],
+      });
+      setShowRapidTeamBattleSetup(false);
+      setShowTeamBattleSetup(true);
+    } catch (error) {
+      console.error("[Home] Team Battle entry error:", error);
+      setShowTeamBattleSetup(true);
+    } finally {
+      setTimeout(() => setIsLoadingTeamBattle(false), 300);
+    }
+  };
+
+  const handleEnterRapidFire = async () => {
+    setIsLoadingRapidFire(true);
+    try {
+      clearTeamBattleCache();
+      try {
+        await apiRequest("POST", "/api/team-battle/cleanup");
+      } catch {
+        /* non-critical */
+      }
+      setShowRapidTeamBattleSetup(true);
+      setShowTeamBattleSetup(true);
+    } catch (error) {
+      console.error("[Home] Rapid Fire entry error:", error);
+      setShowTeamBattleSetup(true);
+    } finally {
+      setTimeout(() => setIsLoadingRapidFire(false), 300);
+    }
+  };
+
+  const stats = [
+    {
+      label: "Games Played",
+      value: myEntry?.gamesPlayed ?? 0,
+      icon: Trophy,
+      iconClass: "home-stat-icon-gold",
+    },
+    {
+      label: "Rank",
+      value: myRank ? `#${myRank}` : "—",
+      icon: Medal,
+      iconClass: "home-stat-icon-purple",
+    },
+    {
+      label: "Win Streak",
+      value: getWinStreak(user?.id),
+      icon: Flame,
+      iconClass: "home-stat-icon-orange",
+    },
+    {
+      label: "Accuracy",
+      value: myEntry ? `${myEntry.accuracy}%` : "—",
+      icon: Target,
+      iconClass: "home-stat-icon-teal",
+    },
+  ];
+
+  const rankIcon = (index: number) => {
+    if (index === 0) return "🥇";
+    if (index === 1) return "🥈";
+    if (index === 2) return "🥉";
+    return `#${index + 1}`;
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-secondary-dark font-heading overflow-x-hidden max-w-full">
-      {/* Header with Auth Controls */}
-      <header className="relative w-full py-5 px-3 sm:py-6 sm:px-4 md:px-6 max-w-full">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 sm:gap-4 min-w-0">
-          {/* Logo */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
-              <span className="text-primary font-bold text-xl">F</span>
+    <div className="home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] font-heading overflow-x-hidden">
+      {/* Header */}
+      <header className="sticky top-0 z-40 backdrop-blur-lg bg-[#121628]/90 border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-accent rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-primary font-bold text-lg">F</span>
             </div>
-            <h1 className="text-2xl font-bold text-white">
+            <span className="text-xl font-bold text-white">
               Faith<span className="text-accent">IQ</span>
-            </h1>
+            </span>
           </div>
 
-          {/* Auth Controls */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 min-w-0">
+          <div className="flex items-center gap-2">
+            {user && unreadNotifications.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative text-white hover:bg-white/10"
+                onClick={() =>
+                  document
+                    .getElementById("notifications-section")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
+              >
+                <Bell className="h-5 w-5" />
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full text-[10px] font-bold flex items-center justify-center text-white">
+                  {unreadNotifications.length}
+                </span>
+              </Button>
+            )}
             {user ? (
               <>
-                <div className="hidden sm:flex items-center gap-2 text-white bg-black/20 px-2 sm:px-3 py-2 rounded-lg min-w-0">
-                  <User size={16} className="flex-shrink-0" />
-                  <span className="font-medium truncate max-w-[100px] sm:max-w-none">{user.username}</span>
+                <div className="hidden sm:flex items-center gap-2 text-white/90 bg-white/10 px-3 py-1.5 rounded-full text-sm">
+                  <User className="h-4 w-4" />
+                  <span className="truncate max-w-[100px]">{user.username}</span>
                   {user.isAdmin && (
-                    <span className="bg-accent text-primary text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
+                    <Badge className="bg-accent text-primary text-[10px] px-1.5">
                       ADMIN
-                    </span>
+                    </Badge>
                   )}
                 </div>
                 {user.isAdmin && (
                   <Button
-                    onClick={() => setLocation("/admin")}
-                    variant="outline"
                     size="sm"
-                    className="border-accent/50 text-accent bg-black/20 hover:bg-accent/10 whitespace-nowrap flex-shrink-0"
+                    variant="ghost"
+                    className="text-accent hover:bg-white/10"
+                    onClick={() => setLocation("/admin")}
                   >
-                    <Database size={16} className="mr-1 flex-shrink-0" /> <span className="hidden sm:inline">Admin</span>
+                    <Database className="h-4 w-4" />
                   </Button>
                 )}
                 <Button
-                  onClick={() => logoutMutation.mutate()}
-                  variant="outline"
                   size="sm"
-                  className="border-white/30 text-white bg-black/20 hover:bg-white/10 whitespace-nowrap flex-shrink-0"
+                  variant="ghost"
+                  className="text-white/80 hover:bg-white/10"
+                  onClick={() => logoutMutation.mutate()}
                 >
-                  <LogOut size={16} className="mr-1 flex-shrink-0" /> <span className="hidden sm:inline">Logout</span>
+                  <LogOut className="h-4 w-4" />
                 </Button>
               </>
             ) : (
               <Button
-                onClick={() => setLocation("/auth")}
-                variant="outline"
                 size="sm"
-                className="border-white/30 text-white bg-black/20 hover:bg-white/10 whitespace-nowrap flex-shrink-0"
+                className="bg-accent text-primary font-semibold"
+                onClick={() => setLocation("/auth")}
               >
-                <LogIn size={16} className="mr-1 flex-shrink-0" /> <span className="hidden sm:inline">Login</span>
+                <LogIn className="h-4 w-4 mr-1" /> Login
               </Button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative w-full py-10 px-3 sm:py-16 sm:px-4 md:px-6 max-w-full overflow-x-hidden">
-        <div className="max-w-7xl mx-auto text-center min-w-0">
-          {/* Animated Title */}
-          <div
-            className={`mb-8 transition-all duration-700 ${titleEffect ? "scale-105" : "scale-100"
-              }`}
-          >
-            <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-6 tracking-tight">
-              Faith<span className="text-accent drop-shadow-lg">IQ</span>
-            </h1>
-            <div className="w-full max-w-2xl mx-auto h-2 bg-white/20 rounded-full overflow-hidden mb-6">
-              <div
-                className="h-full bg-gradient-to-r from-accent to-accent/70 animate-pulse rounded-full"
-                style={{ width: "75%" }}
-              ></div>
-            </div>
-            <p className="text-base sm:text-xl md:text-2xl text-white/90 font-light max-w-3xl mx-auto leading-relaxed px-2">
-              Test your Bible knowledge with the ultimate trivia experience
-            </p>
+      <main className="max-w-6xl mx-auto px-4 pb-12 space-y-6 sm:space-y-8">
+        {/* Hero */}
+        <section className="pt-6 sm:pt-10 text-center sm:text-left animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <p className="text-accent font-medium text-sm sm:text-base mb-1">
+            {getGreeting()}
+            {user ? `, ${user.username}` : ""}! 👋
+          </p>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-tight mb-3">
+            Ready to test your{" "}
+            <span className="text-accent">Bible knowledge</span>?
+          </h1>
+          <p className="text-white/80 text-base sm:text-lg max-w-xl mb-6">
+            Pick a game mode below and start playing in seconds. Great for solo
+            study, friends, or team competitions.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center sm:justify-start">
+            <Button
+              size="lg"
+              className="bg-accent hover:bg-accent/90 text-primary font-bold text-base px-8 h-12 rounded-xl shadow-lg shadow-accent/20"
+              onClick={() => setShowSoloDialog(true)}
+            >
+              <Play className="mr-2 h-5 w-5" /> Start Solo Quiz
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="home-btn-outline h-12 rounded-xl px-8 font-semibold"
+              onClick={() => setShowWelcomeTutorial(true)}
+            >
+              <HelpCircle className="mr-2 h-5 w-5" /> How It Works
+            </Button>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Main Content */}
-      <main className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-8 sm:py-12 min-w-0 overflow-x-hidden">
-        <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center min-w-0">
-          {/* Left Column - Game Options */}
-          <div className="space-y-8">
-            {/* Host Avatar */}
-            <div className="relative mb-8">
-              <div className="absolute inset-0 bg-accent/20 rounded-full filter blur-xl animate-pulse"></div>
-              <img
-                src={holmesImagePath}
-                alt="Kingdom Genius Dr. HB Holmes - Bible Trivia Quiz Master"
-                className="w-32 h-32 md:w-40 md:h-40 object-cover rounded-full border-4 border-accent shadow-2xl z-10 relative mx-auto"
-              />
-              <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-accent to-accent/80 text-primary px-6 z-50 py-2 rounded-full font-bold text-sm whitespace-nowrap shadow-lg">
-                Dr. HB Holmes
-              </div>
-            </div>
-
-            {/* Game Configuration */}
-            <div className="space-y-6">
-              <h2 className="text-3xl md:text-4xl font-bold text-white text-center lg:text-left">
-                Configure Your Game
-              </h2>
-
-              {/* Game Configuration Card */}
-              <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-                <div className="space-y-5">
-                  {/* Game Type Selection */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Label className="text-white font-semibold text-base">
-                        Game Type
-                      </Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-white/60 hover:text-accent hover:scale-110 cursor-help transition-all duration-200" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-sm p-4 bg-gradient-to-br from-slate-900 to-slate-800 border border-accent/30 shadow-xl rounded-lg">
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-6 h-6 bg-accent/20 rounded-full flex items-center justify-center">
-                              <HelpCircle className="h-3 w-3 text-accent" />
-                            </div>
-                            <h4 className="font-semibold text-white text-sm">
-                              Game Type Guide
-                            </h4>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                              <div>
-                                <p className="text-accent font-medium text-xs">
-                                  Question-Based
-                                </p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  Answer 10 questions at your own pace. Perfect
-                                  for learning!
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                              <div>
-                                <p className="text-accent font-medium text-xs">
-                                  Time-Based
-                                </p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  Race against time! Answer as many questions as
-                                  possible in 15 minutes.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <RadioGroup
-                      value={gameType}
-                      onValueChange={(value) =>
-                        setGameType(value as "question" | "time")
-                      }
-                      className="space-y-2"
-                    >
-                      <div className="flex items-center p-3 border border-white/30 rounded-lg cursor-pointer bg-white/5 hover:bg-white/10 transition-all">
-                        <RadioGroupItem
-                          value="question"
-                          id="question"
-                          className="mr-3 border-white text-accent"
-                        />
-                        <Label
-                          htmlFor="question"
-                          className="cursor-pointer flex-1 text-white"
-                        >
-                          <p className="font-medium">Question-Based</p>
-                          <p className="text-sm text-white/70">
-                            Take your time answering 10 Bible questions. Perfect
-                            for learning!
-                          </p>
-                        </Label>
-                      </div>
-                      <div className="flex items-center p-3 border border-white/30 rounded-lg cursor-pointer bg-white/5 hover:bg-white/10 transition-all">
-                        <RadioGroupItem
-                          value="time"
-                          id="time"
-                          className="mr-3 border-white text-accent"
-                        />
-                        <Label
-                          htmlFor="time"
-                          className="cursor-pointer flex-1 text-white"
-                        >
-                          <p className="font-medium">Time-Based</p>
-                          <p className="text-sm text-white/70">
-                            Race against time! Answer as many questions as you
-                            can in 15 minutes for maximum excitement!
-                          </p>
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-
-                  {/* Category Selection */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Label className="text-white font-semibold text-base">
-                        Category
-                      </Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-white/60 hover:text-accent hover:scale-110 cursor-help transition-all duration-200" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-sm p-4 bg-gradient-to-br from-slate-900 to-slate-800 border border-accent/30 shadow-xl rounded-lg">
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-6 h-6 bg-accent/20 rounded-full flex items-center justify-center">
-                              <HelpCircle className="h-3 w-3 text-accent" />
-                            </div>
-                            <h4 className="font-semibold text-white text-sm">
-                              Bible Categories
-                            </h4>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                              <div>
-                                <p className="text-accent font-medium text-xs">
-                                  All Categories
-                                </p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  Mix of everything for variety
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                              <div>
-                                <p className="text-accent font-medium text-xs">
-                                  Old/New Testament
-                                </p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  Focus on specific biblical sections
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                              <div>
-                                <p className="text-accent font-medium text-xs">
-                                  Bible Stories & People
-                                </p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  Famous stories and key biblical figures
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Select value={category} onValueChange={setCategory}>
-                      <SelectTrigger className="w-full p-3 bg-white/10 border-white/30 text-white hover:bg-white/20">
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="All Categories">
-                          All Categories
-                        </SelectItem>
-                        <SelectItem value="Old Testament">
-                          Old Testament
-                        </SelectItem>
-                        <SelectItem value="New Testament">
-                          New Testament
-                        </SelectItem>
-                        <SelectItem value="Bible Stories">
-                          Bible Stories
-                        </SelectItem>
-                        <SelectItem value="Famous People">
-                          Famous People
-                        </SelectItem>
-                        <SelectItem value="Theme-Based">Theme-Based</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Difficulty Selection */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Label className="text-white font-semibold text-base">
-                        Difficulty
-                      </Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-white/60 hover:text-accent hover:scale-110 cursor-help transition-all duration-200" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-sm p-4 bg-gradient-to-br from-slate-900 to-slate-800 border border-accent/30 shadow-xl rounded-lg">
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-6 h-6 bg-accent/20 rounded-full flex items-center justify-center">
-                              <HelpCircle className="h-3 w-3 text-accent" />
-                            </div>
-                            <h4 className="font-semibold text-white text-sm">
-                              Difficulty Levels
-                            </h4>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
-                              <div>
-                                <p className="text-green-400 font-medium text-xs">
-                                  Beginner
-                                </p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  Easier questions, perfect for learning
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-yellow-500 rounded-full mt-2 flex-shrink-0"></div>
-                              <div>
-                                <p className="text-yellow-400 font-medium text-xs">
-                                  Intermediate
-                                </p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  Moderate difficulty for growing knowledge
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-red-500 rounded-full mt-2 flex-shrink-0"></div>
-                              <div>
-                                <p className="text-red-400 font-medium text-xs">
-                                  Advanced
-                                </p>
-                                <p className="text-gray-300 text-xs leading-relaxed">
-                                  Challenging questions for Bible experts
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Select value={difficulty} onValueChange={setDifficulty}>
-                      <SelectTrigger className="w-full p-3 bg-white/10 border-white/30 text-white hover:bg-white/20">
-                        <SelectValue placeholder="Select difficulty" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Beginner">Beginner</SelectItem>
-                        <SelectItem value="Intermediate">
-                          Intermediate
-                        </SelectItem>
-                        <SelectItem value="Advanced">Advanced</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Game Mode Cards */}
-              <div className="space-y-4">
-                {/* Single Player Card */}
-                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-accent/50 transition-all duration-300 hover:shadow-2xl hover:shadow-accent/20">
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
-                        <Play className="h-6 w-6 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-xl font-bold text-white">
-                            Single Player
-                          </h3>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <HelpCircle className="h-4 w-4 text-white/60 hover:text-accent hover:scale-110 cursor-help transition-all duration-200" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-sm p-4 bg-gradient-to-br from-slate-900 to-slate-800 border border-accent/30 shadow-xl rounded-lg">
-                              <div className="flex items-center gap-2 mb-3">
-                                <div className="w-6 h-6 bg-accent/20 rounded-full flex items-center justify-center">
-                                  <Play className="h-3 w-3 text-accent" />
-                                </div>
-                                <h4 className="font-semibold text-white text-sm">
-                                  Single Player Mode
-                                </h4>
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Answer questions at your own pace
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Earn rewards and track progress
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    No pressure from time limits
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Perfect for Bible study
-                                  </p>
-                                </div>
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <p className="text-white/70 text-sm">
-                          Learn at your own pace, earn rewards, and track your
-                          progress
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={handleSinglePlayerStart}
-                      className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-primary font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0"
-                    >
-                      <Play className="mr-2 h-4 w-4 flex-shrink-0" /> Start
-                    </Button>
-                    {/* Rapid Fire button removed from Single Player card — moved to its own section below */}
-                  </div>
-                </div>
-
-                {/* Rapid Fire Card */}
-                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-accent/50 transition-all duration-300 hover:shadow-2xl hover:shadow-accent/20">
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
-                        <Zap className="h-6 w-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-xl font-bold text-white">Rapid Fire</h3>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <HelpCircle className="h-4 w-4 text-white/60 hover:text-accent hover:scale-110 cursor-help transition-all duration-200" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-sm p-4 bg-gradient-to-br from-slate-900 to-slate-800 border border-accent/30 shadow-xl rounded-lg">
-                              <div className="flex items-center gap-2 mb-3">
-                                <div className="w-6 h-6 bg-accent/20 rounded-full flex items-center justify-center">
-                                  <Zap className="h-3 w-3 text-accent" />
-                                </div>
-                                <h4 className="font-semibold text-white text-sm">Rapid Fire Mode</h4>
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">Fast-paced timed questions</p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">Compete quickly and earn bonus points</p>
-                                </div>
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <p className="text-white/70 text-sm">Jump straight into a timed challenge and test your speed.</p>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={async () => {
-                        setIsLoadingRapidFire(true);
-                        try {
-                          queryClient.removeQueries({ queryKey: ["/api/teams"] });
-                          queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
-                          queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
-                          queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
-                          queryClient.removeQueries({ queryKey: ["/api/users/online"] });
-                          queryClient.removeQueries({ queryKey: ["/api/users/team-battle-available"] });
-
-                          try {
-                            const response = await apiRequest("POST", "/api/team-battle/cleanup");
-                            await response.json();
-                          } catch (err) {
-                            // ignore cleanup errors
-                          }
-
-                          setShowTeamBattleSetup(true);
-                          setShowRapidTeamBattleSetup(true);
-                        } catch (error) {
-                          console.error("[Home] Rapid Fire entry error:", error);
-                          setShowTeamBattleSetup(true);
-                        } finally {
-                          setTimeout(() => {
-                            setIsLoadingRapidFire(false);
-                          }, 300);
-                        }
-                      }}
-                      disabled={isLoadingRapidFire}
-                      className="w-full sm:w-auto ml-3 bg-accent hover:bg-accent/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                      {isLoadingRapidFire ? (
-                        <Loader2 className="mr-2 h-4 w-4 flex-shrink-0 animate-spin" />
-                      ) : (
-                        <Zap className="mr-2 h-4 w-4 flex-shrink-0" />
-                      )}
-                      <span className="hidden sm:inline">Enter Rapid Fire</span>
-                      <span className="sm:hidden">Rapid Fire</span>
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Multiplayer Card */}
-                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-secondary/50 transition-all duration-300 hover:shadow-2xl hover:shadow-secondary/20">
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center flex-shrink-0">
-                        <Sword className="h-6 w-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-xl font-bold text-white">
-                            Multiplayer
-                          </h3>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <HelpCircle className="h-4 w-4 text-white/60 hover:text-accent hover:scale-110 cursor-help transition-all duration-200" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-sm p-4 bg-gradient-to-br from-slate-900 to-slate-800 border border-accent/30 shadow-xl rounded-lg">
-                              <div className="flex items-center gap-2 mb-3">
-                                <div className="w-6 h-6 bg-secondary/20 rounded-full flex items-center justify-center">
-                                  <Users className="h-3 w-3 text-secondary" />
-                                </div>
-                                <h4 className="font-semibold text-white text-sm">
-                                  Multiplayer Mode
-                                </h4>
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Up to 3 players on one device
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Take turns answering questions
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Share the excitement together
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Perfect for family game night
-                                  </p>
-                                </div>
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <p className="text-white/70 text-sm">
-                          Play with friends! Take turns answering questions
-                          together on one device
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={handleMultiplayerStart}
-                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0"
-                    >
-                      <Sword className="mr-2 h-4 w-4 flex-shrink-0" /> Play
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Team Battle Card */}
-                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-secondary/50 transition-all duration-300 hover:shadow-2xl hover:shadow-secondary/20">
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center flex-shrink-0">
-                        <Sword className="h-6 w-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-xl font-bold text-white">
-                            Team Battle
-                          </h3>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <HelpCircle className="h-4 w-4 text-white/60 hover:text-accent hover:scale-110 cursor-help transition-all duration-200" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-sm p-4 bg-gradient-to-br from-slate-900 to-slate-800 border border-accent/30 shadow-xl rounded-lg">
-                              <div className="flex items-center gap-2 mb-3">
-                                <div className="w-6 h-6 bg-secondary/20 rounded-full flex items-center justify-center">
-                                  <Trophy className="h-3 w-3 text-secondary" />
-                                </div>
-                                <h4 className="font-semibold text-white text-sm">
-                                  Team Battle Mode
-                                </h4>
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Two teams of 3 players each
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Real-time multiplayer action
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Work together to win
-                                  </p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0"></div>
-                                  <p className="text-gray-300 text-xs leading-relaxed">
-                                    Most exciting game mode
-                                  </p>
-                                </div>
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <p className="text-white/70 text-sm">
-                          Two teams compete in real-time multiplayer action
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={async () => {
-                        // Set loading state
-                        setIsLoadingTeamBattle(true);
-
-                        try {
-                          // ========================================================================
-                          // STEP 1: Clear all team battle related cache (client-side)
-                          // ========================================================================
-
-                          queryClient.removeQueries({ queryKey: ["/api/teams"] });
-                          queryClient.removeQueries({ queryKey: ["/api/teams/available"] });
-                          queryClient.removeQueries({ queryKey: ["/api/team-invitations"] });
-                          queryClient.removeQueries({ queryKey: ["/api/team-join-requests"] });
-                          queryClient.removeQueries({ queryKey: ["/api/users/online"] });
-                          queryClient.removeQueries({ queryKey: ["/api/users/team-battle-available"] });
-
-
-                          // ========================================================================
-                          // STEP 2: Clean up server-side stale data (CRITICAL)
-                          // ========================================================================
-
-                          try {
-                            const response = await apiRequest("POST", "/api/team-battle/cleanup");
-                            const result = await response.json();
-
-                            if (result.success) {
-                            } else {
-                              console.warn("[Home] ⚠️ Step 2: Server-side cleanup completed with warnings", result);
-                            }
-                          } catch (err) {
-                            // Non-critical, continue anyway
-                            console.error("[Home] ⚠️ Step 2: Cleanup request failed (non-critical, continuing):", err);
-                          }
-
-                          // ========================================================================
-                          // ✅ STEP 2.5: Mark user as "in Team Battle" (NEW FIX)
-                          // ========================================================================
-
-                          try {
-                            await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
-                              isInTeamBattle: true,
-                              gameType: showRapidTeamBattleSetup ? "rapid_fire" : "team_battle",
-                            });
-                          } catch (err) {
-                            console.error("[Home] ⚠️ Step 2.5: Failed to set Team Battle status (non-critical):", err);
-                          }
-
-                          // ========================================================================
-                          // STEP 3: Invalidate queries to force fresh refetch when modal opens
-                          // ========================================================================
-
-                          queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
-                          queryClient.invalidateQueries({ queryKey: ["/api/users/online"] });
-                          queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
-
-
-                          // ========================================================================
-                          // STEP 4: Open modal after cleanup is complete
-                          // ========================================================================
-                          setShowTeamBattleSetup(true);
-
-                        } catch (error) {
-                          // If anything fails, still open modal (non-blocking)
-                          console.error("[Home] ⚠️ Error during cleanup (opening modal anyway):", error);
-                          setShowTeamBattleSetup(true);
-                        } finally {
-                          // Reset loading state after a short delay to ensure smooth transition
-                          setTimeout(() => {
-                            setIsLoadingTeamBattle(false);
-                          }, 300);
-                        }
-                      }}
-                      disabled={isLoadingTeamBattle}
-                      className="w-full sm:w-auto bg-secondary hover:bg-secondary/90 text-white font-bold px-4 sm:px-6 py-3 whitespace-nowrap flex-shrink-0 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                      {isLoadingTeamBattle ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 flex-shrink-0 animate-spin" />
-                          <span className="hidden sm:inline">Loading...</span>
-                          <span className="sm:hidden">Loading...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sword className="mr-2 h-4 w-4 flex-shrink-0" />
-                          <span className="hidden sm:inline">Enter Team Battle</span>
-                          <span className="sm:hidden">Team Battle</span>
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column - Rewards & Stats */}
-          <div className="space-y-6 sm:space-y-8">
-            {/* Rewards Section */}
-            <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 border border-white/20">
-              <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-4 sm:mb-6 text-center">
-                🏆 Earn Rewards
-              </h3>
-              <div className="grid grid-cols-1 gap-3 sm:gap-4">
-                <div className="bg-gradient-to-r from-accent/20 to-accent/10 rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center space-x-3 sm:space-x-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-primary font-bold text-base sm:text-lg">
-                      5
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-white font-semibold text-sm sm:text-base">
-                      Free Book
-                    </p>
-                    <p className="text-white/60 text-xs sm:text-sm">
-                      Get 5 correct answers
-                    </p>
-                  </div>
-                </div>
-                <div className="bg-gradient-to-r from-secondary/20 to-secondary/10 rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center space-x-3 sm:space-x-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-secondary rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-bold text-base sm:text-lg">
-                      9
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-white font-semibold text-sm sm:text-base">
-                      FaithIQ Cap
-                    </p>
-                    <p className="text-white/60 text-xs sm:text-sm">
-                      Get 9 correct answers
-                    </p>
-                  </div>
-                </div>
-                <div className="bg-gradient-to-r from-accent/20 to-accent/10 rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center space-x-3 sm:space-x-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-primary font-bold text-base sm:text-lg">
-                      12
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-white font-semibold text-sm sm:text-base">
-                      T-Shirt
-                    </p>
-                    <p className="text-white/60 text-xs sm:text-sm">
-                      Perfect score!
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="space-y-3 sm:space-y-4">
-              <Button
-                onClick={() => setLocation("/leaderboard")}
-                className="w-full bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-primary font-bold py-3 sm:py-4 text-sm sm:text-base md:text-lg transition-all duration-300 whitespace-nowrap min-w-0"
+        {/* Stats */}
+        {user && (
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-3 duration-500 delay-100 fill-mode-both">
+            {stats.map((stat, i) => (
+              <Card
+                key={stat.label}
+                className="home-stat-card border-0 rounded-xl overflow-hidden transition-transform hover:scale-[1.02] duration-300"
+                style={{ animationDelay: `${i * 80}ms` }}
               >
-                <Trophy className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" /> <span className="truncate">View Leaderboard</span>
-              </Button>
-
-              {user && (
-                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm rounded-lg sm:rounded-xl p-3 sm:p-4 border border-white/20">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-white/80 text-xs sm:text-sm truncate">
-                      Welcome back, {user.username}!
-                    </span>
-                    <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
-                      {unreadNotifications.length > 0 && (
-                        <Badge
-                          variant="destructive"
-                          className="px-1.5 sm:px-2 text-xs"
-                        >
-                          {unreadNotifications.length}
-                        </Badge>
-                      )}
-                      <Bell className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white/60" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* FAQ Section */}
-              <Collapsible open={showFAQ} onOpenChange={setShowFAQ}>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="w-full bg-gradient-to-r from-white/5 to-white/10 hover:from-white/10 hover:to-white/15 text-white border border-white/20 py-3 sm:py-4 text-sm sm:text-base md:text-lg font-medium transition-all duration-300"
+                <CardContent className="p-4 sm:p-5">
+                  <div
+                    className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center mb-3",
+                      stat.iconClass
+                    )}
                   >
-                    <HelpCircle className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                    <span className="truncate">Help & FAQ</span>
-                    <ChevronDown
-                      className={`ml-auto h-4 w-4 transition-transform duration-300 ${showFAQ ? "rotate-180" : ""
-                        }`}
-                    />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 sm:mt-3">
-                  <FAQSection />
-                </CollapsibleContent>
-              </Collapsible>
-            </div>
+                    <stat.icon className="h-5 w-5" />
+                  </div>
+                  <p className="text-2xl sm:text-3xl font-bold text-white tabular-nums">
+                    {stat.value}
+                  </p>
+                  <p className="text-xs sm:text-sm text-white/55 mt-1 font-medium">
+                    {stat.label}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </section>
+        )}
+
+        {/* Continue Playing */}
+        {user &&
+          (unfinishedGame ||
+            activeChallenges.length > 0 ||
+            pendingChallenges.length > 0) && (
+            <section className="animate-in fade-in slide-in-from-bottom-3 duration-500 delay-150 fill-mode-both">
+              <Card className="home-glass-card border-accent/30 rounded-xl overflow-hidden">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-white flex items-center gap-2 text-lg">
+                    <Play className="h-5 w-5 text-accent" /> Continue Playing
+                  </CardTitle>
+                  <CardDescription className="text-white/55">
+                    Pick up where you left off
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2 pb-4">
+                  {unfinishedGame && (
+                    <button
+                      type="button"
+                      onClick={handleContinueGame}
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-left group"
+                    >
+                      <div>
+                        <p className="text-white font-medium text-sm">
+                          Solo Quiz in progress
+                        </p>
+                        <p className="text-white/60 text-xs">
+                          {unfinishedGame.label}
+                        </p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-accent group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  )}
+                  {activeChallenges.map((c: Challenge) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setLocation(`/challenge/${c.id}`)}
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-left group"
+                    >
+                      <div>
+                        <p className="text-white font-medium text-sm">
+                          Active challenge
+                        </p>
+                        <p className="text-white/60 text-xs">
+                          {c.category} · {c.difficulty}
+                        </p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-accent group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  ))}
+                  {pendingChallenges.slice(0, 2).map((c: Challenge) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setLocation("/challenges")}
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-left group"
+                    >
+                      <div>
+                        <p className="text-white font-medium text-sm">
+                          Challenge waiting for you
+                        </p>
+                        <p className="text-white/60 text-xs">
+                          {c.category} · Tap to respond
+                        </p>
+                      </div>
+                      <Badge variant="destructive" className="text-xs">
+                        New
+                      </Badge>
+                    </button>
+                  ))}
+                </CardContent>
+              </Card>
+            </section>
+          )}
+
+        {/* Action Cards */}
+        <section>
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">
+            Choose Your Game
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <HomeActionCard
+              title="Solo Quiz"
+              description="Learn at your own pace. Pick a category, answer questions, and track your score."
+              icon={Target}
+              onClick={() => setShowSoloDialog(true)}
+              accent="blue"
+              delay={0}
+            />
+            <HomeActionCard
+              title="Team Battle"
+              description="Two teams compete live. Invite friends, work together, and battle for victory."
+              icon={Swords}
+              onClick={handleEnterTeamBattle}
+              loading={isLoadingTeamBattle}
+              accent="purple"
+              delay={80}
+            />
+            <HomeActionCard
+              title="Rapid Fire"
+              description="Fast-paced team mode. Quick questions, high energy — perfect for a short match."
+              icon={Zap}
+              onClick={handleEnterRapidFire}
+              loading={isLoadingRapidFire}
+              accent="gold"
+              delay={160}
+            />
+            <HomeActionCard
+              title="Challenge Friend"
+              description="Send a challenge and compare scores when you're both ready."
+              icon={Users}
+              onClick={() => setLocation("/challenges")}
+              badge={
+                pendingChallenges.length > 0
+                  ? pendingChallenges.length
+                  : undefined
+              }
+              accent="teal"
+              delay={240}
+            />
           </div>
-        </div>
+        </section>
+
+        {/* Daily Verse + Daily Challenge */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="home-glass-card rounded-xl border-white/10">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
+                <BookOpen className="h-5 w-5 text-accent" /> Daily Bible Verse
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <blockquote className="text-white/90 text-sm sm:text-base leading-relaxed italic border-l-4 border-accent pl-4">
+                "{dailyVerse.text}"
+              </blockquote>
+              <p className="text-accent font-semibold text-sm mt-3">
+                — {dailyVerse.reference}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="home-glass-card rounded-xl border-white/10">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
+                <Sparkles className="h-5 w-5 text-accent" /> Daily Challenge
+              </CardTitle>
+              <CardDescription className="text-white/55">
+                {dailyChallenge.title}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-white/80 text-sm">{dailyChallenge.description}</p>
+              <div className="flex flex-wrap gap-2">
+                <Badge className="bg-white/10 text-white/85 border border-white/15 hover:bg-white/10">
+                  {dailyChallenge.category}
+                </Badge>
+                <Badge className="bg-accent/15 text-accent border border-accent/25 hover:bg-accent/15">
+                  {dailyChallenge.difficulty}
+                </Badge>
+              </div>
+              <Button
+                className="w-full bg-accent hover:bg-accent/90 text-primary font-semibold"
+                onClick={handleDailyChallengeStart}
+              >
+                <Play className="mr-2 h-4 w-4" /> Accept Daily Challenge
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Notifications */}
+        {user && (
+          <section id="notifications-section">
+            <Card className="home-glass-card rounded-xl">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
+                    <Bell className="h-5 w-5 text-accent" /> Notifications
+                    {unreadNotifications.length > 0 && (
+                      <Badge variant="destructive" className="ml-1 text-xs">
+                        {unreadNotifications.length} new
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription className="text-white/55">
+                    Invites, challenges, and updates
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {latestNotifications.length === 0 ? (
+                  <p className="text-white/50 text-sm py-4 text-center">
+                    No notifications yet — start a game or challenge a friend!
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {latestNotifications.map((n: Notification) => (
+                      <li
+                        key={n.id}
+                        className={`flex items-start gap-3 p-3 rounded-xl transition-colors ${
+                          n.read ? "bg-white/5" : "bg-accent/10 border border-accent/20"
+                        }`}
+                      >
+                        <div
+                          className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
+                            n.read ? "bg-white/30" : "bg-accent"
+                          }`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm leading-snug">
+                            {n.message}
+                          </p>
+                          <p className="text-white/40 text-xs mt-1">
+                            {new Date(n.createdAt).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                        {n.challengeId && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-accent hover:text-accent/80 flex-shrink-0"
+                            onClick={() =>
+                              setLocation(`/challenge/${n.challengeId}`)
+                            }
+                          >
+                            View
+                          </Button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Leaderboard Preview */}
+        <section>
+          <Card className="home-glass-card rounded-xl">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
+                  <Trophy className="h-5 w-5 text-accent" /> Top Players
+                </CardTitle>
+                <CardDescription className="text-white/55">
+                  Leaderboard preview
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-accent hover:text-accent hover:bg-accent/10"
+                onClick={() => setLocation("/leaderboard")}
+              >
+                View all <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {leaderboardLoading ? (
+                <div className="py-8 text-center text-white/50 text-sm">
+                  Loading rankings…
+                </div>
+              ) : leaderboardEntries.length === 0 ? (
+                <div className="py-8 text-center text-white/50 text-sm">
+                  No scores yet — be the first on the board!
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {leaderboardEntries.map((player, index) => (
+                    <li
+                      key={player.id || player.name}
+                      className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                        player.isCurrentUser || player.name === user?.username
+                          ? "bg-accent/15 border border-accent/30"
+                          : "bg-white/5 hover:bg-white/10"
+                      }`}
+                    >
+                      <span className="w-8 text-center font-bold text-white/80 text-sm">
+                        {rankIcon(index)}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm truncate">
+                          {player.name}
+                          {(player.isCurrentUser ||
+                            player.name === user?.username) &&
+                            " (You)"}
+                        </p>
+                        <p className="text-white/50 text-xs">
+                          {player.gamesPlayed} games · {player.accuracy}% accuracy
+                        </p>
+                      </div>
+                      <span className="text-accent font-bold text-sm">
+                        {player.score} pts
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Footer links */}
+        <section className="flex flex-wrap gap-3 justify-center pt-2 pb-4">
+          <Button
+            variant="ghost"
+            className="text-white/70 hover:text-white hover:bg-white/10"
+            onClick={() => setLocation("/leaderboard")}
+          >
+            <Trophy className="mr-2 h-4 w-4" /> Leaderboard
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white/70 hover:text-white hover:bg-white/10"
+            onClick={() => setLocation("/game-history")}
+          >
+            <History className="mr-2 h-4 w-4" /> Game History
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white/70 hover:text-white hover:bg-white/10"
+            onClick={() => setLocation("/challenges")}
+          >
+            <Sword className="mr-2 h-4 w-4" /> Challenges
+          </Button>
+        </section>
+
+        {/* FAQ */}
+        <Collapsible open={showFAQ} onOpenChange={setShowFAQ}>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full home-btn-outline py-6 rounded-xl font-medium"
+            >
+              <HelpCircle className="mr-2 h-5 w-5" />
+              Help & FAQ
+              <ChevronDown
+                className={`ml-auto h-4 w-4 transition-transform ${
+                  showFAQ ? "rotate-180" : ""
+                }`}
+              />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-3">
+            <FAQSection />
+          </CollapsibleContent>
+        </Collapsible>
+
+        <footer className="text-center text-white/40 text-xs py-4">
+          © {new Date().getFullYear()} FaithIQ. All rights reserved.
+        </footer>
       </main>
 
-      {/* Footer */}
-      <footer className="w-full py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 border-t border-white/10 mt-8 max-w-full overflow-x-hidden">
-        <div className="max-w-7xl mx-auto text-center min-w-0">
-          <p className="text-white/60 text-xs sm:text-sm">
-            © {new Date().getFullYear()} FaithIQ. All rights reserved.
-          </p>
-        </div>
-      </footer>
+      {/* Solo Quiz Config Dialog */}
+      <Dialog open={showSoloDialog} onOpenChange={setShowSoloDialog}>
+        <DialogContent className="bg-[#1e2445] border-white/20 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white text-xl">Solo Quiz Setup</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Choose your settings, then start playing.
+            </DialogDescription>
+          </DialogHeader>
 
-      {/* Game Setup Modal */}
+          <div className="space-y-5 py-2">
+            <div>
+              <Label className="text-white/90 mb-2 block">Game Type</Label>
+              <RadioGroup
+                value={gameType}
+                onValueChange={(v) => setGameType(v as "question" | "time")}
+                className="space-y-2"
+              >
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-white/20 bg-white/5 cursor-pointer">
+                  <RadioGroupItem value="question" id="dlg-question" />
+                  <Label htmlFor="dlg-question" className="cursor-pointer flex-1">
+                    <span className="font-medium">Question-Based</span>
+                    <p className="text-xs text-white/60">10 questions at your pace</p>
+                  </Label>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-white/20 bg-white/5 cursor-pointer">
+                  <RadioGroupItem value="time" id="dlg-time" />
+                  <Label htmlFor="dlg-time" className="cursor-pointer flex-1">
+                    <span className="font-medium">Time-Based</span>
+                    <p className="text-xs text-white/60">15-minute speed round</p>
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <div>
+              <Label className="text-white/90 mb-2 block">Category</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="bg-white/10 border-white/25 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All Categories">All Categories</SelectItem>
+                  <SelectItem value="Old Testament">Old Testament</SelectItem>
+                  <SelectItem value="New Testament">New Testament</SelectItem>
+                  <SelectItem value="Bible Stories">Bible Stories</SelectItem>
+                  <SelectItem value="Famous People">Famous People</SelectItem>
+                  <SelectItem value="Theme-Based">Theme-Based</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-white/90 mb-2 block">Difficulty</Label>
+              <Select value={difficulty} onValueChange={setDifficulty}>
+                <SelectTrigger className="bg-white/10 border-white/25 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Beginner">Beginner</SelectItem>
+                  <SelectItem value="Intermediate">Intermediate</SelectItem>
+                  <SelectItem value="Advanced">Advanced</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <Button
+                className="w-full bg-accent hover:bg-accent/90 text-primary font-bold h-11"
+                onClick={handleSinglePlayerStart}
+              >
+                <Play className="mr-2 h-4 w-4" /> Start Solo Quiz
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full home-btn-outline h-11 font-semibold"
+                onClick={handleMultiplayerStart}
+              >
+                <Users className="mr-2 h-4 w-4" /> Play with Friends (Same Device)
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {showGameSetup && (
         <GameSetup key={gameSetupKey} onStartGame={handleStartGame} />
       )}
-      {/* Team Battle Setup Modal */}
+
       {showTeamBattleSetup && (
         <TeamBattleSetup
           open={showTeamBattleSetup}
@@ -1072,11 +950,13 @@ const Home: React.FC = () => {
         />
       )}
 
-      {/* Welcome Tutorial Modal */}
       <WelcomeTutorial
         isOpen={showWelcomeTutorial}
         onClose={() => setShowWelcomeTutorial(false)}
-        onStartGame={handleSinglePlayerStart}
+        onStartGame={() => {
+          setShowWelcomeTutorial(false);
+          setShowSoloDialog(true);
+        }}
       />
     </div>
   );

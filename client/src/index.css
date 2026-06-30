@@ -80,6 +80,120 @@
   }
 }
 
+/* FaithIQ Home — dark glass UI (avoids white shadcn card/button defaults) */
+.home-page {
+  --home-surface: #181d35;
+  --home-surface-raised: #1f2545;
+  --home-border: rgba(255, 255, 255, 0.1);
+  --home-gold: hsl(45, 90%, 55%);
+  --home-gold-dim: hsl(45, 70%, 45%);
+  --home-purple: hsl(260, 45%, 55%);
+  --home-blue: hsl(220, 70%, 58%);
+  --home-teal: hsl(168, 55%, 48%);
+}
+
+.home-glass-card {
+  background: linear-gradient(
+    145deg,
+    rgba(31, 37, 69, 0.92) 0%,
+    rgba(24, 29, 53, 0.95) 100%
+  );
+  border: 1px solid var(--home-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  color: #fff;
+}
+
+.home-stat-card {
+  background: linear-gradient(
+    160deg,
+    rgba(28, 34, 62, 0.98) 0%,
+    rgba(20, 24, 46, 0.98) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  color: #fff;
+}
+
+.home-btn-outline {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  color: #fff !important;
+}
+
+.home-btn-outline:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 215, 0, 0.45) !important;
+  color: #fff !important;
+}
+
+.home-action-card {
+  background: linear-gradient(
+    155deg,
+    rgba(30, 36, 66, 0.95) 0%,
+    rgba(22, 27, 50, 0.98) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
+}
+
+.home-action-card:hover {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.home-action-card--gold {
+  border-color: rgba(234, 179, 8, 0.35);
+}
+.home-action-card--gold:hover {
+  border-color: rgba(234, 179, 8, 0.55);
+  background: linear-gradient(155deg, rgba(40, 36, 30, 0.95) 0%, rgba(22, 27, 50, 0.98) 100%);
+}
+
+.home-action-card--blue {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.home-action-card--blue:hover {
+  border-color: rgba(59, 130, 246, 0.55);
+}
+
+.home-action-card--purple {
+  border-color: rgba(167, 139, 250, 0.35);
+}
+.home-action-card--purple:hover {
+  border-color: rgba(167, 139, 250, 0.55);
+}
+
+.home-action-card--teal {
+  border-color: rgba(45, 212, 191, 0.35);
+}
+.home-action-card--teal:hover {
+  border-color: rgba(45, 212, 191, 0.55);
+}
+
+.home-icon-gold {
+  background: linear-gradient(135deg, hsl(45, 90%, 50%) 0%, hsl(38, 90%, 42%) 100%);
+  color: hsl(220, 50%, 15%);
+}
+
+.home-icon-blue {
+  background: linear-gradient(135deg, hsl(220, 75%, 55%) 0%, hsl(230, 65%, 42%) 100%);
+  color: #fff;
+}
+
+.home-icon-purple {
+  background: linear-gradient(135deg, hsl(260, 55%, 58%) 0%, hsl(270, 50%, 42%) 100%);
+  color: #fff;
+}
+
+.home-icon-teal {
+  background: linear-gradient(135deg, hsl(168, 60%, 45%) 0%, hsl(175, 55%, 35%) 100%);
+  color: #fff;
+}
+
+.home-stat-icon-gold { color: hsl(45, 90%, 55%); background: rgba(234, 179, 8, 0.15); }
+.home-stat-icon-purple { color: hsl(260, 55%, 65%); background: rgba(167, 139, 250, 0.15); }
+.home-stat-icon-orange { color: hsl(25, 95%, 58%); background: rgba(251, 146, 60, 0.15); }
+.home-stat-icon-teal { color: hsl(168, 55%, 52%); background: rgba(45, 212, 191, 0.15); }
+
 /* Family Feud Game animation effects */
 .game-title {
   text-shadow: 0 0 10px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.5);

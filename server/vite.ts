@@ -22,10 +22,17 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-export async function setupVite(app: Express, server: Server) {
+export async function setupVite(app: Express, _server: Server) {
+  // HMR on a separate port so it doesn't fight with the game WebSocket (/ws) on :5001
+  const HMR_PORT = 24678;
+
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server },
+    hmr: {
+      port: HMR_PORT,
+      clientPort: HMR_PORT,
+      host: "localhost",
+    },
     allowedHosts: ["localhost"],
   };
 

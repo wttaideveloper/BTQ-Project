@@ -1,52 +1,36 @@
+import React from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2 } from "lucide-react";
-import { Redirect, Route } from "wouter";
+import { Redirect } from "wouter";
 
-interface ProtectedRouteProps {
+interface AdminGateProps {
+  children: React.ReactNode;
+}
+
+/** Admin-only wrapper — use inside the authenticated route tree only. */
+export function AdminGate({ children }: AdminGateProps) {
+  const { user } = useAuth();
+  if (!user?.isAdmin) {
+    return <Redirect to="/" />;
+  }
+  return <>{children}</>;
+}
+
+/** @deprecated Use the auth gate in App.tsx Router instead. Kept for compatibility. */
+export function ProtectedRoute({
+  path: _path,
+  component: Component,
+  adminOnly = false,
+}: {
   path: string;
   component: React.ComponentType;
   adminOnly?: boolean;
-}
-
-export function ProtectedRoute({
-  path,
-  component: Component,
-  adminOnly = false,
-}: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth();
-
-  // Show loading state if still checking auth
-  if (isLoading) {
+}) {
+  if (adminOnly) {
     return (
-      <Route path={path}>
-        <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </Route>
+      <AdminGate>
+        <Component />
+      </AdminGate>
     );
   }
-
-  // Check auth conditions
-  if (!user) {
-    // Not logged in at all
-    return (
-      <Route path={path}>
-        <Redirect to="/auth" />
-      </Route>
-    );
-  } else if (adminOnly && !user.isAdmin) {
-    // Regular user trying to access admin-only route
-    return (
-      <Route path={path}>
-        <Redirect to="/" />
-      </Route>
-    );
-  }
-
-  // User is authenticated and has proper permissions
-  return (
-    <Route path={path}>
-      <Component />
-    </Route>
-  );
+  return <Component />;
 }

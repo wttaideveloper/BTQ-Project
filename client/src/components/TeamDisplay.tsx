@@ -126,12 +126,26 @@ const TeamDisplay = ({
                 )}
                 {isReady && (
                   <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700 border border-green-300 whitespace-nowrap">
-                    Ready
+                    Ready ✓
+                  </span>
+                )}
+                {!isReady && isUserTeam && !canReady && (
+                  <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap">
+                    Waiting
                   </span>
                 )}
               </div>
             </div>
           </div>
+          {!canReady && isUserTeam && (
+            <p className="text-xs text-gray-500 leading-relaxed">
+              {isReady
+                ? "Your team is ready! Waiting for the other captain to confirm."
+                : isCaptain
+                  ? null
+                  : "Your captain will mark the team ready when everyone is set."}
+            </p>
+          )}
           <div className="flex flex-col sm:flex-row gap-2">
             {canReady && (
               <Button
@@ -142,10 +156,12 @@ const TeamDisplay = ({
                 {isReadyLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Getting Ready...
+                    Marking ready...
                   </>
+                ) : isReady ? (
+                  "Ready ✓"
                 ) : (
-                  "Ready to Play"
+                  "I'm Ready!"
                 )}
               </Button>
             )}

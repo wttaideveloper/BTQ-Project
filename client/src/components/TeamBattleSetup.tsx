@@ -21,7 +21,27 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { Crown, Users, UserPlus, Check, X, Mail, Clock, RefreshCw } from "lucide-react";
+import {
+  Crown,
+  Users,
+  UserPlus,
+  Check,
+  X,
+  Mail,
+  Clock,
+  RefreshCw,
+  HelpCircle,
+  Swords,
+  Sparkles,
+  Info,
+} from "lucide-react";
+
+const SETUP_PROGRESS_STEPS = [
+  { id: 1, label: "Create Team", icon: Crown },
+  { id: 2, label: "Invite Players", icon: UserPlus },
+  { id: 3, label: "Ready Up", icon: Check },
+  { id: 4, label: "Start Battle", icon: Swords },
+] as const;
 import TeamDisplay from "./TeamDisplay";
 import ClockCountdown from "./ui/ClockCountdown";
 import { setupGameSocket, sendGameEvent, onEvent } from "@/lib/socket";
@@ -1357,6 +1377,100 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // Check if opponent has accepted (2 teams exist)
   const opponentAccepted = teams.length >= 2;
 
+  const setupProgressStep = useMemo(() => {
+    if ((effectiveCountdown !== null && effectiveCountdown >= 0) || dbBothReady) {
+      return 4;
+    }
+    if (teams.length >= 2) {
+      const teamAReady = effectiveReadyStatus?.teamAReady ?? false;
+      const teamBReady = effectiveReadyStatus?.teamBReady ?? false;
+      if (teamAReady && teamBReady) return 4;
+      return 3;
+    }
+    if (userTeam) return 2;
+    return 1;
+  }, [
+    effectiveCountdown,
+    dbBothReady,
+    teams.length,
+    effectiveReadyStatus,
+    userTeam,
+  ]);
+
+  const lobbyStatus = useMemo(() => {
+    if (effectiveCountdown !== null && effectiveCountdown > 0) {
+      return {
+        tone: "success" as const,
+        icon: Sparkles,
+        title: "Battle starting soon!",
+        body: `Both teams are ready. The game begins in ${effectiveCountdown} second${effectiveCountdown === 1 ? "" : "s"}.`,
+      };
+    }
+    if (teams.length >= 2) {
+      const teamAReady = effectiveReadyStatus?.teamAReady ?? false;
+      const teamBReady = effectiveReadyStatus?.teamBReady ?? false;
+      const mySide = userTeam?.teamSide;
+      const myReady =
+        mySide === "A" ? teamAReady : mySide === "B" ? teamBReady : false;
+      const oppReady =
+        mySide === "A" ? teamBReady : mySide === "B" ? teamAReady : false;
+
+      if (myReady && !oppReady) {
+        return {
+          tone: "waiting" as const,
+          icon: Clock,
+          title: "Your team is ready!",
+          body: "Waiting for the other captain to tap \"I'm Ready!\"",
+        };
+      }
+      if (!myReady && oppReady) {
+        return {
+          tone: "action" as const,
+          icon: Crown,
+          title: "The other team is ready",
+          body: isTeamCaptain
+            ? "Your teammates are waiting — tap \"I'm Ready!\" when your team is set."
+            : "Waiting for your captain to mark the team ready.",
+        };
+      }
+      if (!myReady && !oppReady) {
+        return {
+          tone: "info" as const,
+          icon: Users,
+          title: "Both teams are in the lobby",
+          body: isTeamCaptain
+            ? "Invite any final teammates, then both captains tap \"I'm Ready!\" to begin."
+            : "Help your captain get the team ready — they'll start the battle when everyone is set.",
+        };
+      }
+    }
+    if (userTeam && teams.length < 2) {
+      return {
+        tone: "waiting" as const,
+        icon: UserPlus,
+        title: "Waiting for the other team",
+        body: isTeamCaptain
+          ? "Invite another player to be the opposing team's captain."
+          : "Your captain is setting up the match — hang tight!",
+      };
+    }
+    if (!userTeam) {
+      return {
+        tone: "info" as const,
+        icon: HelpCircle,
+        title: "Welcome to the battle lobby",
+        body: "Create your own team or join one that's already looking for players.",
+      };
+    }
+    return null;
+  }, [
+    effectiveCountdown,
+    teams.length,
+    effectiveReadyStatus,
+    userTeam,
+    isTeamCaptain,
+  ]);
+
   // CRITICAL FIX #3 & #4: Navigation with multiple fallback mechanisms
   // Navigate when countdown reaches 0 OR when team_battle_started is received
   useEffect(() => {
@@ -2456,15 +2570,103 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             </h1>
             <p className="text-white/90 text-xs sm:text-sm md:text-base font-medium px-2">
               {isRapidFire
-                ? "Quick, timed rounds — configure rapid-fire settings and jump in fast."
-                : "Configure your team battle with the same game settings"}
+                ? "Set up a fast-paced round, gather players, and jump in."
+                : "Form your team, invite friends, and get ready to play Bible trivia together."}
             </p>
           </div>
         </div>
 
         {/* Scrollable Content */}
         <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-4 md:p-6 bg-white/95 pb-6 sm:pb-8 md:pb-10 safe-area-bottom" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
-          {/* Game Configuration Cards */}
+          {/* 4-step progress indicator */}
+          <nav
+            aria-label="Team battle setup progress"
+            className="mb-4 sm:mb-6 rounded-xl border border-gray-200 bg-white p-3 sm:p-4 shadow-sm"
+          >
+            <ol className="grid grid-cols-4 gap-1 sm:gap-2">
+              {SETUP_PROGRESS_STEPS.map((step) => {
+                const StepIcon = step.icon;
+                const isComplete = setupProgressStep > step.id;
+                const isCurrent = setupProgressStep === step.id;
+                return (
+                  <li key={step.id} className="flex flex-col items-center text-center min-w-0">
+                    <div
+                      className={`flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border-2 transition-colors ${
+                        isComplete
+                          ? isRapidFire
+                            ? "border-[#DEB126] bg-[#DEB126] text-white"
+                            : "border-green-500 bg-green-500 text-white"
+                          : isCurrent
+                            ? isRapidFire
+                              ? "border-[#DEB126] bg-[#DEB126]/15 text-[#856910]"
+                              : "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-gray-200 bg-gray-50 text-gray-400"
+                      }`}
+                    >
+                      {isComplete ? (
+                        <Check className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
+                      ) : (
+                        <StepIcon className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
+                      )}
+                    </div>
+                    <span
+                      className={`mt-1.5 text-[10px] sm:text-xs font-semibold leading-tight px-0.5 ${
+                        isCurrent
+                          ? isRapidFire
+                            ? "text-[#856910]"
+                            : "text-blue-700"
+                          : isComplete
+                            ? "text-gray-700"
+                            : "text-gray-400"
+                      }`}
+                    >
+                      {step.label}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+
+          {/* How Team Battle Works */}
+          <div
+            className={`mb-4 sm:mb-6 rounded-xl border p-4 sm:p-5 ${
+              isRapidFire
+                ? "border-[#DEB126]/30 bg-gradient-to-br from-[#DEB126]/5 to-[#DEB126]/10"
+                : "border-blue-200/60 bg-gradient-to-br from-blue-50/80 to-purple-50/50"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                  isRapidFire ? "bg-[#DEB126] text-white" : "bg-blue-500 text-white"
+                }`}
+              >
+                <Info className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-heading font-bold text-sm sm:text-base text-gray-900 mb-2">
+                  How Team Battle Works
+                </h3>
+                <ol className="space-y-1.5 text-xs sm:text-sm text-gray-600 list-decimal list-inside">
+                  <li>
+                    <span className="font-medium text-gray-800">Create or join a team</span> — one captain per side (up to 3 players each).
+                  </li>
+                  <li>
+                    <span className="font-medium text-gray-800">Invite your opponent and teammates</span> — pick friends who are online in the lobby.
+                  </li>
+                  <li>
+                    <span className="font-medium text-gray-800">Both captains tap &ldquo;I&apos;m Ready!&rdquo;</span> when everyone is on board.
+                  </li>
+                  <li>
+                    <span className="font-medium text-gray-800">Answer Bible trivia together</span> — compete as a team and climb the leaderboard!
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          {/* Battle Settings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-6">
             <div className={`bg-gradient-to-br ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20 border-[#DEB126]/30" : "from-blue-50 to-blue-100/50 border-blue-200/50"} rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border shadow-sm hover:shadow-md transition-shadow duration-200`}>
               <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
@@ -2482,7 +2684,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 <p className={`text-xs sm:text-sm ${isRapidFire ? "text-[#856910]/80" : "text-blue-700/80"}`}>
                   {isRapidFire
                     ? "Fast-paced solo rounds where speed matters."
-                    : "Two teams compete using the selected configuration"}
+                    : "Two teams face off with the settings below"}
                 </p>
               </div>
             </div>
@@ -2493,7 +2695,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                 </div>
                 <h3 className={`font-heading font-bold text-base sm:text-lg ${isRapidFire ? "text-[#856910]" : "text-purple-900"}`}>
-                  Configuration
+                  Battle Settings
                 </h3>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
@@ -2525,16 +2727,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             </div>
           </div>
 
-          {/* Current Teams Overview */}
+          {/* Battle Lobby */}
           <div className="mb-3 sm:mb-6 space-y-3 sm:space-y-4">
             <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 bg-gradient-to-r ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20 border-[#DEB126]/30" : "from-blue-50 to-purple-50 border-blue-200/50"} rounded-lg sm:rounded-xl p-3 sm:p-4 border`}>
               <div className="flex-1 min-w-0">
                 <h3 className="text-lg sm:text-xl font-heading font-bold text-gray-900 flex items-center gap-2">
-                  <Users className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-[#DEB126]" : "text-blue-600"} flex-shrink-0`} />
-                  <span className="truncate">Current Teams</span>
+                  <Swords className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-[#DEB126]" : "text-blue-600"} flex-shrink-0`} />
+                  <span className="truncate">Battle Lobby</span>
                 </h3>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                  Everyone can see who has joined each side in real time
+                  See who&apos;s on each team and who&apos;s ready to play
                 </p>
               </div>
               <div className="flex items-center gap-2 bg-white rounded-full px-3 sm:px-4 py-1.5 sm:py-2 shadow-sm flex-shrink-0">
@@ -2553,12 +2755,60 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   ))}
                 </div>
                 <span className="text-xs sm:text-sm font-bold text-gray-700 whitespace-nowrap">
-                  {teams.length} / 2
+                  {teams.length} of 2 teams
                 </span>
               </div>
             </div>
 
+            {lobbyStatus && (() => {
+              const StatusIcon = lobbyStatus.icon;
+              return (
+              <div
+                className={`flex items-start gap-3 rounded-xl border p-3 sm:p-4 ${
+                  lobbyStatus.tone === "success"
+                    ? "border-green-200 bg-green-50"
+                    : lobbyStatus.tone === "waiting"
+                      ? "border-amber-200 bg-amber-50"
+                      : lobbyStatus.tone === "action"
+                        ? "border-blue-200 bg-blue-50"
+                        : "border-gray-200 bg-gray-50"
+                }`}
+                role="status"
+              >
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    lobbyStatus.tone === "success"
+                      ? "bg-green-500 text-white"
+                      : lobbyStatus.tone === "waiting"
+                        ? "bg-amber-400 text-amber-950"
+                        : lobbyStatus.tone === "action"
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-400 text-white"
+                  }`}
+                >
+                  <StatusIcon className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">{lobbyStatus.title}</p>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-0.5">{lobbyStatus.body}</p>
+                </div>
+              </div>
+              );
+            })()}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+              {teams.length === 0 ? (
+                <div className="md:col-span-2 border-2 border-dashed border-gray-200 rounded-xl p-6 sm:p-8 flex flex-col items-center justify-center text-center bg-gray-50/80 min-h-[160px]">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-3 ${isRapidFire ? "bg-[#DEB126]/15" : "bg-blue-100"}`}>
+                    <Users className={`h-8 w-8 ${isRapidFire ? "text-[#856910]" : "text-blue-500"}`} />
+                  </div>
+                  <p className="font-semibold text-base text-gray-800 mb-1">No teams in the lobby yet</p>
+                  <p className="text-sm text-gray-600 max-w-sm">
+                    Create your team or join an existing one below — both teams will show up here once players join.
+                  </p>
+                </div>
+              ) : (
+                <>
               {orderedTeams.map((team) => {
                 const isUserTeam = userTeam?.id === team.id;
                 const isUserInTeam = team.members.some(
@@ -2630,14 +2880,21 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               })}
 
               {teams.length < 2 && (
-                <div className="border border-dashed border-neutral-300 rounded-lg p-3 sm:p-4 flex flex-col items-center justify-center text-center text-neutral-500 bg-neutral-50 min-h-[120px] sm:min-h-[140px]">
-                  <p className="font-medium text-sm sm:text-base text-neutral-700 mb-1">
-                    Waiting for opposing team
+                <div className="border-2 border-dashed border-blue-200 rounded-xl p-4 sm:p-6 flex flex-col items-center justify-center text-center bg-gradient-to-br from-blue-50/50 to-purple-50/30 min-h-[140px] sm:min-h-[160px]">
+                  <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-3 ${isRapidFire ? "bg-[#DEB126]/20" : "bg-blue-100"}`}>
+                    <UserPlus className={`h-7 w-7 ${isRapidFire ? "text-[#856910]" : "text-blue-600"}`} />
+                  </div>
+                  <p className="font-semibold text-sm sm:text-base text-gray-800 mb-1">
+                    Opponent team slot open
                   </p>
-                  <p className="text-xs sm:text-sm px-2">
-                    Invite another captain to form the next team.
+                  <p className="text-xs sm:text-sm text-gray-600 px-2 max-w-xs">
+                    {isTeamCaptain
+                      ? "Invite a friend to lead the other team — you'll see them appear here once they join."
+                      : "The other team hasn't joined yet. Your captain can send an invite."}
                   </p>
                 </div>
+              )}
+                </>
               )}
             </div>
           </div>
@@ -2647,8 +2904,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           {effectiveCountdown !== null && effectiveCountdown > 0 && (
             <ClockCountdown
               countdown={effectiveCountdown}
-              message="Both teams are ready"
-              subMessage="Game starting soon..."
+              message="Both teams are ready!"
+              subMessage="Your Bible battle is about to begin..."
             />
           )}
 
@@ -2662,12 +2919,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-heading font-bold text-lg sm:text-xl text-gray-900">
-                      {isRapidFire ? "Enter Rapid Fire" : "Enter Team Battle"}
+                      {isRapidFire ? "Join Rapid Fire" : "Get Started"}
                     </h3>
                     <p className="text-xs sm:text-sm text-gray-600">
                       {isRapidFire
-                        ? "Start a quick solo rapid-fire round or join a fast lobby."
-                        : "Choose how you'd like to participate"}
+                        ? "Start a quick round or join a team that's already forming."
+                        : "New here? Pick how you'd like to join the battle."}
                     </p>
                   </div>
                 </div>
@@ -2683,9 +2940,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                       <Crown className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
                     </div>
                     <div className="text-center">
-                      <p className="font-bold text-base sm:text-lg mb-1">Create a Team</p>
+                      <p className="font-bold text-base sm:text-lg mb-1">Create My Team</p>
                       <p className="text-xs sm:text-sm text-white/90">
-                        Become a team captain
+                        Lead your own team as captain
                       </p>
                     </div>
                   </div>
@@ -2701,10 +2958,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     </div>
                     <div className="text-center">
                       <p className="font-bold text-base sm:text-lg mb-1 text-gray-900">
-                        Join as Member
+                        Join Existing Team
                       </p>
                       <p className="text-xs sm:text-sm text-gray-600">
-                        Join an existing team
+                        Request to play on a team that&apos;s already open
                       </p>
                     </div>
                   </div>
@@ -2723,11 +2980,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-heading font-bold text-lg sm:text-xl text-white mb-1 sm:mb-2">
-                      Step 1: Create Your Team
+                      Step 1: Name Your Team
                     </h3>
                     <p className="text-xs sm:text-sm text-white/90">
-                      Create your team to start the battle. You'll become the
-                      team captain
+                      Pick a fun team name — you&apos;ll be the captain and can invite players next.
                     </p>
                   </div>
                 </div>
@@ -2745,7 +3001,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   type="text"
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="Enter your team name"
+                  placeholder="e.g. Faith Warriors, Bible Buddies..."
                   className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 ${isRapidFire ? "focus:ring-[#DEB126]" : "focus:ring-blue-500"} focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-400`}
                 />
               </div>
@@ -2762,7 +3018,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 ) : (
                   <div className="flex items-center gap-2">
                     <Crown className="h-5 w-5" />
-                    <span>Create Team</span>
+                    <span>Create My Team</span>
                   </div>
                 )}
               </Button>
@@ -2782,8 +3038,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                       Join an Existing Team
                     </h3>
                     <p className="text-xs sm:text-sm text-white/90">
-                      Browse available teams and send a join request to the
-                      leader
+                      Browse teams that are looking for members and send a request to join.
                     </p>
                   </div>
                 </div>
@@ -2797,11 +3052,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-xs sm:text-sm font-semibold ${isRapidFire ? "text-[#856910]" : "text-yellow-900"} mb-1`}>
-                        Pending Request
+                        Request sent — waiting for approval
                       </p>
                       <p className={`text-xs sm:text-sm ${isRapidFire ? "text-[#856910]" : "text-yellow-800"} break-words`}>
-                        You have a pending join request to team ID:{" "}
-                        <span className="font-mono text-xs">{myActiveJoinRequest.teamId}</span>
+                        The team captain will review your request. You can cancel below if you change your mind.
                       </p>
                       <Button
                         variant="outline"
@@ -2827,7 +3081,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 <div className={`bg-gradient-to-r ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20" : "from-purple-50 to-blue-50"} px-3 sm:px-4 md:px-5 py-2 sm:py-3 border-b border-gray-200`}>
                   <h4 className="font-heading font-bold text-sm sm:text-base text-gray-900 flex items-center gap-2">
                     <Users className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-[#DEB126]" : "text-purple-600"} flex-shrink-0`} />
-                    <span>Available Teams</span>
+                    <span>Teams Looking for Players</span>
                   </h4>
                 </div>
                 <div className="max-h-48 sm:max-h-64 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -2837,10 +3091,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                         <Users className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
                       </div>
                       <p className="text-xs sm:text-sm text-gray-500 font-medium">
-                        No available teams right now
+                        No teams are open right now
                       </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Check back later or create your own team
+                      <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
+                        Ask a friend to create a team, or tap &ldquo;Create My Team&rdquo; below to start your own.
                       </p>
                     </div>
                   )}
@@ -2878,7 +3132,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                     •
                                   </span>
                                   <span className="text-xs text-gray-600 truncate">
-                                    Captain ID: {team.captainId}
+                                    Captain: {team.members.find((m) => m.role === "captain")?.username ?? "Unknown"}
                                   </span>
                                 </div>
                               </div>
@@ -2906,7 +3160,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                     ? "Request Pending"
                                     : joinRequestingTeamId === team.id
                                       ? "Requesting..."
-                                      : "Request to Join"}
+                                      : "Ask to Join"}
                             </Button>
                           </div>
                         );
@@ -2928,7 +3182,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   onClick={() => setCurrentStage("create-team")}
                   className={`flex-1 bg-gradient-to-r ${isRapidFire ? "from-[#DEB126] to-[#C59D1F] hover:from-[#C59D1F] hover:to-[#B58E12]" : "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"} text-white font-bold py-2.5 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all duration-200`}
                 >
-                  Create a Team Instead
+                  Create My Team Instead
                 </Button>
               </div>
             </div>
@@ -2944,11 +3198,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-heading font-bold text-lg sm:text-xl text-white mb-1 sm:mb-2">
-                      Step 2: Invite Opponent Captain
+                      Step 2: Invite the Other Team
                     </h3>
                     <p className="text-xs sm:text-sm text-white/90">
-                      Invite an opponent to be the captain of the opposing team.
-                      Once they accept, you can invite teammates
+                      Choose a friend to captain the opposing team. Once they accept, you can invite more teammates.
                     </p>
                   </div>
                 </div>
@@ -2977,7 +3230,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   <div className="flex items-center justify-between">
                     <h4 className="font-heading font-bold text-sm sm:text-base text-gray-900 flex items-center gap-2">
                       <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
-                      <span>Available Opponents</span>
+                      <span>Players Ready to Battle</span>
                     </h4>
                     <Button
                       variant="ghost"
@@ -2997,11 +3250,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
                         toast({
                           title: "Refreshing...",
-                          description: "Updating available opponents list",
+                          description: "Looking for players in the lobby",
                         });
                       }}
                       className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-green-100"
-                      title="Refresh Opponents"
+                      title="Refresh player list"
                     >
                       <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-600" />
                     </Button>
@@ -3012,7 +3265,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     <div className="px-4 sm:px-5 py-6 sm:py-8 text-center">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-2 sm:mb-3"></div>
                       <p className="text-xs sm:text-sm text-gray-500 font-medium">
-                        Loading online players...
+                        Loading players in the lobby...
                       </p>
                     </div>
                   )}
@@ -3022,7 +3275,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                         <X className="h-6 w-6 sm:h-8 sm:w-8 text-red-500" />
                       </div>
                       <p className="text-xs sm:text-sm text-red-600 font-medium">
-                        Failed to load online players
+                        Couldn&apos;t load the player list. Try refreshing.
                       </p>
                     </div>
                   )}
@@ -3034,10 +3287,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                           <Users className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
                         </div>
                         <p className="text-xs sm:text-sm text-gray-500 font-medium">
-                          No available opponents online right now
+                          No one else is in the lobby right now
                         </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          Share the session ID with friends to invite them
+                        <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
+                          Ask a friend to open Team Battle from the home screen — they&apos;ll show up here when they&apos;re ready.
                         </p>
                       </div>
                     )}
@@ -3098,11 +3351,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               className="w-full sm:w-auto text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                             >
                               {pendingInvitation
-                                ? "Invited"
+                                ? "Invite Sent"
                                 : alreadyInvitedByMe
                                   ? "Already Invited"
                                   : pendingInviteId === player.id
-                                    ? "Inviting..."
+                                    ? "Sending..."
                                     : invitationCount > 0
                                       ? `Invite (${invitationCount} pending)`
                                       : "Invite as Opponent"}
@@ -3127,11 +3380,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-heading font-bold text-lg sm:text-xl text-white mb-1 sm:mb-2">
-                      Step 3: Invite Teammates
+                      Step 2: Invite More Teammates
                     </h3>
                     <p className="text-xs sm:text-sm text-white/90">
-                      Great! Your opponent has accepted. Now invite teammates to
-                      complete your team
+                      Great — both teams are set! Invite up to 2 more friends to join your side (3 players max per team).
                     </p>
                   </div>
                 </div>
@@ -3148,12 +3400,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
               <div>
                 <h4 className="font-medium text-sm sm:text-base text-neutral-800 mb-2 sm:mb-3">
-                  Available Players
+                  Friends in the Lobby
                 </h4>
                 <div className="border rounded-lg bg-neutral-50 max-h-48 sm:max-h-64 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                   {isLoading && (
                     <div className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-neutral-500">
-                      Loading online players...
+                      Loading players in the lobby...
                     </div>
                   )}
                   {isError && !isLoading && (
@@ -3164,8 +3416,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   {!isLoading &&
                     !isError &&
                     availableTeammates.length === 0 && (
-                      <div className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-neutral-500">
-                        No available players to invite right now.
+                      <div className="px-3 sm:px-4 py-6 sm:py-8 text-center">
+                        <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                          <Users className="h-6 w-6 text-purple-400" />
+                        </div>
+                        <p className="text-xs sm:text-sm text-neutral-600 font-medium">
+                          No extra players available right now
+                        </p>
+                        <p className="text-xs text-neutral-400 mt-1">
+                          You can still start with just your captain — tap &ldquo;I&apos;m Ready!&rdquo; when you&apos;re set.
+                        </p>
                       </div>
                     )}
                   {!isLoading && !isError && availableTeammates.length > 0 && (
@@ -3219,14 +3479,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               className={`w-full sm:w-auto text-xs font-semibold px-3 py-1.5 sm:py-1 ${isRapidFire ? "bg-[#C59D1F] hover:bg-[#B58E12]" : "bg-purple-600 hover:bg-purple-700"} text-white rounded-lg`}
                             >
                               {pendingInvitation
-                                ? "Invited"
+                                ? "Invite Sent"
                                 : alreadyInvitedByMe
                                   ? "Already Invited"
                                   : pendingInviteId === player.id
-                                    ? "Inviting..."
+                                    ? "Sending..."
                                     : invitationCount > 0
                                       ? `Invite (${invitationCount} pending)`
-                                      : "Invite to Team"}
+                                      : "Add to My Team"}
                             </Button>
                           </div>
                         );

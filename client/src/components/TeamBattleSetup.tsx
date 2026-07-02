@@ -2733,7 +2733,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               <div className="flex-1 min-w-0">
                 <h3 className="text-lg sm:text-xl font-heading font-bold text-gray-900 flex items-center gap-2">
                   <Swords className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-[#DEB126]" : "text-blue-600"} flex-shrink-0`} />
-                  <span className="truncate">Battle Lobby</span>
+                  <span className="truncate">Team Battle Lobby</span>
                 </h3>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1">
                   See who&apos;s on each team and who&apos;s ready to play

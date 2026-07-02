@@ -554,7 +554,7 @@ const Home: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <HomeActionCard
               title="Solo Quiz"
-              description="Learn at your own pace. Pick a category, answer questions, and track your score."
+              description="Play on your own. Pick a category, answer at your pace, and track your score."
               icon={Target}
               onClick={() => setShowSoloDialog(true)}
               accent="blue"
@@ -562,7 +562,7 @@ const Home: React.FC = () => {
             />
             <HomeActionCard
               title="Play with Friends"
-              description="Pass the device and take turns. Up to 3 players on one screen — perfect for family game night."
+              description="Up to 3 players on one device. Pass the phone and take turns — great for game night."
               icon={Users}
               onClick={handleMultiplayerStart}
               accent="teal"
@@ -570,7 +570,7 @@ const Home: React.FC = () => {
             />
             <HomeActionCard
               title="Team Battle"
-              description="Two teams compete live. Invite friends, work together, and battle for victory."
+              description="Two teams, live online. Invite friends, answer together, and compete to win."
               icon={Swords}
               onClick={handleEnterTeamBattle}
               loading={isLoadingTeamBattle}
@@ -579,7 +579,7 @@ const Home: React.FC = () => {
             />
             <HomeActionCard
               title="Rapid Fire"
-              description="Fast-paced team mode. Quick questions, high energy — perfect for a short match."
+              description="Team mode with quick rounds. Short questions, fast pace — perfect for a quick match."
               icon={Zap}
               onClick={handleEnterRapidFire}
               loading={isLoadingRapidFire}

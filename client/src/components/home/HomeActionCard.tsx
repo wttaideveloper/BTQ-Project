@@ -90,11 +90,13 @@ const HomeActionCard: React.FC<HomeActionCardProps> = ({
           )}
         </div>
 
-        <div className="flex-1 min-w-0 pr-6">
-          <h3 className="text-lg sm:text-xl font-bold text-white mb-1">
+        <div className="flex-1 min-w-0 pr-8">
+          <h3 className="text-lg sm:text-xl font-bold text-white mb-1.5">
             {title}
           </h3>
-          <p className="text-sm text-white/75 leading-relaxed">{description}</p>
+          <p className="text-[0.9375rem] sm:text-base text-white/90 leading-relaxed">
+            {description}
+          </p>
         </div>
 
         <ChevronRight className="absolute bottom-5 right-5 h-5 w-5 text-white/35 group-hover:text-accent group-hover:translate-x-0.5 transition-all" />

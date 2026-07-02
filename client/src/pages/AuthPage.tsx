@@ -9,6 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
+import { ProfilePicturePicker } from '@/components/ProfilePicturePicker';
 import {
   Users,
   Target,
@@ -21,8 +22,6 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
-  Upload,
-  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import holmesImagePath from '@assets/HP HOLMES.jpg';
@@ -553,82 +552,16 @@ const AuthPage: React.FC = () => {
                             <FormLabel className="text-white/80 text-sm">
                               Profile Picture
                             </FormLabel>
-                            <div className="flex flex-wrap items-center gap-3">
-                              <div className="h-14 w-14 rounded-full overflow-hidden border-2 border-white/20 bg-white/10 flex items-center justify-center">
-                                {profileImagePreview ? (
-                                  <img
-                                    src={profileImagePreview}
-                                    alt="Profile preview"
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <img
-                                    src={
-                                      DEFAULT_AVATARS.find(
-                                        (a) => a.id === selectedDefaultAvatar
-                                      )?.path ?? DEFAULT_AVATARS[0].path
-                                    }
-                                    alt="Selected avatar"
-                                    className="h-full w-full object-cover"
-                                  />
-                                )}
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="border-white/20 text-white hover:bg-white/10"
-                                  onClick={() => profileImageInputRef.current?.click()}
-                                >
-                                  <Upload className="h-4 w-4 mr-1" />
-                                  Upload photo
-                                </Button>
-                                {profileImageFile && (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="border-white/20 text-white hover:bg-white/10"
-                                    onClick={clearProfileImage}
-                                  >
-                                    <X className="h-4 w-4 mr-1" />
-                                    Remove
-                                  </Button>
-                                )}
-                              </div>
-                              <input
-                                ref={profileImageInputRef}
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={handleProfileImageChange}
-                              />
-                            </div>
-                            {!profileImageFile && (
-                              <div className="grid grid-cols-6 gap-2">
-                                {DEFAULT_AVATARS.map((avatar) => (
-                                  <button
-                                    key={avatar.id}
-                                    type="button"
-                                    title={avatar.label}
-                                    onClick={() => setSelectedDefaultAvatar(avatar.id)}
-                                    className={cn(
-                                      'rounded-full overflow-hidden border-2 transition-all h-10 w-10',
-                                      selectedDefaultAvatar === avatar.id
-                                        ? 'border-accent ring-2 ring-accent/40 scale-105'
-                                        : 'border-white/15 hover:border-white/40'
-                                    )}
-                                  >
-                                    <img
-                                      src={avatar.path}
-                                      alt={avatar.label}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  </button>
-                                ))}
-                              </div>
-                            )}
+                            <ProfilePicturePicker
+                              selectedDefaultAvatar={selectedDefaultAvatar}
+                              onSelectDefaultAvatar={setSelectedDefaultAvatar}
+                              profileImagePreview={profileImagePreview}
+                              profileImageFile={profileImageFile}
+                              onFileChange={handleProfileImageChange}
+                              onClearUpload={clearProfileImage}
+                              inputRef={profileImageInputRef}
+                              variant="dark"
+                            />
                           </div>
                         </div>
                       )}

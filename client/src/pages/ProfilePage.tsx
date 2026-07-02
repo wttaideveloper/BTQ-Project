@@ -186,7 +186,7 @@ const ProfilePage: React.FC = () => {
               <Button
                 variant="outline"
                 onClick={handleCancel}
-                className="border-white/20 text-white hover:bg-white/10"
+                className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
                 disabled={updateProfileMutation.isPending}
               >
                 <X className="h-4 w-4 mr-1" />

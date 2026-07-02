@@ -60,7 +60,7 @@ export function ProfilePicturePicker({
             size="sm"
             className={
               isDark
-                ? "border-white/20 text-white hover:bg-white/10"
+                ? "border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
                 : undefined
             }
             onClick={() => inputRef.current?.click()}
@@ -75,7 +75,7 @@ export function ProfilePicturePicker({
               size="sm"
               className={
                 isDark
-                  ? "border-white/20 text-white hover:bg-white/10"
+                  ? "border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
                   : undefined
               }
               onClick={onClearUpload}

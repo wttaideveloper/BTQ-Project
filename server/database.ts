@@ -510,12 +510,42 @@ class PostgreSQLDatabase implements IDatabase {
         excludeQuestionIds = [...new Set([...excludeQuestionIds, ...filters.excludeIds])];
       }
 
+      // If every question in the requested pool was already answered, reuse them
+      // with word shuffling instead of returning an empty selection.
+      if (filters.userId && excludeQuestionIds.length > 0 && !shouldApplyWordShuffling) {
+        const targetPool = await this.getQuestions({
+          category: filters.category,
+          difficulty: filters.difficulty,
+        });
+        if (
+          targetPool.length > 0 &&
+          targetPool.every((q) => excludeQuestionIds.includes(q.id))
+        ) {
+          shouldApplyWordShuffling = true;
+          excludeQuestionIds = [];
+        }
+      }
+
       // Step 2: Use enhanced random selection with user-specific seeding
-      const selectedQuestions = await this.enhancedRandomSelection({
+      let selectedQuestions = await this.enhancedRandomSelection({
         ...filters,
         excludeQuestionIds,
         userSeed: filters.userId || 0,
       });
+
+      // Broaden filters when the requested category/difficulty has no matches
+      if (!selectedQuestions || selectedQuestions.length === 0) {
+        selectedQuestions = await this.enhancedRandomSelection({
+          ...filters,
+          category: undefined,
+          difficulty: undefined,
+          excludeQuestionIds: shouldApplyWordShuffling ? [] : excludeQuestionIds,
+          userSeed: filters.userId || 0,
+        });
+        if (selectedQuestions.length > 0 && filters.userId) {
+          shouldApplyWordShuffling = true;
+        }
+      }
 
       // Step 3: Validate selected questions before shuffling
       if (!selectedQuestions || selectedQuestions.length === 0) {
@@ -621,6 +651,14 @@ class PostgreSQLDatabase implements IDatabase {
         filteredQuestions = filteredQuestions.filter(
           q => q.difficulty === filters.difficulty
         );
+      }
+
+      // Broaden within available questions before giving up on filters
+      if (filteredQuestions.length === 0 && availableQuestions.length > 0) {
+        filteredQuestions = availableQuestions;
+      }
+      if (filteredQuestions.length === 0 && validQuestions.length > 0) {
+        filteredQuestions = validQuestions;
       }
 
       // If not enough questions, progressively broaden the filters
@@ -753,6 +791,10 @@ class PostgreSQLDatabase implements IDatabase {
         (q) => q.difficulty !== filters.difficulty
       );
     } else {
+      primaryCandidates = allQuestions;
+    }
+
+    if (primaryCandidates.length === 0 && secondaryCandidates.length === 0) {
       primaryCandidates = allQuestions;
     }
 
@@ -937,7 +979,12 @@ class PostgreSQLDatabase implements IDatabase {
     // Step 4: Enhanced final shuffle to randomize the order
     const finalShuffle = this.enhancedShuffle(selectedQuestions);
 
-    return finalShuffle;
+    // Ensure we return up to `count` questions when candidates exist
+    if (finalShuffle.length === 0 && primaryCandidates.length > 0) {
+      return this.enhancedShuffle(primaryCandidates).slice(0, count);
+    }
+
+    return finalShuffle.slice(0, count);
   }
 
   /**

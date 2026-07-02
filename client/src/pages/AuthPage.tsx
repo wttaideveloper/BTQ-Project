@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Users,
   Target,
@@ -18,23 +19,28 @@ import {
   LogIn,
   UserPlus,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Upload,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import holmesImagePath from '@assets/HP HOLMES.jpg';
+import { registerUserSchema, DEFAULT_AVATARS } from '@shared/user-validation';
 
 const loginSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
-const registerSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  confirmPassword: z.string().min(6, 'Confirm password must be at least 6 characters'),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ['confirmPassword'],
-});
+const registerSchema = registerUserSchema
+  .extend({
+    confirmPassword: z.string().min(6, 'Confirm password must be at least 6 characters'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -56,6 +62,11 @@ const AuthPage: React.FC = () => {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showOptionalProfile, setShowOptionalProfile] = useState(false);
+  const [selectedDefaultAvatar, setSelectedDefaultAvatar] = useState<string>(DEFAULT_AVATARS[0].id);
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null);
+  const profileImageInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -70,7 +81,17 @@ const AuthPage: React.FC = () => {
 
   const registerForm = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { username: '', password: '', confirmPassword: '' },
+    defaultValues: {
+      fullName: '',
+      username: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      phone: '',
+      bio: '',
+      country: '',
+      defaultAvatar: DEFAULT_AVATARS[0].id,
+    },
   });
 
   const onLoginSubmit = (values: LoginFormValues) => {
@@ -79,9 +100,40 @@ const AuthPage: React.FC = () => {
 
   const onRegisterSubmit = (values: RegisterFormValues) => {
     registerMutation.mutate({
+      fullName: values.fullName,
       username: values.username,
+      email: values.email,
       password: values.password,
+      phone: values.phone || undefined,
+      bio: values.bio || undefined,
+      country: values.country || undefined,
+      defaultAvatar: profileImageFile ? undefined : selectedDefaultAvatar,
+      profileImageFile,
     });
+  };
+
+  const handleProfileImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      return;
+    }
+
+    setProfileImageFile(file);
+    setProfileImagePreview(URL.createObjectURL(file));
+  };
+
+  const clearProfileImage = () => {
+    setProfileImageFile(null);
+    setProfileImagePreview(null);
+    if (profileImageInputRef.current) {
+      profileImageInputRef.current.value = '';
+    }
   };
 
   const PasswordToggle = ({
@@ -294,15 +346,35 @@ const AuthPage: React.FC = () => {
                   <Form {...registerForm}>
                     <form
                       onSubmit={registerForm.handleSubmit(onRegisterSubmit)}
-                      className="space-y-5"
+                      className="space-y-4"
                     >
+                      <FormField
+                        control={registerForm.control}
+                        name="fullName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white/80 text-sm">
+                              Full Name <span className="text-accent">*</span>
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Your full name"
+                                autoComplete="name"
+                                {...field}
+                                className={inputClassName}
+                              />
+                            </FormControl>
+                            <FormMessage className="text-red-400" />
+                          </FormItem>
+                        )}
+                      />
                       <FormField
                         control={registerForm.control}
                         name="username"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-white/80 text-sm">
-                              Username
+                              Username <span className="text-accent">*</span>
                             </FormLabel>
                             <FormControl>
                               <Input
@@ -318,11 +390,32 @@ const AuthPage: React.FC = () => {
                       />
                       <FormField
                         control={registerForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white/80 text-sm">
+                              Email <span className="text-accent">*</span>
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="email"
+                                placeholder="you@example.com"
+                                autoComplete="email"
+                                {...field}
+                                className={inputClassName}
+                              />
+                            </FormControl>
+                            <FormMessage className="text-red-400" />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={registerForm.control}
                         name="password"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-white/80 text-sm">
-                              Password
+                              Password <span className="text-accent">*</span>
                             </FormLabel>
                             <FormControl>
                               <div className="relative">
@@ -353,7 +446,7 @@ const AuthPage: React.FC = () => {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-white/80 text-sm">
-                              Confirm password
+                              Confirm Password <span className="text-accent">*</span>
                             </FormLabel>
                             <FormControl>
                               <div className="relative">
@@ -379,12 +472,173 @@ const AuthPage: React.FC = () => {
                         )}
                       />
 
+                      <button
+                        type="button"
+                        onClick={() => setShowOptionalProfile((v) => !v)}
+                        className="w-full flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white/75 hover:bg-white/10 transition-colors"
+                      >
+                        <span>Add optional profile details</span>
+                        {showOptionalProfile ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </button>
+
+                      {showOptionalProfile && (
+                        <div className="space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
+                          <FormField
+                            control={registerForm.control}
+                            name="phone"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-white/80 text-sm">
+                                  Phone Number
+                                </FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="tel"
+                                    placeholder="+1 555 123 4567"
+                                    autoComplete="tel"
+                                    {...field}
+                                    className={inputClassName}
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-red-400" />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={registerForm.control}
+                            name="country"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-white/80 text-sm">
+                                  Country
+                                </FormLabel>
+                                <FormControl>
+                                  <Input
+                                    placeholder="United States"
+                                    autoComplete="country-name"
+                                    {...field}
+                                    className={inputClassName}
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-red-400" />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={registerForm.control}
+                            name="bio"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-white/80 text-sm">
+                                  Bio
+                                </FormLabel>
+                                <FormControl>
+                                  <Textarea
+                                    placeholder="Tell us a little about yourself (optional)"
+                                    rows={3}
+                                    {...field}
+                                    className="bg-white/5 border-white/15 text-white placeholder:text-white/40 rounded-xl focus-visible:ring-accent focus-visible:border-accent/50 resize-none"
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-red-400" />
+                              </FormItem>
+                            )}
+                          />
+
+                          <div className="space-y-3">
+                            <FormLabel className="text-white/80 text-sm">
+                              Profile Picture
+                            </FormLabel>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <div className="h-14 w-14 rounded-full overflow-hidden border-2 border-white/20 bg-white/10 flex items-center justify-center">
+                                {profileImagePreview ? (
+                                  <img
+                                    src={profileImagePreview}
+                                    alt="Profile preview"
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <img
+                                    src={
+                                      DEFAULT_AVATARS.find(
+                                        (a) => a.id === selectedDefaultAvatar
+                                      )?.path ?? DEFAULT_AVATARS[0].path
+                                    }
+                                    alt="Selected avatar"
+                                    className="h-full w-full object-cover"
+                                  />
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-white/20 text-white hover:bg-white/10"
+                                  onClick={() => profileImageInputRef.current?.click()}
+                                >
+                                  <Upload className="h-4 w-4 mr-1" />
+                                  Upload photo
+                                </Button>
+                                {profileImageFile && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-white/20 text-white hover:bg-white/10"
+                                    onClick={clearProfileImage}
+                                  >
+                                    <X className="h-4 w-4 mr-1" />
+                                    Remove
+                                  </Button>
+                                )}
+                              </div>
+                              <input
+                                ref={profileImageInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleProfileImageChange}
+                              />
+                            </div>
+                            {!profileImageFile && (
+                              <div className="grid grid-cols-6 gap-2">
+                                {DEFAULT_AVATARS.map((avatar) => (
+                                  <button
+                                    key={avatar.id}
+                                    type="button"
+                                    title={avatar.label}
+                                    onClick={() => setSelectedDefaultAvatar(avatar.id)}
+                                    className={cn(
+                                      'rounded-full overflow-hidden border-2 transition-all h-10 w-10',
+                                      selectedDefaultAvatar === avatar.id
+                                        ? 'border-accent ring-2 ring-accent/40 scale-105'
+                                        : 'border-white/15 hover:border-white/40'
+                                    )}
+                                  >
+                                    <img
+                                      src={avatar.path}
+                                      alt={avatar.label}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {registerMutation.isError && (
                         <div className="flex items-start gap-2 rounded-xl bg-red-500/10 border border-red-500/25 px-3 py-2.5 text-sm text-red-300">
                           <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                           <span>
                             {registerMutation.error?.message ||
-                              'Registration failed. Try a different username.'}
+                              'Registration failed. Please check your details and try again.'}
                           </span>
                         </div>
                       )}
@@ -401,7 +655,7 @@ const AuthPage: React.FC = () => {
                       </Button>
 
                       <p className="text-center text-xs text-white/45">
-                        Free player account — no email required
+                        Required fields are marked with *
                       </p>
                     </form>
                   </Form>

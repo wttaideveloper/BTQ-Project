@@ -6,6 +6,7 @@ import {
   UseMutationResult,
 } from "@tanstack/react-query";
 import { User as SelectUser } from "@shared/schema";
+import { UpdateProfileData } from "@shared/user-validation";
 import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { setupGameSocket, closeGameSocket } from "@/lib/socket";
@@ -17,6 +18,11 @@ type AuthContextType = {
   loginMutation: UseMutationResult<SelectUser, Error, LoginData>;
   logoutMutation: UseMutationResult<void, Error, void>;
   registerMutation: UseMutationResult<SelectUser, Error, RegisterData>;
+  updateProfileMutation: UseMutationResult<SelectUser, Error, UpdateProfilePayload>;
+};
+
+type UpdateProfilePayload = UpdateProfileData & {
+  profileImageFile?: File | null;
 };
 
 type LoginData = {
@@ -25,8 +31,15 @@ type LoginData = {
 };
 
 type RegisterData = {
+  fullName: string;
   username: string;
+  email: string;
   password: string;
+  phone?: string;
+  bio?: string;
+  country?: string;
+  defaultAvatar?: string;
+  profileImageFile?: File | null;
 };
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -81,7 +94,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registerMutation = useMutation({
     mutationFn: async (credentials: RegisterData) => {
-      const res = await apiRequest("POST", "/api/register", credentials);
+      const { profileImageFile, ...fields } = credentials;
+      let res: Response;
+
+      if (profileImageFile) {
+        const formData = new FormData();
+        Object.entries(fields).forEach(([key, value]) => {
+          if (value !== undefined && value !== "") {
+            formData.append(key, String(value));
+          }
+        });
+        formData.append("profileImage", profileImageFile);
+        res = await fetch("/api/register", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+      } else {
+        res = await apiRequest("POST", "/api/register", fields);
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+          const body = JSON.parse(text);
+          throw new Error(body.message || text);
+        } catch (error) {
+          if (error instanceof Error && error.message !== text) {
+            throw error;
+          }
+          throw new Error(text || res.statusText);
+        }
+      }
+
       return await res.json();
     },
     onSuccess: (user: SelectUser) => {
@@ -120,6 +165,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  const updateProfileMutation = useMutation({
+    mutationFn: async (payload: UpdateProfilePayload) => {
+      const { profileImageFile, ...fields } = payload;
+      let res: Response;
+
+      if (profileImageFile) {
+        const formData = new FormData();
+        Object.entries(fields).forEach(([key, value]) => {
+          if (value !== undefined && value !== "") {
+            formData.append(key, String(value));
+          }
+        });
+        formData.append("profileImage", profileImageFile);
+        res = await fetch("/api/profile", {
+          method: "PATCH",
+          body: formData,
+          credentials: "include",
+        });
+      } else {
+        res = await fetch("/api/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fields),
+          credentials: "include",
+        });
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+          const body = JSON.parse(text);
+          throw new Error(body.message || text);
+        } catch (error) {
+          if (error instanceof Error && error.message !== text) {
+            throw error;
+          }
+          throw new Error(text || res.statusText);
+        }
+      }
+
+      return await res.json();
+    },
+    onSuccess: (updatedUser: SelectUser) => {
+      queryClient.setQueryData(["/api/user"], updatedUser);
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been saved successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
     <AuthContext.Provider
       value={{
@@ -129,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginMutation,
         logoutMutation,
         registerMutation,
+        updateProfileMutation,
       }}
     >
       {children}

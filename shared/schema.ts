@@ -196,7 +196,14 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  email: text("email"),
+  email: text("email").unique(),
+  fullName: text("full_name"),
+  phone: text("phone"),
+  profileImage: text("profile_image"),
+  bio: text("bio"),
+  country: text("country"),
+  isEmailVerified: boolean("is_email_verified").default(false),
+  lastLoginAt: timestamp("last_login_at"),
   isAdmin: boolean("is_admin").default(false),
   isOnline: boolean("is_online").default(false),
   isInTeamBattle: boolean("is_in_team_battle").default(false), // ✅ NEW: Track Team Battle availability
@@ -465,6 +472,12 @@ export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
   email: true,
+  fullName: true,
+  phone: true,
+  profileImage: true,
+  bio: true,
+  country: true,
+  isEmailVerified: true,
   isAdmin: true,
 });
 

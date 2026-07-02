@@ -67,6 +67,7 @@ import {
   generateQuestionsAI 
 } from '@/lib/trivia-api';
 import { QuestionReviewPanel } from '@/components/QuestionReviewPanel';
+import { UserManagementPanel } from '@/components/admin/UserManagementPanel';
 
 const categories = [
   "All Categories",
@@ -590,6 +591,18 @@ const AdminPanel: React.FC = () => {
             </button>
             
             <button
+              onClick={() => setActiveTab("users")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                activeTab === "users"
+                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <Users size={20} />
+              <span className="font-medium">User Management</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("stats")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
                 activeTab === "stats"
@@ -650,12 +663,14 @@ const AdminPanel: React.FC = () => {
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">
                     {activeTab === "questions" && "Question Management"}
+                    {activeTab === "users" && "User Management"}
                     {activeTab === "stats" && "Game Statistics"}
                     {activeTab === "settings" && "Settings"}
                     {activeTab === "voices" && "Voice Management"}
                   </h1>
                   <p className="text-sm text-gray-600">
                     {activeTab === "questions" && "Manage your Bible trivia questions and content"}
+                    {activeTab === "users" && "View registered users, profiles, and activity status"}
                     {activeTab === "stats" && "View game analytics and performance metrics"}
                     {activeTab === "settings" && "Configure game parameters and behavior"}
                     {activeTab === "voices" && "Manage voice settings and AI voice cloning"}
@@ -897,6 +912,12 @@ const AdminPanel: React.FC = () => {
                     </p>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === "users" && (
+              <div className="p-8">
+                <UserManagementPanel />
               </div>
             )}
 

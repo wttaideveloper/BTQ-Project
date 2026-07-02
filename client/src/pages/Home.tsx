@@ -382,15 +382,30 @@ const Home: React.FC = () => {
             )}
             {user ? (
               <>
-                <div className="hidden sm:flex items-center gap-2 text-white/90 bg-white/10 px-3 py-1.5 rounded-full text-sm">
+                <button
+                  type="button"
+                  onClick={() => setLocation("/profile")}
+                  className="hidden sm:flex items-center gap-2 text-white/90 bg-white/10 px-3 py-1.5 rounded-full text-sm hover:bg-white/15 transition-colors"
+                >
                   <User className="h-4 w-4" />
-                  <span className="truncate max-w-[100px]">{user.username}</span>
+                  <span className="truncate max-w-[100px]">
+                    {user.fullName || user.username}
+                  </span>
                   {user.isAdmin && (
                     <Badge className="bg-accent text-primary text-[10px] px-1.5">
                       ADMIN
                     </Badge>
                   )}
-                </div>
+                </button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="sm:hidden text-white/80 hover:bg-white/10"
+                  onClick={() => setLocation("/profile")}
+                  title="My Profile"
+                >
+                  <User className="h-4 w-4" />
+                </Button>
                 {user.isAdmin && (
                   <Button
                     size="sm"
@@ -430,7 +445,7 @@ const Home: React.FC = () => {
             <div className="text-center sm:text-left flex-1 min-w-0">
               <p className="text-accent font-medium text-sm sm:text-base mb-1">
                 {getGreeting()}
-                {user ? `, ${user.username}` : ""}! 👋
+                {user ? `, ${user.fullName || user.username}` : ""}! 👋
               </p>
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-tight mb-3">
                 Ready to test your{" "}

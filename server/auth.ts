@@ -1,17 +1,31 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Express } from "express";
+import { Express, Request } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { database } from "./database";
 import { User as SelectUser, type User } from "@shared/schema";
 import connectPgSimple from "connect-pg-simple";
+import {
+  registerUserSchema,
+  resolveDefaultAvatarPath,
+  updateProfileSchema,
+} from "@shared/user-validation";
+import {
+  registerAvatarUpload,
+  sanitizeUser,
+  sanitizeUserForAdmin,
+} from "./user-profile";
 
 declare global {
   namespace Express {
     interface User extends SelectUser { }
   }
+}
+
+interface RegisterRequest extends Request {
+  file?: Express.Multer.File;
 }
 
 const scryptAsync = promisify(scrypt);
@@ -30,9 +44,15 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
-export function setupAuth(app: Express) {
-  // Debug environment variables
+async function recordLogin(userId: number) {
+  try {
+    await database.updateUser(userId, { lastLoginAt: new Date() });
+  } catch (err) {
+    console.error("[Auth] Failed to update last login:", err);
+  }
+}
 
+export function setupAuth(app: Express) {
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "bible-trivia-secret-key",
     resave: false,
@@ -76,33 +96,69 @@ export function setupAuth(app: Express) {
   });
 
   // Register new user
-  app.post("/api/register", async (req, res, next) => {
-    try {
-      // Check if username already exists
-      const existingUser = await database.getUserByUsername(req.body.username);
-      if (existingUser) {
-        return res.status(400).json({ message: "Username already exists" });
-      }
-
-      // Create user with hashed password
-      const user = await database.createUser({
-        ...req.body,
-        password: await hashPassword(req.body.password),
-      });
-
-      // Log the user in automatically
-      req.login(user, (err) => {
-        if (err) return next(err);
-        res.status(201).json({
-          id: user.id,
-          username: user.username,
-          isAdmin: user.isAdmin
+  app.post(
+    "/api/register",
+    registerAvatarUpload.single("profileImage"),
+    async (req: RegisterRequest, res, next) => {
+      try {
+        const parsed = registerUserSchema.safeParse({
+          fullName: req.body.fullName,
+          username: req.body.username,
+          email: req.body.email,
+          password: req.body.password,
+          phone: req.body.phone || undefined,
+          bio: req.body.bio || undefined,
+          country: req.body.country || undefined,
+          defaultAvatar: req.body.defaultAvatar || undefined,
         });
-      });
-    } catch (err) {
-      next(err);
+
+        if (!parsed.success) {
+          return res.status(400).json({
+            message: parsed.error.errors[0]?.message || "Invalid registration data",
+          });
+        }
+
+        const data = parsed.data;
+
+        const existingUser = await database.getUserByUsername(data.username);
+        if (existingUser) {
+          return res.status(400).json({ message: "Username already exists" });
+        }
+
+        const existingEmail = await database.getUserByEmail(data.email);
+        if (existingEmail) {
+          return res.status(400).json({ message: "Email already registered" });
+        }
+
+        let profileImage = resolveDefaultAvatarPath(data.defaultAvatar);
+        if (req.file) {
+          profileImage = `/uploads/avatars/${req.file.filename}`;
+        }
+
+        const user = await database.createUser({
+          username: data.username,
+          password: await hashPassword(data.password),
+          email: data.email,
+          fullName: data.fullName,
+          phone: data.phone || undefined,
+          bio: data.bio || undefined,
+          country: data.country || undefined,
+          profileImage,
+          isEmailVerified: false,
+          isAdmin: false,
+        });
+
+        await recordLogin(user.id);
+
+        req.login(user, (err) => {
+          if (err) return next(err);
+          res.status(201).json(sanitizeUser(user));
+        });
+      } catch (err) {
+        next(err);
+      }
     }
-  });
+  );
 
   // Login user
   app.post("/api/login", (req, res, next) => {
@@ -110,26 +166,22 @@ export function setupAuth(app: Express) {
       if (err) return next(err);
       if (!user) return res.status(401).json({ message: info?.message || "Authentication failed" });
 
-      req.login(user, (err: Error | null) => {
+      req.login(user, async (err: Error | null) => {
         if (err) return next(err);
-        res.status(200).json({
-          id: user.id,
-          username: user.username,
-          isAdmin: user.isAdmin
-        });
+        await recordLogin(user.id);
+        const freshUser = await database.getUser(user.id);
+        res.status(200).json(sanitizeUser(freshUser ?? user));
       });
     })(req, res, next);
   });
 
   // Logout user
   app.post("/api/logout", async (req, res, next) => {
-    // Reset Team Battle status before logging out
     if (req.user?.id) {
       try {
         await database.setUserTeamBattleStatus(req.user.id, false);
       } catch (err) {
         console.error("[Logout] Failed to reset Team Battle status:", err);
-        // Continue with logout anyway
       }
     }
 
@@ -144,12 +196,91 @@ export function setupAuth(app: Express) {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
 
     const user = req.user as SelectUser;
-    res.json({
-      id: user.id,
-      username: user.username,
-      isAdmin: user.isAdmin
-    });
+    res.json(sanitizeUser(user));
   });
+
+  // Update own profile
+  app.patch(
+    "/api/profile",
+    registerAvatarUpload.single("profileImage"),
+    async (req: RegisterRequest, res, next) => {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      try {
+        const currentUser = req.user as SelectUser;
+        const parsed = updateProfileSchema.safeParse({
+          fullName: req.body.fullName,
+          username: req.body.username,
+          email: req.body.email,
+          phone: req.body.phone || undefined,
+          bio: req.body.bio || undefined,
+          country: req.body.country || undefined,
+          defaultAvatar: req.body.defaultAvatar || undefined,
+          currentPassword: req.body.currentPassword || undefined,
+          newPassword: req.body.newPassword || undefined,
+        });
+
+        if (!parsed.success) {
+          return res.status(400).json({
+            message: parsed.error.errors[0]?.message || "Invalid profile data",
+          });
+        }
+
+        const data = parsed.data;
+
+        if (data.username !== currentUser.username) {
+          const existingUser = await database.getUserByUsername(data.username);
+          if (existingUser && existingUser.id !== currentUser.id) {
+            return res.status(400).json({ message: "Username already taken" });
+          }
+        }
+
+        if (data.email !== currentUser.email) {
+          const existingEmail = await database.getUserByEmail(data.email);
+          if (existingEmail && existingEmail.id !== currentUser.id) {
+            return res.status(400).json({ message: "Email already registered" });
+          }
+        }
+
+        const updates: Partial<User> = {
+          fullName: data.fullName,
+          username: data.username,
+          email: data.email,
+          phone: data.phone || null,
+          bio: data.bio || null,
+          country: data.country || null,
+        };
+
+        if (data.email !== currentUser.email) {
+          updates.isEmailVerified = false;
+        }
+
+        if (req.file) {
+          updates.profileImage = `/uploads/avatars/${req.file.filename}`;
+        } else if (req.body.defaultAvatar) {
+          updates.profileImage = resolveDefaultAvatarPath(req.body.defaultAvatar);
+        }
+
+        if (data.newPassword) {
+          const validPassword = await comparePasswords(
+            data.currentPassword!,
+            currentUser.password
+          );
+          if (!validPassword) {
+            return res.status(400).json({ message: "Current password is incorrect" });
+          }
+          updates.password = await hashPassword(data.newPassword);
+        }
+
+        const updatedUser = await database.updateUser(currentUser.id, updates);
+        res.json(sanitizeUser(updatedUser));
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
 
   // Get all users (admin only)
   app.get("/api/users", async (req, res) => {
@@ -160,18 +291,7 @@ export function setupAuth(app: Express) {
 
     try {
       const users = await database.getAllUsers();
-      res.json(users.map((u: User) => ({
-        id: u.id,
-        username: u.username,
-        email: u.email,
-        isAdmin: u.isAdmin,
-        isOnline: u.isOnline,
-        lastSeen: u.lastSeen,
-        totalGames: u.totalGames,
-        wins: u.wins,
-        losses: u.losses,
-        draws: u.draws
-      })));
+      res.json(users.map((u: User) => sanitizeUserForAdmin(u)));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch users" });
     }
@@ -186,34 +306,21 @@ export function setupAuth(app: Express) {
 
     try {
       const userId = parseInt(req.params.id);
-      const updates = req.body;
+      const updates = { ...req.body };
 
-      // Don't allow updating password through this endpoint
       delete updates.password;
+      delete updates.id;
 
       const updatedUser = await database.updateUser(userId, updates);
-      res.json({
-        id: updatedUser.id,
-        username: updatedUser.username,
-        email: updatedUser.email,
-        isAdmin: updatedUser.isAdmin,
-        isOnline: updatedUser.isOnline,
-        lastSeen: updatedUser.lastSeen,
-        totalGames: updatedUser.totalGames,
-        wins: updatedUser.wins,
-        losses: updatedUser.losses,
-        draws: updatedUser.draws
-      });
+      res.json(sanitizeUserForAdmin(updatedUser));
     } catch (err) {
       res.status(500).json({ message: "Failed to update user" });
     }
   });
 
-  // Create initial admin user if none exists
   createInitialAdmin();
 }
 
-// Create initial admin user
 async function createInitialAdmin() {
   try {
     const adminUser = await database.getUserByUsername("admin");
@@ -221,7 +328,10 @@ async function createInitialAdmin() {
       await database.createUser({
         username: "admin",
         password: await hashPassword("admin123"),
-        isAdmin: true
+        email: "admin@faithiq.local",
+        fullName: "System Administrator",
+        profileImage: resolveDefaultAvatarPath("default-4"),
+        isAdmin: true,
       });
     }
   } catch (err) {

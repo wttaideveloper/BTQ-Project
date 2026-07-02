@@ -70,6 +70,7 @@ export interface IDatabase {
   // User methods
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, updates: Partial<User>): Promise<User>;
@@ -263,6 +264,14 @@ class PostgreSQLDatabase implements IDatabase {
     return result[0] as User | undefined;
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email));
+    return result[0] as User | undefined;
+  }
+
   async getAllUsers(): Promise<User[]> {
     const result = await db.select().from(users).orderBy(asc(users.username));
     return result as User[];
@@ -275,6 +284,12 @@ class PostgreSQLDatabase implements IDatabase {
         username: user.username,
         password: user.password,
         email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
+        profileImage: user.profileImage,
+        bio: user.bio,
+        country: user.country,
+        isEmailVerified: user.isEmailVerified ?? false,
         isAdmin: user.isAdmin ?? false,
         isOnline: false,
         lastSeen: new Date(),
@@ -3281,6 +3296,43 @@ class PostgreSQLDatabase implements IDatabase {
         // Continue even if migration fails - column might already exist
       }
 
+      // Add user profile columns
+      try {
+        console.log("Running migration: Adding user profile columns...");
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;
+        `);
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+        `);
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
+        `);
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+        `);
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS country TEXT;
+        `);
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS is_email_verified BOOLEAN DEFAULT FALSE;
+        `);
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+        `);
+        await db.execute(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique
+          ON users(email)
+          WHERE email IS NOT NULL;
+        `);
+        console.log("✅ Migration completed: user profile columns ready");
+      } catch (migrationErr) {
+        console.error(
+          "Migration error for user profile columns (non-fatal):",
+          migrationErr instanceof Error ? migrationErr.message : "Unknown error"
+        );
+      }
+
       // Create initial admin user if it doesn't exist
       const adminUser = await this.getUserByUsername("admin");
       if (!adminUser) {
@@ -3288,6 +3340,8 @@ class PostgreSQLDatabase implements IDatabase {
         await this.createUser({
           username: "admin",
           password: await hashPassword("admin123"),
+          email: "admin@faithiq.local",
+          fullName: "System Administrator",
           isAdmin: true,
         });
         console.log("Created initial admin user: admin / admin123");

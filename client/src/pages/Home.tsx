@@ -58,11 +58,20 @@ import TeamBattleSetup from "@/components/TeamBattleSetup";
 import WelcomeTutorial from "@/components/WelcomeTutorial";
 import FAQSection from "@/components/FAQSection";
 import HomeActionCard from "@/components/home/HomeActionCard";
+import { UserAvatar } from "@/components/UserAvatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { Notification } from "@shared/schema";
+import { apiRequest, getQueryFn } from "@/lib/queryClient";
+import { Notification, User as SelectUser } from "@shared/schema";
 import { voiceService } from "@/lib/voice-service";
 import { stopSpeaking } from "@/lib/sounds";
 import {
@@ -84,6 +93,13 @@ interface LeaderboardEntry {
   isCurrentUser?: boolean;
 }
 
+function formatLastLogin(value?: string | Date | null) {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString();
+}
+
 const Home: React.FC = () => {
   const [_, setLocation] = useLocation();
   const [showGameSetup, setShowGameSetup] = useState(false);
@@ -101,6 +117,13 @@ const Home: React.FC = () => {
 
   const { user, logoutMutation } = useAuth();
   const queryClient = useQueryClient();
+
+  const { data: profile } = useQuery<SelectUser | null>({
+    queryKey: ["/api/profile"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+    enabled: !!user,
+  });
+  const profileUser = profile ?? user;
 
   const [gameType, setGameType] = useState<"question" | "time">("question");
   const [category, setCategory] = useState("Bible Stories");
@@ -382,21 +405,63 @@ const Home: React.FC = () => {
             )}
             {user ? (
               <>
-                <button
-                  type="button"
-                  onClick={() => setLocation("/profile")}
-                  className="hidden sm:flex items-center gap-2 text-white/90 bg-white/10 px-3 py-1.5 rounded-full text-sm hover:bg-white/15 transition-colors"
-                >
-                  <User className="h-4 w-4" />
-                  <span className="truncate max-w-[100px]">
-                    {user.fullName || user.username}
-                  </span>
-                  {user.isAdmin && (
-                    <Badge className="bg-accent text-primary text-[10px] px-1.5">
-                      ADMIN
-                    </Badge>
-                  )}
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="hidden sm:flex items-center gap-2 text-white/90 bg-white/10 px-3 py-1.5 rounded-full text-sm hover:bg-white/15 transition-colors"
+                    >
+                      <UserAvatar
+                        profileImage={profileUser?.profileImage}
+                        fullName={profileUser?.fullName}
+                        username={profileUser?.username}
+                        className="h-7 w-7 text-xs"
+                      />
+                      <span className="truncate max-w-[100px]">
+                        {profileUser?.fullName || profileUser?.username}
+                      </span>
+                      {user.isAdmin && (
+                        <Badge className="bg-accent text-primary text-[10px] px-1.5">
+                          ADMIN
+                        </Badge>
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-64 bg-[#1a1f3a] border-white/10 text-white"
+                  >
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex items-center gap-3">
+                        <UserAvatar
+                          profileImage={profileUser?.profileImage}
+                          fullName={profileUser?.fullName}
+                          username={profileUser?.username}
+                          className="h-10 w-10"
+                        />
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">
+                            {profileUser?.fullName || profileUser?.username}
+                          </p>
+                          <p className="text-xs text-white/50 truncate">
+                            @{profileUser?.username}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-white/45 mt-3">
+                        Last login: {formatLastLogin(profileUser?.lastLoginAt)}
+                      </p>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-white/10" />
+                    <DropdownMenuItem
+                      className="cursor-pointer focus:bg-white/10 focus:text-white"
+                      onClick={() => setLocation("/profile")}
+                    >
+                      <User className="h-4 w-4 mr-2" />
+                      View Profile
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button
                   size="sm"
                   variant="ghost"

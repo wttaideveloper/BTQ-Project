@@ -78,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);
+      queryClient.setQueryData(["/api/profile"], user);
       toast({
         title: "Login Successful",
         description: `Welcome back, ${user.username}!`,
@@ -131,6 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);
+      queryClient.setQueryData(["/api/profile"], user);
       toast({
         title: "Registration Successful",
         description: `Welcome, ${user.username}!`,
@@ -151,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: () => {
       queryClient.setQueryData(["/api/user"], null);
+      queryClient.setQueryData(["/api/profile"], null);
       toast({
         title: "Logged out",
         description: "You have been successfully logged out.",
@@ -209,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (updatedUser: SelectUser) => {
       queryClient.setQueryData(["/api/user"], updatedUser);
+      queryClient.setQueryData(["/api/profile"], updatedUser);
       toast({
         title: "Profile updated",
         description: "Your profile has been saved successfully.",

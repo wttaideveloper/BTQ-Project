@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { UserAvatar } from "@/components/UserAvatar";
 import { ProfilePicturePicker } from "@/components/ProfilePicturePicker";
@@ -22,6 +23,8 @@ import {
   DEFAULT_AVATARS,
   type UpdateProfileData,
 } from "@shared/user-validation";
+import { getQueryFn } from "@/lib/queryClient";
+import type { User } from "@shared/schema";
 import {
   ArrowLeft,
   Edit3,
@@ -56,7 +59,13 @@ function findDefaultAvatarId(profileImage?: string | null) {
 }
 
 const ProfilePage: React.FC = () => {
-  const { user, updateProfileMutation } = useAuth();
+  const { user: authUser, updateProfileMutation } = useAuth();
+  const { data: profile } = useQuery<User | null>({
+    queryKey: ["/api/profile"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+    enabled: !!authUser,
+  });
+  const user = profile ?? authUser;
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);

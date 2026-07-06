@@ -75,8 +75,11 @@ export function setupAuth(app: Express) {
     new LocalStrategy(async (username, password, done) => {
       try {
         const user = await database.getUserByUsername(username);
-        if (!user || !(await comparePasswords(password, user.password))) {
-          return done(null, false, { message: "Incorrect username or password" });
+        if (!user) {
+          return done(null, false, { message: "Incorrect username" });
+        }
+        if (!(await comparePasswords(password, user.password))) {
+          return done(null, false, { message: "Incorrect password" });
         }
         return done(null, user);
       } catch (err) {
@@ -191,12 +194,34 @@ export function setupAuth(app: Express) {
     });
   });
 
+  async function getAuthenticatedProfile(userId: number) {
+    return database.getUser(userId);
+  }
+
   // Get current user
-  app.get("/api/user", (req, res) => {
+  app.get("/api/user", async (req, res, next) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
 
-    const user = req.user as SelectUser;
-    res.json(sanitizeUser(user));
+    try {
+      const freshUser = await getAuthenticatedProfile((req.user as SelectUser).id);
+      if (!freshUser) return res.status(401).json({ message: "Not authenticated" });
+      res.json(sanitizeUser(freshUser));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Get own profile (includes last login and game stats)
+  app.get("/api/profile", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+
+    try {
+      const freshUser = await getAuthenticatedProfile((req.user as SelectUser).id);
+      if (!freshUser) return res.status(401).json({ message: "Not authenticated" });
+      res.json(sanitizeUser(freshUser));
+    } catch (err) {
+      next(err);
+    }
   });
 
   // Update own profile

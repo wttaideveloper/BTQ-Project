@@ -1969,8 +1969,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get game configuration from game session or use defaults
       // Default to explicit team_battle for normal team battle flows
       let gameType = "team_battle";
-      let category = "General";
-      let difficulty = "medium";
+      let category = "Bible Stories";
+      let difficulty = "Beginner";
 
       try {
         const gameSession = await database.getGameSession(
@@ -1987,6 +1987,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } catch (err) {
       }
+
+      // Client-selected battle settings take priority
+      if (req.body?.category) {
+        category = req.body.category;
+      }
+      if (req.body?.difficulty) {
+        difficulty = req.body.difficulty;
+      }
+
       // Allow client to explicitly request a gameType (e.g., rapid_fire)
       if (req.body && req.body.gameType) {
         // Defensive: treat legacy "question" as "team_battle"
@@ -3811,6 +3820,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Clients must fetch from this endpoint and render UI based on its response.
   // WebSocket events are just notifications to trigger a refetch.
   // ============================================================================
+  // Update battle settings (category/difficulty) while lobby is still forming
+  app.patch("/api/team-battle/settings", ensureAuthenticated, async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const { gameSessionId, category, difficulty } = req.body || {};
+      if (!gameSessionId || typeof gameSessionId !== "string") {
+        return res.status(400).json({ message: "gameSessionId is required" });
+      }
+      if (!category || !difficulty) {
+        return res.status(400).json({ message: "category and difficulty are required" });
+      }
+
+      const battles = await database.getTeamBattlesByGameSession(gameSessionId);
+      if (battles.length === 0) {
+        return res.status(404).json({ message: "No team battle found for this session" });
+      }
+
+      const battle = battles.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0];
+
+      if (battle.status !== "forming") {
+        return res.status(400).json({ message: "Settings can only be changed before the battle starts" });
+      }
+
+      if (battle.teamACaptainId !== req.user.id) {
+        return res.status(403).json({ message: "Only the host captain can change battle settings" });
+      }
+
+      const updatedBattle = await database.updateTeamBattle(battle.id, {
+        category,
+        difficulty,
+      });
+
+      try {
+        const teams = await convertTeamBattleToTeams(updatedBattle);
+        sendToUser(battle.teamACaptainId, {
+          type: "teams_updated",
+          teams,
+          gameSessionId,
+        });
+        if (battle.teamBCaptainId) {
+          sendToUser(battle.teamBCaptainId, {
+            type: "teams_updated",
+            teams,
+            gameSessionId,
+          });
+        }
+      } catch (wsError) {
+        console.error("[PATCH /api/team-battle/settings] WebSocket notify failed:", wsError);
+      }
+
+      return res.json({
+        category: updatedBattle.category,
+        difficulty: updatedBattle.difficulty,
+      });
+    } catch (error) {
+      console.error("[PATCH /api/team-battle/settings] Error:", error);
+      return res.status(500).json({ message: "Failed to update battle settings" });
+    }
+  });
+
   app.get("/api/team-battle/state", ensureAuthenticated, async (req, res) => {
     try {
       const { gameSessionId } = req.query;
@@ -3920,6 +3994,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         battleId: battle.id,
         gameSessionId: battle.gameSessionId,
         status: battle.status,
+        category: battle.category,
+        difficulty: battle.difficulty,
         teams,
         countdown,
         bothReady: readyState.teamAReady && readyState.teamBReady,

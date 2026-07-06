@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -106,6 +113,17 @@ interface TeamJoinRequest {
   expiresAt?: Date | null;
 }
 
+const BATTLE_CATEGORIES = [
+  "All Categories",
+  "Old Testament",
+  "New Testament",
+  "Bible Stories",
+  "Famous People",
+  "Theme-Based",
+] as const;
+
+const BATTLE_DIFFICULTIES = ["Beginner", "Intermediate", "Advanced"] as const;
+
 const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   open,
   onClose,
@@ -128,6 +146,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const [gameSessionId, setGameSessionId] = useState<string | null>(null);
   const [hasNavigatedToGame, setHasNavigatedToGame] = useState(false);
   const [isReadyLoading, setIsReadyLoading] = useState(false); // Loading state for Ready button
+  const [battleCategory, setBattleCategory] = useState(category);
+  const [battleDifficulty, setBattleDifficulty] = useState(difficulty);
   const [, setLocation] = useLocation();
 
   // ============================================================================
@@ -1191,6 +1211,71 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   // Determine if the current user is the captain of their team
   const isTeamCaptain = userTeam?.captainId === user?.id;
 
+  const canEditBattleSettings = useMemo(() => {
+    if (!user) return false;
+    if (
+      battleState?.phase &&
+      battleState.phase !== "forming" &&
+      battleState.phase !== "no_battle"
+    ) {
+      return false;
+    }
+    if (!userTeam) return true;
+    return userTeam.captainId === user.id && userTeam.teamSide === "A";
+  }, [user, userTeam, battleState?.phase]);
+
+  // Reset settings when modal opens; sync from server when battle exists
+  useEffect(() => {
+    if (!open) return;
+    setBattleCategory(category);
+    setBattleDifficulty(difficulty);
+  }, [open, category, difficulty]);
+
+  useEffect(() => {
+    if (!battleState?.category && !battleState?.difficulty) return;
+    if (battleState.category) setBattleCategory(battleState.category);
+    if (battleState.difficulty) setBattleDifficulty(battleState.difficulty);
+  }, [battleState?.category, battleState?.difficulty]);
+
+  // Persist settings to server when host changes them after team creation
+  useEffect(() => {
+    if (!canEditBattleSettings || !gameSessionId || !userTeam) return;
+    if (!battleState?.battleId || battleState.phase === "no_battle") return;
+    if (
+      battleState.category === battleCategory &&
+      battleState.difficulty === battleDifficulty
+    ) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      apiRequest("PATCH", "/api/team-battle/settings", {
+        gameSessionId,
+        category: battleCategory,
+        difficulty: battleDifficulty,
+      })
+        .then(() => {
+          forceRefetchBattleState();
+        })
+        .catch(() => {
+          /* non-critical */
+        });
+    }, 400);
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    battleCategory,
+    battleDifficulty,
+    canEditBattleSettings,
+    gameSessionId,
+    userTeam,
+    battleState?.battleId,
+    battleState?.phase,
+    battleState?.category,
+    battleState?.difficulty,
+    forceRefetchBattleState,
+  ]);
+
   // ============================================================================
   // READY STATUS CONFIRMATION - Clear loading and show toast
   // ============================================================================
@@ -1933,6 +2018,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       const payload: any = {
         ...data,
         gameSessionId: sessionId,
+        category: battleCategory,
+        difficulty: battleDifficulty,
       };
       if (isRapidFire) {
         payload.gameType = "rapid_fire";
@@ -2785,28 +2872,61 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </div>
               <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
                 <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
-                  <span className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
+                  <Label className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
                     Type
-                  </span>
+                  </Label>
                   <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm break-words`}>
-                    {gameType === "question" ? "Question-Based" : "Time-Based"}
+                    Question-Based
                   </p>
                 </div>
                 <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
-                  <span className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
+                  <Label className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
                     Difficulty
-                  </span>
-                  <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm`}>
-                    {difficulty}
-                  </p>
+                  </Label>
+                  {canEditBattleSettings ? (
+                    <Select
+                      value={battleDifficulty}
+                      onValueChange={setBattleDifficulty}
+                    >
+                      <SelectTrigger className="mt-1 h-8 text-xs sm:text-sm bg-white border-purple-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BATTLE_DIFFICULTIES.map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {level}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm`}>
+                      {battleDifficulty}
+                    </p>
+                  )}
                 </div>
                 <div className="col-span-2 bg-white/60 rounded-lg p-1.5 sm:p-2">
-                  <span className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
+                  <Label className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
                     Category
-                  </span>
-                  <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm break-words`}>
-                    {category}
-                  </p>
+                  </Label>
+                  {canEditBattleSettings ? (
+                    <Select value={battleCategory} onValueChange={setBattleCategory}>
+                      <SelectTrigger className="mt-1 h-8 text-xs sm:text-sm bg-white border-purple-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BATTLE_CATEGORIES.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm break-words`}>
+                      {battleCategory}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

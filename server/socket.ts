@@ -5803,6 +5803,8 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       currentQuestionIndex: 0,
       questions: [],
       teams: readyTeams,
+      category: battle.category,
+      difficulty: battle.difficulty,
     });
     // If this battle was created as rapid_fire, mark session mode
     if (battle && (battle as any).gameType === "rapid_fire") {
@@ -5948,6 +5950,8 @@ async function startTeamBattleQuestions(gameId: string) {
       // Fetch one toss question (history-aware)
       const tossCandidates = await database.getRandomQuestionsWithHistory({
         count: 1,
+        category: gameSession.category && gameSession.category !== "All Categories" ? gameSession.category : undefined,
+        difficulty: gameSession.difficulty || undefined,
         userId: primaryUserId,
         excludeRecentHours: 0,
       });
@@ -6001,6 +6005,8 @@ async function startTeamBattleQuestions(gameId: string) {
     // Total 10 questions: Team A gets 5 (odd: 1,3,5,7,9), Team B gets 5 (even: 2,4,6,8,10)
     const questions = await database.getRandomQuestionsWithHistory({
       count: 10,
+      category: gameSession.category && gameSession.category !== "All Categories" ? gameSession.category : undefined,
+      difficulty: gameSession.difficulty || undefined,
       userId: primaryUserId,
       excludeRecentHours: 0, // We'll manually exclude below
     });

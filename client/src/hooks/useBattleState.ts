@@ -38,6 +38,8 @@ export interface BattleState {
   battleId: string | null;
   gameSessionId: string;
   status: string;
+  category?: string;
+  difficulty?: string;
   teams: BattleStateTeam[];
   countdown: number | null;
   bothReady: boolean;

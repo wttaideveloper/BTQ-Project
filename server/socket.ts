@@ -851,15 +851,45 @@ export async function expireAllPendingRequestsAndInvitationsForUser(userId: numb
     for (const jr of pendingRequests) {
       await database.updateJoinRequestStatus(jr.id, "expired");
 
-      // Notify the user that their request expired
-      sendToUser(userId, {
-        type: "join_request_updated",
+      const teamId = jr.team_id || jr.teamId;
+      const expiredPayload = {
+        type: "join_request_updated" as const,
         joinRequestId: jr.id,
-        status: "expired",
-        teamId: jr.team_id || jr.teamId,
+        status: "expired" as const,
+        teamId,
         requesterId: userId,
         message: "This join request has expired because you joined another team.",
-      });
+      };
+
+      // Notify the requester that their request expired
+      sendToUser(userId, expiredPayload);
+
+      // Notify the team captain so their lobby clears stale requests
+      if (teamId) {
+        try {
+          const parts = teamId.split("-team-");
+          if (parts.length === 2) {
+            const rawBattleId = parts[0];
+            const battleId = rawBattleId.startsWith("battle-")
+              ? rawBattleId.substring("battle-".length)
+              : rawBattleId;
+            const teamSide = parts[1].toLowerCase();
+            const battle = await database.getTeamBattle(battleId);
+            if (battle) {
+              const captainId =
+                teamSide === "a" ? battle.teamACaptainId : battle.teamBCaptainId;
+              if (captainId && captainId !== userId) {
+                sendToUser(captainId, expiredPayload);
+              }
+            }
+          }
+        } catch (captainNotifyError) {
+          console.error(
+            "[expireAllPendingRequestsAndInvitationsForUser] Captain notify failed:",
+            captainNotifyError
+          );
+        }
+      }
     }
 
     // Get all pending invitations for this user

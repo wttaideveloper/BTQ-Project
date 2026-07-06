@@ -31,6 +31,15 @@ function extractTeammateIds(teammates: any[] | undefined): number[] {
     .filter((id): id is number => id !== null);
 }
 
+function dedupeMembersByUserId<T extends { userId: number }>(members: T[]): T[] {
+  const seen = new Set<number>();
+  return members.filter((member) => {
+    if (seen.has(member.userId)) return false;
+    seen.add(member.userId);
+    return true;
+  });
+}
+
 // ElevenLabs API configuration
 const ELEVENLABS_API_KEY =
   process.env.ELEVENLABS_API_KEY ||
@@ -360,14 +369,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update the appropriate teammates array
       const teammatesField = teamSide === 'a' ? 'teamATeammates' : 'teamBTeammates';
       const currentTeammates = battle[teammatesField] || [];
+      const currentTeammateIds = extractTeammateIds(currentTeammates);
 
-      // Check if member already in team
-      if (currentTeammates.some((m: any) => m.id === member.id)) {
+      // Check if member already in team (IDs may be stored as numbers or objects)
+      if (currentTeammateIds.includes(member.id)) {
         return;
       }
 
-      // Add new member
-      const updatedTeammates = [...currentTeammates, member];
+      // Store as numeric IDs for consistency with invitation-accept path
+      const updatedTeammates = [...currentTeammateIds, member.id];
 
       // Update database
       await database.updateTeamBattle(battleId, {
@@ -427,8 +437,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if team is full
-      const currentMembers = 1 + (team.teammates?.length || 0);
-      if (currentMembers >= 4) {
+      const currentMembers = team.members?.length || 0;
+      if (currentMembers >= 3) {
         console.error('[POST /api/team-join-requests] Team is full');
         return res.status(400).json({ message: "Team is full" });
       }
@@ -440,6 +450,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('[POST /api/team-join-requests] User already has pending request');
         return res.status(400).json({
           message: "You already have a pending request for this team",
+        });
+      }
+
+      // Block if user is already on this team (e.g. joined via invitation)
+      if (team.members?.some((member: any) => member.userId === user.id)) {
+        return res.status(400).json({
+          message: "You are already on this team",
         });
       }
 
@@ -541,6 +558,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Forbidden: Only team captain can accept/reject" });
       }
 
+      const requesterId = jr.requester_id || jr.requesterId;
+      const requesterUsername = jr.requester_username || jr.requesterUsername;
+
+      if (status === "accepted") {
+        if (!team) {
+          console.error(`[PATCH] Team not found for teamId: ${teamId}`);
+          return res.status(404).json({ message: "Team not found" });
+        }
+
+        if (!requesterId || !requesterUsername) {
+          console.error(`[PATCH] Missing requester info: requesterId=${requesterId}, requesterUsername=${requesterUsername}`);
+          return res.status(400).json({ message: "Invalid join request: missing requester information" });
+        }
+
+        const teamMembers = team.members || [];
+        const alreadyOnThisTeam = teamMembers.some(
+          (member: any) => member.userId === requesterId
+        );
+
+        if (alreadyOnThisTeam) {
+          await database.updateJoinRequestStatus(id, "expired");
+          try {
+            sendToUser(user.id, {
+              type: "join_request_updated",
+              joinRequestId: id,
+              status: "expired",
+              teamId,
+              requesterId,
+              message: "This join request expired because the player already joined the team.",
+            });
+            sendToUser(requesterId, {
+              type: "join_request_updated",
+              joinRequestId: id,
+              status: "expired",
+              teamId,
+              requesterId,
+              message: "Your join request expired because you already joined this team.",
+            });
+          } catch (notifyError: any) {
+            console.error(`[PATCH] Error notifying expired duplicate join request:`, notifyError);
+          }
+          return res.json({
+            id,
+            status: "expired",
+            message: "Player is already on this team",
+          });
+        }
+
+        if (teamMembers.length >= 3) {
+          await database.updateJoinRequestStatus(id, "rejected");
+          return res.status(400).json({ message: "Team full" });
+        }
+
+        // Check if user is already in another team for this game session
+        try {
+          const battles = await database.getTeamBattlesByGameSession(team.gameSessionId);
+          for (const battle of battles) {
+            const sessionTeams = await convertTeamBattleToTeams(battle);
+            const otherTeam = sessionTeams.find(
+              (t) =>
+                t.id !== teamId &&
+                t.members.some((member: any) => member.userId === requesterId)
+            );
+            if (otherTeam) {
+              await database.updateJoinRequestStatus(id, "rejected");
+              return res.status(400).json({
+                message:
+                  "This player is already in another team for this game session.",
+              });
+            }
+          }
+        } catch (checkError: any) {
+          console.error(`[PATCH] Error checking existing teams:`, checkError);
+        }
+      }
+
       await database.updateJoinRequestStatus(id, status);
 
       if (status === "accepted") {
@@ -549,40 +642,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error(`[PATCH] Team not found for teamId: ${teamId}`);
           return res.status(404).json({ message: "Team not found" });
         }
-        const members = team.teammates || [];
-        if (members.length >= 3) {
-          return res.status(400).json({ message: "Team full" });
-        }
-
-        const requesterId = jr.requester_id || jr.requesterId;
-        const requesterUsername = jr.requester_username || jr.requesterUsername;
-
-        if (!requesterId || !requesterUsername) {
-          console.error(`[PATCH] Missing requester info: requesterId=${requesterId}, requesterUsername=${requesterUsername}`);
-          return res.status(400).json({ message: "Invalid join request: missing requester information" });
-        }
-
-        // Check if user is already in any team for this game session
-        try {
-          const allTeams = await database.getTeamsByGameSession(team.gameSessionId);
-          const userAlreadyInTeam = allTeams.find((t) =>
-            t.members.some((member) => member.userId === requesterId)
-          );
-
-          if (userAlreadyInTeam) {
-            return res.status(400).json({
-              message: "You are already in a team for this game session. You cannot join multiple teams."
-            });
-          }
-        } catch (checkError: any) {
-          console.error(`[PATCH] Error checking existing teams:`, checkError);
-          // Continue anyway - this is a safety check, not critical
-        }
 
         try {
           await addMemberToTeamBattle(teamId, {
-            id: requesterId,
-            username: requesterUsername,
+            id: requesterId!,
+            username: requesterUsername!,
           });
         } catch (addError: any) {
           console.error(`[PATCH] Error adding member to team battle:`, addError);
@@ -606,7 +670,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // auto-reject if full now
         try {
           const updatedTeam = await getTeamFromBattle(teamId);
-          if (updatedTeam && (updatedTeam.teammates?.length || 0) >= 3) {
+          if (updatedTeam && (updatedTeam.members?.length || 0) >= 3) {
             const pending = await database.getJoinRequestsByTeam(teamId);
             await Promise.all(
               pending
@@ -620,26 +684,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // notify requester
+      // notify requester and captain
       try {
-        const requesterId = jr.requester_id || jr.requesterId;
-        sendToUser(requesterId, {
-          type: "join_request_updated",
+        const notifyRequesterId = jr.requester_id || jr.requesterId;
+        const joinUpdatePayload = {
+          type: "join_request_updated" as const,
           joinRequestId: id,
           status,
           teamId: teamId,
-          requesterId: requesterId,
+          requesterId: notifyRequesterId,
           teamName: team?.name,
           gameSessionId: team?.gameSessionId,
-          message: status === "accepted" ? `You've been accepted to ${team?.name}!` : "Your join request was ${status}"
-        });
+          message:
+            status === "accepted"
+              ? `You've been accepted to ${team?.name}!`
+              : `Your join request was ${status}`,
+        };
+
+        sendToUser(notifyRequesterId, joinUpdatePayload);
+
+        if (team?.captainId && team.captainId !== notifyRequesterId) {
+          sendToUser(team.captainId, joinUpdatePayload);
+        }
 
         // Also send teams_updated event to refresh the member's team list
         if (status === "accepted" && team?.gameSessionId) {
-          sendToUser(requesterId, {
-            type: "teams_updated",
-            gameSessionId: team.gameSessionId
-          });
+          try {
+            const battles = await database.getTeamBattlesByGameSession(
+              team.gameSessionId
+            );
+            const allTeams: any[] = [];
+            for (const battle of battles) {
+              const sessionTeams = await convertTeamBattleToTeams(battle);
+              allTeams.push(...sessionTeams);
+            }
+
+            const participantIds = new Set<number>();
+            for (const sessionTeam of allTeams) {
+              for (const member of sessionTeam.members || []) {
+                participantIds.add(member.userId);
+              }
+            }
+
+            for (const participantId of participantIds) {
+              sendToUser(participantId, {
+                type: "teams_updated",
+                teams: allTeams,
+                gameSessionId: team.gameSessionId,
+                message: "Team roster updated.",
+              });
+            }
+          } catch (teamsNotifyError: any) {
+            console.error(`[PATCH] Error broadcasting teams_updated:`, teamsNotifyError);
+            sendToUser(notifyRequesterId, {
+              type: "teams_updated",
+              gameSessionId: team.gameSessionId,
+            });
+          }
         }
       } catch (notifyError: any) {
         console.error(`[PATCH] Error sending WebSocket notification (non-critical):`, notifyError);
@@ -1894,7 +1995,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Reflect the underlying battle.gameType so callers can distinguish modes
         gameType: battle.gameType,
         gameMode: (battle.gameType === "rapid_fire" ? "RAPID_FIRE" : "TEAM_BATTLE"),
-        members: teamAMembers,
+        members: dedupeMembersByUserId(teamAMembers),
         score: battle.teamAScore || 0,
         correctAnswers: battle.teamACorrectAnswers || 0,
         incorrectAnswers: battle.teamAIncorrectAnswers || 0,
@@ -1946,7 +2047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Reflect the underlying battle.gameType so callers can distinguish modes
         gameType: battle.gameType,
         gameMode: (battle.gameType === "rapid_fire" ? "RAPID_FIRE" : "TEAM_BATTLE"),
-        members: teamBMembers,
+        members: dedupeMembersByUserId(teamBMembers),
         score: battle.teamBScore || 0,
         correctAnswers: battle.teamBCorrectAnswers || 0,
         incorrectAnswers: battle.teamBIncorrectAnswers || 0,
@@ -3191,6 +3292,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               invitation.teamBattleId,
               updates
             );
+
+            // Expire pending join requests / invitations now that the player joined
+            try {
+              await expireAllPendingRequestsAndInvitationsForUser(req.user!.id);
+            } catch (expireError: any) {
+              console.error(
+                "Error expiring join requests after teammate invitation accept:",
+                expireError
+              );
+            }
 
             // After updating, gather all teams in this session and notify
             try {

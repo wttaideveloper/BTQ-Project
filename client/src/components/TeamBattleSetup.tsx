@@ -839,6 +839,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               queryClient.refetchQueries({
                 queryKey: ["/api/teams/available"],
               });
+              queryClient.invalidateQueries({
+                queryKey: ["/api/team-join-requests"],
+              });
 
               // CRITICAL: Also refetch DB-authoritative battle state
               refetchBattleState();
@@ -2409,6 +2412,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
       // Refresh invitations list to show updated status
       queryClient.invalidateQueries({ queryKey: ["/api/team-invitations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/team-join-requests"] });
       // Refresh available teams list after opponent acceptance
       queryClient.invalidateQueries({ queryKey: ["/api/teams/available"] });
       setPendingResponseId(null);
@@ -3408,11 +3412,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     isReady={isTeamReady}
                     isReadyLoading={isUserTeam ? isReadyLoading : false}
                     joinRequests={(joinRequests || []).filter((jr) => {
-                      // Backend already filters to only return join requests for teams
-                      // where the current user is captain, so we just need to match exact teamId
-                      const matches = jr.teamId === team.id;
-
-                      return matches;
+                      if (jr.teamId !== team.id || jr.status !== "pending") {
+                        return false;
+                      }
+                      // Hide requests from players who already joined this team
+                      return !team.members.some(
+                        (member) => member.userId === jr.requesterId
+                      );
                     })}
                     onAcceptJoinRequest={(jrId) =>
                       respondToJoinRequestMutation.mutate({

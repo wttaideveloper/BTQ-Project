@@ -243,7 +243,14 @@ const TeamDisplay = ({
           </h4>
           <ul className="space-y-1.5 sm:space-y-2">
             {joinRequests
-              .filter((jr) => jr.teamId === team.id && jr.status === "pending")
+              .filter(
+                (jr) =>
+                  jr.teamId === team.id &&
+                  jr.status === "pending" &&
+                  !team.members.some(
+                    (member) => member.userId === jr.requesterId
+                  )
+              )
               .map((jr) => {
                 return (
                   <li

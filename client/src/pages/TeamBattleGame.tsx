@@ -109,7 +109,9 @@ export default function TeamBattleGame() {
   const { toast } = useToast();
 
   const goToTeamBattleSetup = () => {
-    markOpenTeamBattleSetup();
+    const isRapid =
+      gameState.gameType === "rapid_fire" || isRapidFireRef.current;
+    markOpenTeamBattleSetup({ isRapidFire: isRapid });
     setLocation("/");
   };
 
@@ -2026,10 +2028,28 @@ export default function TeamBattleGame() {
           </div>
 
           {/* Buttons */}
-          <div className="flex items-center justify-center gap-3 sm:gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                isExitingRef.current = true;
+                try {
+                  await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
+                    isInTeamBattle: false,
+                    gameType: null,
+                  });
+                } catch (err) {
+                  console.error("[TeamBattleGame] Failed to reset Team Battle status:", err);
+                }
+                goToTeamBattleSetup();
+              }}
+              className="border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg w-full sm:w-auto"
+            >
+              Back to Lobby
+            </Button>
             <Button
               onClick={async () => {
-                // ✅ Reset Team Battle status when returning home
+                isExitingRef.current = true;
                 try {
                   await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
                     isInTeamBattle: false,

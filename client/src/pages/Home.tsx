@@ -175,7 +175,10 @@ const Home: React.FC = () => {
   const winStreak = getWinStreak(user?.id);
 
   useEffect(() => {
-    if (user?.id && consumeOpenTeamBattleSetup()) {
+    if (!user?.id) return;
+    const { shouldOpen, isRapidFire } = consumeOpenTeamBattleSetup();
+    if (shouldOpen) {
+      setShowRapidTeamBattleSetup(isRapidFire);
       setShowTeamBattleSetup(true);
     }
   }, [user?.id]);

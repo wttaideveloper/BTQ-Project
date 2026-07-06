@@ -24,29 +24,10 @@ interface PlayerStat {
   totalTimeSpent?: number;
 }
 
-interface RewardProgress {
-  book: {
-    current: number;
-    required: number;
-    achieved: boolean;
-  };
-  cap: {
-    current: number;
-    required: number;
-    achieved: boolean;
-  };
-  tshirt: {
-    current: number;
-    required: number;
-    achieved: boolean;
-  };
-}
-
 interface GameSidebarProps {
   avatarMessage: string;
   avatarAnimation: 'happy' | 'sad' | 'neutral' | 'excited' | 'encouraging' | 'blessing';
   stats: GameStats;
-  rewardProgress: RewardProgress;
   playerStats?: PlayerStat[];
   playerNames?: string[];
   currentPlayerIndex?: number;
@@ -57,7 +38,6 @@ const GameSidebar: React.FC<GameSidebarProps> = ({
   avatarMessage,
   avatarAnimation,
   stats,
-  rewardProgress,
   playerStats = [],
   playerNames = [],
   currentPlayerIndex = 0,
@@ -176,61 +156,6 @@ const GameSidebar: React.FC<GameSidebarProps> = ({
               })}
             </div>
           )}
-          
-          {/* Rewards Progress - Family Feud Style */}
-          <div className="mt-3 sm:mt-4 bg-black/50 p-2 sm:p-3 md:p-4 rounded-xl border border-secondary/30">
-            <h4 className="text-white font-bold mb-2 sm:mb-3 text-center text-sm sm:text-base">REWARDS PROGRESS</h4>
-            <div className="grid grid-cols-3 gap-1 sm:gap-2">
-              <div className={`score-indicator text-center p-1 sm:p-2 rounded-xl ${rewardProgress.book.achieved 
-                ? 'bg-gradient-to-b from-green-500/30 to-green-700/30 border border-green-500' 
-                : 'bg-gradient-to-b from-primary/30 to-primary-dark/30 border border-primary/30'}`}
-              >
-                <div className={`w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 mx-auto rounded-full flex items-center justify-center ${
-                  rewardProgress.book.achieved ? 'bg-green-500/20' : 'bg-accent/20'
-                }`}>
-                  <span className={`text-xs sm:text-sm ${rewardProgress.book.achieved ? 'text-green-400' : 'text-accent'}`}>
-                    {rewardProgress.book.current}/{rewardProgress.book.required}
-                  </span>
-                </div>
-                <p className="text-[10px] sm:text-xs mt-1 font-bold text-white">Book</p>
-                {rewardProgress.book.achieved && 
-                  <span className="text-green-400 text-[8px] sm:text-xs">UNLOCKED!</span>
-                }
-              </div>
-              <div className={`score-indicator text-center p-1 sm:p-2 rounded-xl ${rewardProgress.cap.achieved 
-                ? 'bg-gradient-to-b from-green-500/30 to-green-700/30 border border-green-500' 
-                : 'bg-gradient-to-b from-primary/30 to-primary-dark/30 border border-primary/30'}`}
-              >
-                <div className={`w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 mx-auto rounded-full flex items-center justify-center ${
-                  rewardProgress.cap.achieved ? 'bg-green-500/20' : 'bg-accent/20'
-                }`}>
-                  <span className={`text-xs sm:text-sm ${rewardProgress.cap.achieved ? 'text-green-400' : 'text-accent'}`}>
-                    {rewardProgress.cap.current}/{rewardProgress.cap.required}
-                  </span>
-                </div>
-                <p className="text-[10px] sm:text-xs mt-1 font-bold text-white">Cap</p>
-                {rewardProgress.cap.achieved && 
-                  <span className="text-green-400 text-[8px] sm:text-xs">UNLOCKED!</span>
-                }
-              </div>
-              <div className={`score-indicator text-center p-1 sm:p-2 rounded-xl ${rewardProgress.tshirt.achieved 
-                ? 'bg-gradient-to-b from-green-500/30 to-green-700/30 border border-green-500' 
-                : 'bg-gradient-to-b from-primary/30 to-primary-dark/30 border border-primary/30'}`}
-              >
-                <div className={`w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 mx-auto rounded-full flex items-center justify-center ${
-                  rewardProgress.tshirt.achieved ? 'bg-green-500/20' : 'bg-accent/20'
-                }`}>
-                  <span className={`text-xs sm:text-sm ${rewardProgress.tshirt.achieved ? 'text-green-400' : 'text-accent'}`}>
-                    {rewardProgress.tshirt.current}/{rewardProgress.tshirt.required}
-                  </span>
-                </div>
-                <p className="text-[10px] sm:text-xs mt-1 font-bold text-white">T-Shirt</p>
-                {rewardProgress.tshirt.achieved && 
-                  <span className="text-green-400 text-[8px] sm:text-xs">UNLOCKED!</span>
-                }
-              </div>
-            </div>
-          </div>
         </div>
       </div>
       

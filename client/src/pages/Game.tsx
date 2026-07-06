@@ -1514,7 +1514,6 @@ const Game: React.FC = () => {
               avatarMessage={avatarMessage}
               avatarAnimation={avatarAnimation}
               stats={stats}
-              rewardProgress={rewardProgress}
               playerStats={playerStats}
               playerNames={playerNames}
               currentPlayerIndex={currentPlayerIndex}

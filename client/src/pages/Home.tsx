@@ -68,6 +68,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_TIME_BASED_DURATION,
+  TIME_BASED_DURATION_OPTIONS,
+  type TimeBasedDurationMinutes,
+} from "@/lib/game-config";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
@@ -126,6 +131,9 @@ const Home: React.FC = () => {
   const profileUser = profile ?? user;
 
   const [gameType, setGameType] = useState<"question" | "time">("question");
+  const [gameDuration, setGameDuration] = useState<TimeBasedDurationMinutes>(
+    DEFAULT_TIME_BASED_DURATION
+  );
   const [category, setCategory] = useState("Bible Stories");
   const [difficulty, setDifficulty] = useState("Beginner");
 
@@ -244,6 +252,7 @@ const Home: React.FC = () => {
       difficulty,
       playerCount: 1,
       playerNames: [user?.username || "Player 1"],
+      ...(gameType === "time" ? { gameDuration } : {}),
     });
     setShowSoloDialog(false);
   };
@@ -265,6 +274,9 @@ const Home: React.FC = () => {
     url.searchParams.set("gameType", gameType);
     url.searchParams.set("category", category);
     url.searchParams.set("difficulty", difficulty);
+    if (gameType === "time") {
+      url.searchParams.set("gameDuration", String(gameDuration));
+    }
     window.history.replaceState({}, "", url.toString());
     setGameSetupKey((prev) => prev + 1);
     setShowSoloDialog(false);
@@ -983,11 +995,34 @@ const Home: React.FC = () => {
                   />
                   <Label htmlFor="dlg-time" className="cursor-pointer flex-1">
                     <span className="font-medium">Time-Based</span>
-                    <p className="text-xs text-white/60">15-minute speed round</p>
+                    <p className="text-xs text-white/60">Speed round — 5, 10, or 15 minutes</p>
                   </Label>
                 </div>
               </RadioGroup>
             </div>
+
+            {gameType === "time" && (
+              <div>
+                <Label className="text-white/90 mb-2 block">Round Duration</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {TIME_BASED_DURATION_OPTIONS.map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => setGameDuration(mins)}
+                      className={cn(
+                        "py-2.5 rounded-lg border text-sm font-semibold transition-colors",
+                        gameDuration === mins
+                          ? "border-accent bg-accent/15 text-accent"
+                          : "border-white/20 bg-white/5 text-white/80 hover:bg-white/10"
+                      )}
+                    >
+                      {mins} min
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div>
               <Label className="text-white/90 mb-2 block">Category</Label>

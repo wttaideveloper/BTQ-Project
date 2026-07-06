@@ -14,6 +14,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
+  DEFAULT_TIME_BASED_DURATION,
+  TIME_BASED_DURATION_OPTIONS,
+  type TimeBasedDurationMinutes,
+} from "@/lib/game-config";
+import {
   Users,
   X,
   ArrowLeft,
@@ -32,6 +37,7 @@ export interface GameConfig {
   gameId?: string;
   playerNames?: string[];
   multiplayerType?: "realtime" | "async" | "teams";
+  gameDuration?: number;
 }
 
 interface GameSetupProps {
@@ -55,6 +61,10 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
     (params.get("gameType") as "question" | "time") || "question";
   const initialCategory = params.get("category") || "Bible Stories";
   const initialDifficulty = params.get("difficulty") || "Beginner";
+  const initialGameDuration = parseInt(
+    params.get("gameDuration") || String(DEFAULT_TIME_BASED_DURATION),
+    10
+  ) as TimeBasedDurationMinutes;
 
   const { user } = useAuth();
   const { toast } = useToast();
@@ -62,6 +72,11 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
   const [gameType, setGameType] = useState<"question" | "time">(initialGameType);
   const [category, setCategory] = useState(initialCategory);
   const [difficulty, setDifficulty] = useState(initialDifficulty);
+  const [gameDuration, setGameDuration] = useState<TimeBasedDurationMinutes>(
+    TIME_BASED_DURATION_OPTIONS.includes(initialGameDuration)
+      ? initialGameDuration
+      : DEFAULT_TIME_BASED_DURATION
+  );
   const [playerCount, setPlayerCount] = useState(2);
   const [playerNames, setPlayerNames] = useState([
     "Player 1",
@@ -117,6 +132,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
       playerCount,
       playerNames: names.map((n) => n.trim()),
       multiplayerType: "realtime",
+      ...(gameType === "time" ? { gameDuration } : {}),
     });
   };
 
@@ -226,11 +242,36 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
                         Time-Based
                       </span>
                       <p className="text-xs text-white/55 mt-0.5">
-                        15-minute speed round
+                        Speed round — pick your timer
                       </p>
                     </div>
                   </label>
                 </RadioGroup>
+
+                {gameType === "time" && (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <Label className="text-white/90 mb-2 block text-sm font-semibold">
+                      Round Duration
+                    </Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {TIME_BASED_DURATION_OPTIONS.map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => setGameDuration(mins)}
+                          className={cn(
+                            "py-2.5 rounded-xl border text-sm font-semibold transition-colors",
+                            gameDuration === mins
+                              ? "border-accent bg-accent/15 text-accent"
+                              : "border-white/15 bg-white/5 text-white/75 hover:bg-white/10"
+                          )}
+                        >
+                          {mins} min
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-3 sm:p-4 md:p-5 rounded-xl border border-white/15 bg-white/5 space-y-4">
@@ -329,7 +370,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-white/10">
             <div className="flex flex-wrap gap-2">
               <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/70 border border-white/10">
-                {gameType === "question" ? "10 questions · 20 sec each" : "15 min timer"}
+                {gameType === "question" ? "10 questions · 20 sec each" : `${gameDuration} min timer`}
               </span>
               <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/70 border border-white/10">
                 {category}

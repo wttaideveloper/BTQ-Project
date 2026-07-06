@@ -61,7 +61,7 @@ const DAILY_CHALLENGES: DailyChallengeConfig[] = [
   },
   {
     title: "Speed Round",
-    description: "How many questions can you answer in 15 minutes?",
+    description: "How many questions can you answer before time runs out?",
     category: "All Categories",
     difficulty: "Beginner",
     gameType: "time",

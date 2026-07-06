@@ -41,6 +41,10 @@ import {
   normalizePlayerAvgTime,
   formatAverageAnswerTime,
 } from "@/lib/game-stats";
+import {
+  parseTimeBasedDurationMinutes,
+  timeBasedDurationToSeconds,
+} from "@/lib/game-config";
 
 interface Answer {
   id: string;
@@ -72,6 +76,11 @@ const Game: React.FC = () => {
   const category = params.get("category") || "All Categories";
   const difficulty = params.get("difficulty") || "Beginner";
   const playerCount = parseInt(params.get("playerCount") || "1");
+  const gameDurationMinutes = parseTimeBasedDurationMinutes(
+    params.get("gameDuration")
+  );
+  const timeBasedDurationSeconds =
+    gameType === "time" ? timeBasedDurationToSeconds(gameDurationMinutes) : 0;
 
   // Generate a stable game session ID
   // Only restore from sessionStorage if there's an active game in progress
@@ -140,7 +149,11 @@ const Game: React.FC = () => {
               averageTime: 0,
             })),
           gameTimeRemaining:
-            state.gameTimeRemaining || (gameType === "time" ? 15 * 60 : 0),
+            state.gameTimeRemaining ??
+            (gameType === "time" ? timeBasedDurationSeconds : 0),
+          originalGameTime:
+            state.originalGameTime ??
+            (gameType === "time" ? timeBasedDurationSeconds : 0),
         };
       }
     } catch (error) {
@@ -206,11 +219,11 @@ const Game: React.FC = () => {
 
   // Countdown timer for time-based game
   const [gameTimeRemaining, setGameTimeRemaining] = useState(
-    savedState?.gameTimeRemaining ?? (gameType === "time" ? 15 * 60 : 0)
-  ); // 15 minutes in seconds
+    savedState?.gameTimeRemaining ?? timeBasedDurationSeconds
+  );
   const [originalGameTime, setOriginalGameTime] = useState(
-    gameType === "time" ? 15 * 60 : 0
-  ); // Store original time for pause calculations
+    savedState?.originalGameTime ?? timeBasedDurationSeconds
+  );
 
   const timeLimit = 20; // 20 seconds per question
 
@@ -538,8 +551,8 @@ const Game: React.FC = () => {
     );
 
     // Reset game time
-    setGameTimeRemaining(gameType === "time" ? 15 * 60 : 0);
-    setOriginalGameTime(gameType === "time" ? 15 * 60 : 0);
+    setGameTimeRemaining(timeBasedDurationSeconds);
+    setOriginalGameTime(timeBasedDurationSeconds);
 
     setSessionQuestions([]);
     setQuestionsExhausted(false);
@@ -848,7 +861,7 @@ const Game: React.FC = () => {
                 difficulty: difficulty,
                 gameType: gameType,
                 totalQuestions: activeQuestions.length || 10,
-                timeLimit: gameType === "time" ? 15 * 60 : undefined,
+                timeLimit: gameType === "time" ? timeBasedDurationSeconds : undefined,
               }),
             });
 

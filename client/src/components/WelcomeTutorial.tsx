@@ -171,8 +171,8 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
               accent="gold"
               icon={<Clock className="h-5 w-5 text-accent" />}
               title="Time-Based"
-              description="A 15-minute speed round. Answer as many questions as you can before the clock hits zero."
-              badge="15-minute timer"
+              description="A speed round with a 5, 10, or 15-minute timer. Answer as many questions as you can before the clock hits zero."
+              badge="5 / 10 / 15 min"
             />
           </div>
           <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">

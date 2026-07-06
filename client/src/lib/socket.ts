@@ -370,6 +370,8 @@ export function onError(callback: (error: any) => void) {
   'teammate_disconnected',     // CRITICAL: Teammate disconnect notification
   'opponent_disconnected',     // CRITICAL: Opponent disconnect notification
   'team_member_removed',       // CRITICAL: Member removed notification
+  'invitation_declined',       // Inviter notified when invitee declines
+  'invitation_expired',        // Invitee notified when slot is filled
 ].forEach((key) => {
   if (!eventListeners[key]) eventListeners[key] = [];
 });

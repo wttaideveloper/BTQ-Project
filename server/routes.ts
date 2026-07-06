@@ -3237,7 +3237,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
         } else {
-          // Status is "declined" - just return updated invitation
+          // Status is "declined" - notify inviter so they can re-invite
+          try {
+            sendToUser(invitation.inviterId, {
+              type: "invitation_declined",
+              message: `${req.user!.username} has declined your team invitation`,
+              inviteeId: invitation.inviteeId,
+              invitationId: invitation.id,
+              invitationType: invitation.invitationType,
+            });
+          } catch (wsError) {
+            console.error("Error sending decline notification:", wsError);
+          }
+
           res.json(updatedInvitation);
         }
       } catch (err) {

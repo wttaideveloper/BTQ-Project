@@ -8586,6 +8586,9 @@ async function handleDeclineTeamInvitation(clientId: string, event: GameEvent) {
       type: "invitation_declined",
       message: `${client.playerName} has declined your team invitation`,
       inviterName: client.playerName,
+      inviteeId: invitation.inviteeId,
+      invitationId: invitation.id,
+      invitationType: invitation.invitationType,
     });
 
     // Notify invitee

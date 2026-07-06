@@ -53,6 +53,7 @@ async function recordLogin(userId: number) {
 }
 
 export function setupAuth(app: Express) {
+  const isProduction = process.env.NODE_ENV === "production";
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "bible-trivia-secret-key",
     resave: false,
@@ -62,7 +63,10 @@ export function setupAuth(app: Express) {
       tableName: 'sessions'
     }),
     cookie: {
-      maxAge: 1000 * 60 * 60 * 24 // 24 hours
+      maxAge: 1000 * 60 * 60 * 24, // 24 hours
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProduction,
     }
   };
 

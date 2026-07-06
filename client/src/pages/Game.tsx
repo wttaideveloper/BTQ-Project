@@ -34,7 +34,7 @@ import { playBasicSound } from "@/lib/basic-sound";
 import { voiceService } from "@/lib/voice-service";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
   calculateAverageAnswerTime,
   getAnsweredQuestionCount,
@@ -846,33 +846,20 @@ const Game: React.FC = () => {
       if (gameMode === "single") {
         const saveSinglePlayerScore = async () => {
           try {
-
-            const response = await fetch("/api/single-player/scores", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                score: score,
-                correctAnswers: correctAnswers,
-                incorrectAnswers: incorrectAnswers,
-                averageTime: savedAverageTime.toString(),
-                category: category,
-                difficulty: difficulty,
-                gameType: gameType,
-                totalQuestions: activeQuestions.length || 10,
-                timeLimit: gameType === "time" ? timeBasedDurationSeconds : undefined,
-              }),
+            await apiRequest("POST", "/api/single-player/scores", {
+              score: score,
+              correctAnswers: correctAnswers,
+              incorrectAnswers: incorrectAnswers,
+              averageTime: savedAverageTime.toString(),
+              category: category,
+              difficulty: difficulty,
+              gameType: gameType,
+              totalQuestions: activeQuestions.length || 10,
+              timeLimit: gameType === "time" ? timeBasedDurationSeconds : undefined,
             });
 
-            if (response.ok) {
-              // Trigger leaderboard refresh by invalidating the query
-              if (window.location.pathname === "/leaderboard") {
-                window.location.reload();
-              }
-            } else {
-              console.error("Failed to save single player score");
-            }
+            queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/single-player/scores"] });
           } catch (error) {
             console.error("Error saving single player score:", error);
           }
@@ -899,37 +886,24 @@ const Game: React.FC = () => {
                   )
                 );
 
-                const response = await fetch("/api/multiplayer/scores", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    gameSessionId: gameId,
-                    playerName: playerName,
-                    playerIndex: i,
-                    score: playerStat.score,
-                    correctAnswers: playerStat.correctAnswers,
-                    incorrectAnswers: playerStat.incorrectAnswers,
-                    averageTime: playerAverageTime.toString(),
-                    category: category,
-                    difficulty: difficulty,
-                    gameType: "local-multi", // Mark as local multiplayer
-                    totalQuestions: activeQuestions.length || 10,
-                    playerCount: playerCount,
-                  }),
+                await apiRequest("POST", "/api/multiplayer/scores", {
+                  gameSessionId: gameId,
+                  playerName: playerName,
+                  playerIndex: i,
+                  score: playerStat.score,
+                  correctAnswers: playerStat.correctAnswers,
+                  incorrectAnswers: playerStat.incorrectAnswers,
+                  averageTime: playerAverageTime.toString(),
+                  category: category,
+                  difficulty: difficulty,
+                  gameType: "local-multi",
+                  totalQuestions: activeQuestions.length || 10,
+                  playerCount: playerCount,
                 });
-
-                if (response.ok) {
-                } else {
-                  console.error(
-                    `Failed to save local multiplayer score for ${playerName}`
-                  );
-                }
               }
             }
 
-            // Log final game results for debugging
+            queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
 
             // Trigger leaderboard refresh
             if (window.location.pathname === "/leaderboard") {

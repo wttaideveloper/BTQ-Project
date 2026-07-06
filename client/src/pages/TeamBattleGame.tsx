@@ -1050,24 +1050,21 @@ export default function TeamBattleGame() {
     initBasicSounds(); // Initialize basic sound system for timer sounds
   }, []);
 
-  // Add timeout for waiting phase - if stuck for too long, redirect to setup
+  // If stuck on "Connecting to Game" for more than 10 seconds, return home
   useEffect(() => {
-    if (gameState.phase === "waiting" && connected) {
-      const timeout = setTimeout(() => {
-        toast({
-          title: "Connection Timeout",
-          description: "Unable to restore game state. Redirecting to team setup.",
-          variant: "destructive",
-        });
-        // Redirect to setup page with session ID if available
-        setTimeout(() => {
-          goToTeamBattleSetup();
-        }, 2000);
-      }, 10000); // 10 seconds - reduced for faster feedback
+    if (gameState.phase !== "waiting" || isExitingRef.current) return;
 
-      return () => clearTimeout(timeout);
-    }
-  }, [gameState.phase, connected, gameSessionId, toast, setLocation]);
+    const timeout = setTimeout(() => {
+      toast({
+        title: "Connection Timeout",
+        description: "Unable to connect to the game. Returning to home.",
+        variant: "destructive",
+      });
+      setLocation("/");
+    }, 10000);
+
+    return () => clearTimeout(timeout);
+  }, [gameState.phase, toast, setLocation]);
 
   // Game state tracking
 

@@ -47,6 +47,10 @@ export interface BattleState {
   stateVersion?: number; // ELITE: Monotonic version for debugging & out-of-order detection
 }
 
+function readyFingerprint(teams: BattleStateTeam[] | undefined): string {
+  return teams?.map((t) => `${t.teamSide}:${t.ready ? 1 : 0}`).join("|") ?? "";
+}
+
 export function useBattleState(gameSessionId: string | null) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -89,17 +93,21 @@ export function useBattleState(gameSessionId: string | null) {
       );
       const data = await res.json();
       
-      // ================================================================
-      // ELITE HARDENING: Ignore out-of-order responses using stateVersion
-      // ================================================================
+      // Ignore out-of-order responses unless ready flags actually changed
       if (data.stateVersion !== undefined) {
         if (data.stateVersion < lastStateVersionRef.current) {
-          // Return the cached data instead of stale response
           const cached = queryClient.getQueryData<BattleState>(queryKey);
-          if (cached) return cached;
+          if (
+            cached &&
+            readyFingerprint(cached.teams) === readyFingerprint(data.teams)
+          ) {
+            return cached;
+          }
         }
-        lastStateVersionRef.current = data.stateVersion;
-      } else {
+        lastStateVersionRef.current = Math.max(
+          lastStateVersionRef.current,
+          data.stateVersion
+        );
       }
       
       return data;

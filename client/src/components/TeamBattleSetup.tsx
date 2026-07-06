@@ -45,7 +45,7 @@ const SETUP_PROGRESS_STEPS = [
 import TeamDisplay from "./TeamDisplay";
 import ClockCountdown from "./ui/ClockCountdown";
 import { setupGameSocket, sendGameEvent, onEvent } from "@/lib/socket";
-import { useBattleState } from "@/hooks/useBattleState";
+import { useBattleState, type BattleState } from "@/hooks/useBattleState";
 
 export interface TeamBattleSetupProps {
   open: boolean;
@@ -1207,6 +1207,22 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       ? effectiveReadyStatus.teamBReady
       : effectiveReadyStatus.teamAReady;
 
+    // Confirm ready cancellation from DB
+    const prevStatus = prevReadyStatusRef.current;
+    const wasUserTeamReady = prevStatus
+      ? userTeam.teamSide === "A"
+        ? prevStatus.teamAReady
+        : prevStatus.teamBReady
+      : false;
+
+    if (isReadyLoading && !userTeamReady && wasUserTeamReady) {
+      setIsReadyLoading(false);
+      toast({
+        title: "Ready cancelled",
+        description: "You can mark ready again when your team is set.",
+      });
+    }
+
     // Check if this is a new confirmation (was loading and now confirmed)
     if (isReadyLoading && userTeamReady) {
       // Clear loading state
@@ -1227,7 +1243,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     }
 
     // Also handle when opponent becomes ready (and we were already ready)
-    const prevStatus = prevReadyStatusRef.current;
     if (prevStatus && !isReadyLoading) {
       const wasOpponentReady = userTeam.teamSide === "A" ? prevStatus.teamBReady : prevStatus.teamAReady;
       if (!wasOpponentReady && opponentTeamReady && userTeamReady) {
@@ -1799,6 +1814,75 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       toast({
         title: "Error",
         description: "Failed to mark team as ready. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCancelReady = async () => {
+    if (!userTeam || !user) return;
+
+    if (effectiveCountdown !== null && effectiveCountdown > 0) {
+      toast({
+        title: "Cannot cancel",
+        description: "The match is already starting.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const isCurrentlyReady =
+      userTeam.teamSide === "A"
+        ? (effectiveReadyStatus?.teamAReady ?? readyStatus?.teamAReady)
+        : (effectiveReadyStatus?.teamBReady ?? readyStatus?.teamBReady);
+
+    if (!isCurrentlyReady) return;
+
+    setIsReadyLoading(true);
+
+    try {
+      if (gameSessionId && battleState) {
+        queryClient.setQueryData<BattleState>(
+          ["/api/team-battle/state", gameSessionId],
+          {
+            ...battleState,
+            bothReady: false,
+            countdown: null,
+            teams: battleState.teams.map((team) =>
+              team.teamSide === userTeam.teamSide
+                ? { ...team, ready: false, readyAt: null }
+                : team
+            ),
+            stateVersion: Date.now(),
+            serverTime: Date.now(),
+          }
+        );
+      }
+
+      sendGameEvent({
+        type: "team_battle_unready",
+        gameSessionId: userTeam.gameSessionId || gameSessionId || undefined,
+        teamBattleId: userTeam.teamBattleId || battleState?.battleId,
+        teamSide: userTeam.teamSide,
+        userId: user.id,
+      });
+
+      setIsReady(false);
+      setReadyStatus({
+        teamAReady:
+          userTeam.teamSide === "A" ? false : readyStatus?.teamAReady || false,
+        teamBReady:
+          userTeam.teamSide === "B" ? false : readyStatus?.teamBReady || false,
+        updatedAt: Date.now(),
+      });
+
+      forceRefetchBattleState();
+      refetchBattleState();
+    } catch (error) {
+      setIsReadyLoading(false);
+      toast({
+        title: "Error",
+        description: "Failed to cancel ready status. Please try again.",
         variant: "destructive",
       });
     }
@@ -2828,6 +2912,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     team={team}
                     currentUserId={user?.id || 0}
                     onReady={isUserTeam ? handleReadyToPlay : undefined}
+                    onUnready={isUserTeam ? handleCancelReady : undefined}
                     onUpdateTeamName={
                       isUserInTeam ? handleUpdateTeamName : undefined
                     }

@@ -29,6 +29,7 @@ type TeamDisplayProps = {
   team: TeamDisplayTeam;
   currentUserId?: number;
   onReady?: () => void;
+  onUnready?: () => void;
   onUpdateTeamName?: (teamId: string, newName: string) => Promise<void>;
   onLeaveTeam?: (teamId: string) => void;
   title?: string;
@@ -51,6 +52,7 @@ const TeamDisplay = ({
   team,
   currentUserId,
   onReady,
+  onUnready,
   onUpdateTeamName,
   onLeaveTeam,
   title,
@@ -140,14 +142,14 @@ const TeamDisplay = ({
           {!canReady && isUserTeam && (
             <p className="text-xs text-gray-500 leading-relaxed">
               {isReady
-                ? "Your team is ready! Waiting for the other captain to confirm."
+                ? "Your team is ready! Tap Cancel Ready to change your mind, or wait for the other captain."
                 : isCaptain
                   ? null
                   : "Your captain will mark the team ready when everyone is set."}
             </p>
           )}
           <div className="flex flex-col sm:flex-row gap-2">
-            {canReady && (
+            {canReady && !isReady && (
               <Button
                 onClick={onReady}
                 disabled={isReadyLoading}
@@ -158,10 +160,25 @@ const TeamDisplay = ({
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Marking ready...
                   </>
-                ) : isReady ? (
-                  "Ready ✓"
                 ) : (
                   "I'm Ready!"
+                )}
+              </Button>
+            )}
+            {canReady && isReady && onUnready && (
+              <Button
+                onClick={onUnready}
+                disabled={isReadyLoading}
+                variant="outline"
+                className="border-amber-400 text-amber-800 hover:bg-amber-50 w-full sm:w-auto text-sm sm:text-base py-2 sm:py-2.5 disabled:opacity-70"
+              >
+                {isReadyLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Cancelling...
+                  </>
+                ) : (
+                  "Cancel Ready"
                 )}
               </Button>
             )}

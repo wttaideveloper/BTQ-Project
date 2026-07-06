@@ -3871,25 +3871,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // ================================================================
-      // ELITE HARDENING: Compute monotonic stateVersion
-      // ================================================================
-      // This helps clients ignore out-of-order responses and aids debugging.
-      // Version increments on any meaningful battle state change.
-      // Computed from: status hash + ready timestamps + member counts
-      // ================================================================
-      const statusHash = { forming: 1, ready: 2, playing: 3, finished: 4 }[battle.status] || 0;
-      const teamAReadyTs = battle.teamAReadyAt ? new Date(battle.teamAReadyAt).getTime() : 0;
-      const teamBReadyTs = battle.teamBReadyAt ? new Date(battle.teamBReadyAt).getTime() : 0;
-      const memberCount = teams.reduce((sum, t) => sum + t.members.length, 0);
-      const createdTs = battle.createdAt ? new Date(battle.createdAt).getTime() : 0;
-
-      // Monotonic version: larger = more recent state
-      // Formula ensures any state change produces a larger version
-      const stateVersion =
-        (statusHash * 1_000_000_000_000) +  // Status is most significant
-        Math.max(teamAReadyTs, teamBReadyTs, createdTs) +  // Latest timestamp
-        (memberCount * 1000);  // Member changes bump version
+      // Monotonic version based on server response time so unready/cancel
+      // is never treated as stale compared to the prior ready snapshot.
+      const stateVersion = Date.now();
 
       // Build response
       const response = {
@@ -3900,10 +3884,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         teams,
         countdown,
         bothReady: readyState.teamAReady && readyState.teamBReady,
-        serverTime: Date.now(), // For client-side time sync
+        serverTime: stateVersion,
         createdAt: battle.createdAt,
         startedAt: battle.startedAt,
-        stateVersion, // ELITE: Monotonic version for debugging & out-of-order detection
+        stateVersion,
       };
 
 

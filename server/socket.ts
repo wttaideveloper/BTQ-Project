@@ -1419,6 +1419,10 @@ function handleGameEvent(clientId: string, event: GameEvent) {
       handleTeamBattleReady(clientId, event);
       break;
 
+    case "team_battle_unready":
+      handleTeamBattleUnready(clientId, event);
+      break;
+
     // Request current ready status for a team battle
     case "request_ready_status":
       handleRequestReadyStatus(clientId, event);
@@ -4693,6 +4697,95 @@ async function handleTeamBattleReady(clientId: string, event: GameEvent) {
     sendToClient(clientId, {
       type: "error",
       message: "Failed to mark team as ready. Please try again.",
+    });
+  }
+}
+
+// Cancel ready status before the match starts (forming phase only)
+async function handleTeamBattleUnready(clientId: string, event: GameEvent) {
+  const client = clients.get(clientId);
+  if (!client || !client.userId || !event.teamBattleId || !event.teamSide) {
+    return;
+  }
+
+  try {
+    const battle = await database.getTeamBattle(event.teamBattleId);
+    if (!battle) {
+      sendToClient(clientId, {
+        type: "error",
+        message: "Battle not found",
+      });
+      return;
+    }
+
+    if (
+      (event.teamSide === "A" && battle.teamACaptainId !== client.userId) ||
+      (event.teamSide === "B" && battle.teamBCaptainId !== client.userId)
+    ) {
+      sendToClient(clientId, {
+        type: "error",
+        message: "Only team captain can cancel ready status",
+      });
+      return;
+    }
+
+    if (battle.status !== "forming") {
+      sendToClient(clientId, {
+        type: "error",
+        message: "Cannot cancel ready — the match is already starting",
+      });
+      return;
+    }
+
+    const previousState = await database.getTeamReadyState(battle.id);
+    const isCurrentlyReady =
+      event.teamSide === "A"
+        ? previousState.teamAReady
+        : previousState.teamBReady;
+
+    if (!isCurrentlyReady) {
+      sendToClient(clientId, {
+        type: "error",
+        message: "Your team is not marked as ready",
+      });
+      await broadcastReadyState(battle.id, battle.gameSessionId);
+      return;
+    }
+
+    const newState = await database.clearTeamReady(battle.id, event.teamSide);
+
+    if (teamBattleReadyState.has(battle.id)) {
+      const mem = teamBattleReadyState.get(battle.id)!;
+      if (event.teamSide === "A") {
+        mem.teamAReady = false;
+      } else {
+        mem.teamBReady = false;
+      }
+      teamBattleReadyState.set(battle.id, mem);
+    }
+
+    sendToClient(clientId, {
+      type: "team_ready_status",
+      teamBattleId: battle.id,
+      gameSessionId: battle.gameSessionId,
+      teamAReady: newState.teamAReady,
+      teamBReady: newState.teamBReady,
+      updatedAt: newState.updatedAt || new Date(),
+    });
+
+    await broadcastReadyState(
+      battle.id,
+      battle.gameSessionId,
+      newState.updatedAt || undefined
+    );
+  } catch (error) {
+    console.error(`[handleTeamBattleUnready] Error:`, error);
+    sendToClient(clientId, {
+      type: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to cancel ready status. Please try again.",
     });
   }
 }

@@ -352,7 +352,8 @@ export function onError(callback: (error: any) => void) {
   'opponent_accepted_invitation', 
   'join_request_created', 
   'join_request_updated',
-  'team_battle_ready', 
+  'team_battle_ready',
+  'team_battle_unready',
   'team_battle_cancelled',
   'team_battle_started',      // CRITICAL: Pre-register navigation trigger
   'team_battle_countdown',    // CRITICAL: Pre-register countdown

@@ -200,6 +200,10 @@ export interface IDatabase {
     battleId: string,
     teamSide: "A" | "B"
   ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date }>;
+  clearTeamReady(
+    battleId: string,
+    teamSide: "A" | "B"
+  ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date | null }>;
   getTeamReadyState(
     battleId: string
   ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date | null }>;
@@ -2613,6 +2617,34 @@ class PostgreSQLDatabase implements IDatabase {
       teamBReady,
       updatedAt,
     };
+  }
+
+  async clearTeamReady(
+    battleId: string,
+    teamSide: "A" | "B"
+  ): Promise<{ teamAReady: boolean; teamBReady: boolean; updatedAt: Date | null }> {
+    const battle = await this.getTeamBattle(battleId);
+    if (!battle) {
+      throw new Error(`Team battle ${battleId} not found`);
+    }
+
+    if (battle.status !== "forming") {
+      throw new Error("Cannot cancel ready after the match has started");
+    }
+
+    if (teamSide === "A") {
+      await db
+        .update(teamBattles)
+        .set({ teamAReadyAt: null })
+        .where(eq(teamBattles.id, battleId));
+    } else {
+      await db
+        .update(teamBattles)
+        .set({ teamBReadyAt: null })
+        .where(eq(teamBattles.id, battleId));
+    }
+
+    return this.getTeamReadyState(battleId);
   }
 
   // Get current ready state from database (always fresh)

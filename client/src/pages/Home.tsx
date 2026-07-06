@@ -38,7 +38,6 @@ import {
   User,
   Users,
   Trophy,
-  Bell,
   HelpCircle,
   ChevronDown,
   ChevronRight,
@@ -76,7 +75,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
-import { Notification, User as SelectUser } from "@shared/schema";
+import { User as SelectUser } from "@shared/schema";
 import { voiceService } from "@/lib/voice-service";
 import { stopSpeaking } from "@/lib/sounds";
 import {
@@ -140,15 +139,6 @@ const Home: React.FC = () => {
   const dailyVerse = useMemo(() => getDailyVerse(), []);
   const dailyChallenge = useMemo(() => getDailyChallenge(), []);
 
-  const { data: notifications } = useQuery({
-    queryKey: ["/api/notifications"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/notifications");
-      return await res.json();
-    },
-    enabled: !!user,
-  });
-
   const { data: leaderboardData, isLoading: leaderboardLoading } = useQuery({
     queryKey: ["/api/leaderboard", "all"],
     queryFn: async () => {
@@ -162,10 +152,6 @@ const Home: React.FC = () => {
     staleTime: 30_000,
     refetchOnWindowFocus: true,
   });
-
-  const unreadNotifications =
-    notifications?.filter((n: Notification) => !n.read) || [];
-  const latestNotifications = (notifications || []).slice(0, 5);
 
   const leaderboardEntries: LeaderboardEntry[] =
     leaderboardData?.data?.slice(0, 5) || [];
@@ -398,23 +384,6 @@ const Home: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            {user && unreadNotifications.length > 0 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative text-white hover:bg-white/10"
-                onClick={() =>
-                  document
-                    .getElementById("notifications-section")
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
-              >
-                <Bell className="h-5 w-5" />
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full text-[10px] font-bold flex items-center justify-center text-white">
-                  {unreadNotifications.length}
-                </span>
-              </Button>
-            )}
             {user ? (
               <>
                 <DropdownMenu>
@@ -727,66 +696,6 @@ const Home: React.FC = () => {
             </CardContent>
           </Card>
         </section>
-
-        {/* Notifications */}
-        {user && (
-          <section id="notifications-section">
-            <Card className="home-glass-card rounded-xl">
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
-                    <Bell className="h-5 w-5 text-accent" /> Notifications
-                    {unreadNotifications.length > 0 && (
-                      <Badge variant="destructive" className="ml-1 text-xs">
-                        {unreadNotifications.length} new
-                      </Badge>
-                    )}
-                  </CardTitle>
-                  <CardDescription className="text-white/55">
-                    Invites and updates
-                  </CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {latestNotifications.length === 0 ? (
-                  <p className="text-white/50 text-sm py-4 text-center">
-                    No notifications yet — start a game or join a team battle!
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {latestNotifications.map((n: Notification) => (
-                      <li
-                        key={n.id}
-                        className={`flex items-start gap-3 p-3 rounded-xl transition-colors ${
-                          n.read ? "bg-white/5" : "bg-accent/10 border border-accent/20"
-                        }`}
-                      >
-                        <div
-                          className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
-                            n.read ? "bg-white/30" : "bg-accent"
-                          }`}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm leading-snug">
-                            {n.message}
-                          </p>
-                          <p className="text-white/40 text-xs mt-1">
-                            {new Date(n.createdAt).toLocaleDateString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-        )}
 
         {/* Leaderboard Preview */}
         <section>

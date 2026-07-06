@@ -44,7 +44,7 @@ const faqData: FAQSectionData[] = [
       {
         question: "What rewards can I earn?",
         answer:
-          "Strong scores unlock rewards: 5+ correct answers earns a free book, 9+ a FaithIQ cap, and a perfect 12/12 can earn a t-shirt!",
+          "In Solo Quiz (Question-Based), unlock rewards as you answer correctly: 3 correct answers earns a book, 6 earns a FaithIQ cap, and 10 correct earns a t-shirt.",
       },
     ],
   },
@@ -117,7 +117,7 @@ const faqData: FAQSectionData[] = [
       {
         question: "Where can I see my stats?",
         answer:
-          "Your home screen shows games played, rank, accuracy, and win streak. Tap Game History for detailed stats and past solo sessions, or Leaderboard to compare with other players.",
+          "Your home screen shows games played, rank, accuracy, and win streak. Open Game History for past solo scores and average answer time, or Leaderboard to compare with other players. Tap your profile (top-right) for account details.",
       },
       {
         question: "Does the AI host read questions aloud?",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -6,7 +6,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   BookOpen,
@@ -15,17 +14,76 @@ import {
   Play,
   Clock,
   Target,
-  HelpCircle,
   CheckCircle,
   ChevronRight,
   ChevronLeft,
-  X,
+  Swords,
+  Zap,
+  History,
+  User,
+  Bell,
+  Pause,
+  Volume2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface WelcomeTutorialProps {
   isOpen: boolean;
   onClose: () => void;
   onStartGame: () => void;
+}
+
+type StepCard = {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  badge?: string;
+  accent: "blue" | "teal" | "purple" | "gold";
+};
+
+const accentCard: Record<StepCard["accent"], string> = {
+  blue: "border-blue-400/30 bg-blue-500/10",
+  teal: "border-teal-400/30 bg-teal-500/10",
+  purple: "border-purple-400/30 bg-purple-500/10",
+  gold: "border-accent/30 bg-accent/10",
+};
+
+function ModeCard({ icon, title, description, badge, accent }: StepCard) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border p-3 sm:p-4 h-full transition-colors hover:bg-white/[0.06]",
+        accentCard[accent]
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="shrink-0 mt-0.5">{icon}</div>
+        <div className="min-w-0 flex-1">
+          <h4 className="font-semibold text-white text-sm sm:text-base">{title}</h4>
+          <p className="text-xs sm:text-sm text-white/65 mt-1 leading-relaxed">
+            {description}
+          </p>
+          {badge && (
+            <Badge className="mt-2 bg-white/10 text-white/80 border-white/15 text-xs">
+              {badge}
+            </Badge>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TipRow({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-xl border border-white/10 bg-white/5">
+      <div className="shrink-0">{icon}</div>
+      <div>
+        <h4 className="font-medium text-white text-sm">{title}</h4>
+        <p className="text-xs sm:text-sm text-white/60 mt-0.5 leading-relaxed">{description}</p>
+      </div>
+    </div>
+  );
 }
 
 const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
@@ -37,279 +95,191 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
 
   const tutorialSteps = [
     {
-      title: "🎉 Welcome to FaithIQ Bible Trivia!",
-      subtitle: "Your journey to biblical knowledge starts here...",
+      title: "Welcome to FaithIQ",
+      subtitle: "Bible trivia hosted by Dr. HB Holmes",
+      icon: <BookOpen className="h-8 w-8 text-accent" />,
       content: (
-        <div className="text-center space-y-4">
-          <div className="text-4xl sm:text-5xl lg:text-6xl mb-4">📖</div>
-          <p className="text-base sm:text-lg text-gray-700 leading-relaxed">
-            Test your Bible knowledge with the ultimate trivia experience! Join
-            thousands of players in this exciting journey through scripture.
+        <div className="text-center space-y-5">
+          <div className="text-5xl sm:text-6xl">📖</div>
+          <p className="text-sm sm:text-base text-white/80 leading-relaxed max-w-lg mx-auto">
+            Test your Bible knowledge with solo quizzes, same-device multiplayer,
+            and live online team battles. Create a free account to save scores,
+            track stats, and join Team Battle lobbies.
           </p>
-          <div className="bg-blue-50 p-3 sm:p-4 rounded-lg border border-blue-200">
-            <p className="text-sm text-blue-800">
-              <strong>Perfect for:</strong> Bible study groups, families,
-              individuals, and anyone who loves learning about God's Word!
+          <div className="rounded-xl border border-accent/25 bg-accent/10 p-4 text-left max-w-md mx-auto">
+            <p className="text-sm text-white/85">
+              <span className="text-accent font-semibold">Great for:</span> personal
+              study, families, youth groups, and friends who want a fun way to
+              learn Scripture together.
             </p>
           </div>
         </div>
       ),
-      icon: <BookOpen className="h-8 w-8 text-blue-600" />,
     },
     {
       title: "Choose Your Game Mode",
-      subtitle: "Find the perfect way to play",
+      subtitle: "Four ways to play from the home screen",
+      icon: <Play className="h-8 w-8 text-accent" />,
       content: (
-        <div className="space-y-4 sm:space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            <Card className="border-green-200 bg-green-50 hover:shadow-md transition-shadow h-full">
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex items-start gap-3">
-                  <div className="bg-green-100 p-2 rounded-lg flex-shrink-0">
-                    <Target className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-green-800 text-sm sm:text-base">
-                      Single Player
-                    </h4>
-                    <p className="text-xs sm:text-sm text-green-700 leading-relaxed">
-                      Learn at your own pace, earn rewards, and track your
-                      progress
-                    </p>
-                    <Badge
-                      variant="secondary"
-                      className="mt-2 bg-green-200 text-green-800 text-xs"
-                    >
-                      Best for beginners
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-purple-200 bg-purple-50 hover:shadow-md transition-shadow h-full">
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex items-start gap-3">
-                  <div className="bg-purple-100 p-2 rounded-lg flex-shrink-0">
-                    <Users className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-purple-800 text-sm sm:text-base">
-                      Multiplayer
-                    </h4>
-                    <p className="text-xs sm:text-sm text-purple-700 leading-relaxed">
-                      Compete with friends on one device - take turns answering
-                      questions
-                    </p>
-                    <Badge
-                      variant="secondary"
-                      className="mt-2 bg-purple-200 text-purple-800 text-xs"
-                    >
-                      Great for groups
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-orange-200 bg-orange-50 hover:shadow-md transition-shadow h-full">
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex items-start gap-3">
-                  <div className="bg-orange-100 p-2 rounded-lg flex-shrink-0">
-                    <Trophy className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-orange-800 text-sm sm:text-base">
-                      Team Battle
-                    </h4>
-                    <p className="text-xs sm:text-sm text-orange-700 leading-relaxed">
-                      Two teams compete in real-time multiplayer action
-                    </p>
-                    <Badge
-                      variant="secondary"
-                      className="mt-2 bg-orange-200 text-orange-800 text-xs"
-                    >
-                      Most exciting
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <ModeCard
+            accent="blue"
+            icon={<Target className="h-5 w-5 text-blue-400" />}
+            title="Solo Quiz"
+            description="Play alone. Pick a category, choose Question-Based or Time-Based mode, and track your score and average answer time."
+            badge="Start from home → Solo Quiz"
+          />
+          <ModeCard
+            accent="teal"
+            icon={<Users className="h-5 w-5 text-teal-400" />}
+            title="Play with Friends"
+            description="Up to 3 players on one device. Enter names, pass the phone when it's the next player's turn, and compare scores at the end."
+            badge="Same device · no account needed per player"
+          />
+          <ModeCard
+            accent="purple"
+            icon={<Swords className="h-5 w-5 text-purple-400" />}
+            title="Team Battle"
+            description="Two teams compete live online. Create or join a team, invite friends, mark Ready in the lobby, then battle through team questions."
+            badge="Online · team lobby"
+          />
+          <ModeCard
+            accent="gold"
+            icon={<Zap className="h-5 w-5 text-accent" />}
+            title="Rapid Fire"
+            description="Team mode with faster timed rounds. Same team setup as Team Battle, but shorter questions and a quicker pace."
+            badge="Online · quick match"
+          />
         </div>
       ),
-      icon: <Play className="h-8 w-8 text-green-600" />,
     },
     {
-      title: "Pick Your Challenge Type",
-      subtitle: "Different ways to experience the game",
+      title: "Solo Quiz Options",
+      subtitle: "How Question-Based and Time-Based modes work",
+      icon: <Clock className="h-8 w-8 text-blue-400" />,
       content: (
-        <div className="space-y-4 sm:space-y-6">
+        <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <Card className="border-blue-200 bg-blue-50 hover:shadow-md transition-shadow h-full">
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex items-start gap-3">
-                  <div className="bg-blue-100 p-2 rounded-lg flex-shrink-0">
-                    <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-blue-800 text-sm sm:text-base">
-                      Question-Based Mode
-                    </h4>
-                    <p className="text-xs sm:text-sm text-blue-700 leading-relaxed">
-                      Answer 10 carefully selected questions at your own pace
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
-                      <span className="text-xs text-blue-600 font-medium">
-                        5-15 minutes
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-red-200 bg-red-50 hover:shadow-md transition-shadow h-full">
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex items-start gap-3">
-                  <div className="bg-red-100 p-2 rounded-lg flex-shrink-0">
-                    <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-red-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-red-800 text-sm sm:text-base">
-                      Time-Based Mode
-                    </h4>
-                    <p className="text-xs sm:text-sm text-red-700 leading-relaxed">
-                      Race against the clock! Answer as many questions as
-                      possible in 15 minutes
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Target className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
-                      <span className="text-xs text-red-600 font-medium">
-                        Fast-paced action
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <ModeCard
+              accent="blue"
+              icon={<Target className="h-5 w-5 text-blue-400" />}
+              title="Question-Based"
+              description="10 questions with 20 seconds per question. Answer before time runs out to score points."
+              badge="Fixed 10 questions"
+            />
+            <ModeCard
+              accent="gold"
+              icon={<Clock className="h-5 w-5 text-accent" />}
+              title="Time-Based"
+              description="A 15-minute speed round. Answer as many questions as you can before the clock hits zero."
+              badge="15-minute timer"
+            />
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+            <p className="text-sm font-medium text-white">Categories & difficulty</p>
+            <p className="text-xs sm:text-sm text-white/65 leading-relaxed">
+              Choose from Old Testament, New Testament, Bible Stories, Famous People,
+              Theme-Based, or All Categories. Set difficulty to Beginner, Intermediate,
+              or Advanced before you start.
+            </p>
           </div>
         </div>
       ),
-      icon: <Clock className="h-8 w-8 text-blue-600" />,
     },
     {
-      title: "Customize Your Experience",
-      subtitle: "Make the game perfect for you",
+      title: "While You Play",
+      subtitle: "Scoring, rewards, and in-game tools",
+      icon: <Trophy className="h-8 w-8 text-accent" />,
       content: (
-        <div className="space-y-3 sm:space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-yellow-50 rounded-lg border border-yellow-200 hover:shadow-sm transition-shadow">
-              <div className="bg-yellow-100 p-1.5 sm:p-2 rounded-lg flex-shrink-0">
-                <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-yellow-800 text-sm sm:text-base">
-                  Categories
-                </h4>
-                <p className="text-xs sm:text-sm text-yellow-700 leading-relaxed">
-                  Choose from Old Testament, New Testament, Bible Stories, and
-                  more!
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-green-50 rounded-lg border border-green-200 hover:shadow-sm transition-shadow">
-              <div className="bg-green-100 p-1.5 sm:p-2 rounded-lg flex-shrink-0">
-                <Target className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-green-800 text-sm sm:text-base">
-                  Difficulty Levels
-                </h4>
-                <p className="text-xs sm:text-sm text-green-700 leading-relaxed">
-                  Beginner, Intermediate, or Advanced - start easy and level up!
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-purple-50 rounded-lg border border-purple-200 hover:shadow-sm transition-shadow">
-              <div className="bg-purple-100 p-1.5 sm:p-2 rounded-lg flex-shrink-0">
-                <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-purple-800 text-sm sm:text-base">
-                  Rewards & Achievements
-                </h4>
-                <p className="text-xs sm:text-sm text-purple-700 leading-relaxed">
-                  Earn books, caps, t-shirts, and certificates for your
-                  progress!
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-blue-50 rounded-lg border border-blue-200 hover:shadow-sm transition-shadow">
-              <div className="bg-blue-100 p-1.5 sm:p-2 rounded-lg flex-shrink-0">
-                <HelpCircle className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-blue-800 text-sm sm:text-base">
-                  Voice Narration
-                </h4>
-                <p className="text-xs sm:text-sm text-blue-700 leading-relaxed">
-                  Let Dr. HB Holmes read questions aloud to help you learn!
-                </p>
-              </div>
-            </div>
+        <div className="space-y-3">
+          <TipRow
+            icon={<Clock className="h-4 w-4 text-yellow-400 mt-0.5" />}
+            title="Timer & average time"
+            description="Each question gives you up to 20 seconds. Your sidebar shows correct answers, accuracy, and average time per question."
+          />
+          <TipRow
+            icon={<Trophy className="h-4 w-4 text-accent mt-0.5" />}
+            title="Unlock rewards (Solo Quiz)"
+            description="3 correct answers unlocks a book, 6 unlocks a cap, and 10 correct unlocks a t-shirt in Question-Based mode."
+          />
+          <TipRow
+            icon={<Pause className="h-4 w-4 text-green-400 mt-0.5" />}
+            title="Pause anytime"
+            description="Solo games can be paused from the top bar. Use Continue Playing on the home screen to resume where you left off."
+          />
+          <TipRow
+            icon={<Volume2 className="h-4 w-4 text-blue-400 mt-0.5" />}
+            title="Voice narration"
+            description="Dr. HB Holmes can read questions aloud. Toggle sound and voice from the icons in the game header."
+          />
+        </div>
+      ),
+    },
+    {
+      title: "Track Your Progress",
+      subtitle: "Profile, history, and team notifications",
+      icon: <History className="h-8 w-8 text-teal-400" />,
+      content: (
+        <div className="space-y-3">
+          <TipRow
+            icon={<User className="h-4 w-4 text-accent mt-0.5" />}
+            title="Your profile"
+            description="Tap your name in the top-right corner to view profile details, edit your info, and see game statistics."
+          />
+          <TipRow
+            icon={<History className="h-4 w-4 text-teal-400 mt-0.5" />}
+            title="Game History"
+            description="Review past solo sessions, last score, average answer time, and accuracy from the Game History page."
+          />
+          <TipRow
+            icon={<Trophy className="h-4 w-4 text-accent mt-0.5" />}
+            title="Leaderboard"
+            description="Compare your best scores with other players. Home shows a preview; open Leaderboard for full rankings."
+          />
+          <TipRow
+            icon={<Bell className="h-4 w-4 text-purple-400 mt-0.5" />}
+            title="Notifications"
+            description="Team Battle invites and alerts appear in the bell icon on the home screen. Accept invites to join a lobby."
+          />
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="text-sm font-medium text-white">Daily extras on Home</p>
+            <p className="text-xs sm:text-sm text-white/60 mt-1 leading-relaxed">
+              Read the Daily Bible Verse or tap Accept Daily Challenge to jump
+              straight into a preset solo quiz.
+            </p>
           </div>
         </div>
       ),
-      icon: <Trophy className="h-8 w-8 text-purple-600" />,
     },
     {
-      title: "Ready to Play!",
-      subtitle: "Your biblical adventure awaits",
+      title: "You're Ready!",
+      subtitle: "A few quick tips before you begin",
+      icon: <CheckCircle className="h-8 w-8 text-green-400" />,
       content: (
-        <div className="text-center space-y-4 sm:space-y-6">
-          <div className="text-3xl sm:text-4xl lg:text-6xl">🎯</div>
-          <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white text-center p-4 sm:p-6 rounded-xl shadow-lg border border-blue-400/20">
-            <h3 className="text-base sm:text-lg lg:text-xl font-bold mb-3 sm:mb-4 text-center">
-              Remember :
+        <div className="space-y-5">
+          <div className="rounded-xl border border-accent/25 bg-gradient-to-br from-accent/15 to-transparent p-5">
+            <h3 className="text-sm font-semibold text-white mb-3 text-center">
+              Quick tips
             </h3>
-            <ul className="space-y-2 sm:space-y-3 text-xs sm:text-sm lg:text-base max-w-md mx-auto">
-              <li className="text-center">
-                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
-                <span className="leading-relaxed">
-                  You can pause anytime and resume later
-                </span>
-              </li>
-              <li className="text-center">
-                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
-                <span className="leading-relaxed">
-                  Wrong answers help you learn too!
-                </span>
-              </li>
-              <li className="text-center">
-                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
-                <span className="leading-relaxed">
-                  Check the leaderboard to see how you rank
-                </span>
-              </li>
-              <li className="text-center">
-                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-300 inline mr-3" />
-                <span className="leading-relaxed">
-                  Visit the FAQ anytime for help
-                </span>
-              </li>
+            <ul className="space-y-2.5 text-sm text-white/80">
+              {[
+                "Wrong answers still help you learn — read the feedback after each question.",
+                "Team Battle: everyone on your team must tap Ready before the match starts.",
+                "Expand FAQ & Help on the home page anytime for mode-specific answers.",
+                "Need support? Use Contact Us from the FAQ section.",
+              ].map((tip) => (
+                <li key={tip} className="flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-accent shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{tip}</span>
+                </li>
+              ))}
             </ul>
           </div>
-          <p className="text-gray-600 italic text-sm sm:text-base px-4">
-            "For the word of God is alive and active..." - Hebrews 4:12
+          <p className="text-center text-white/50 text-xs sm:text-sm italic">
+            "Your word is a lamp to my feet and a light to my path." — Psalm 119:105
           </p>
         </div>
       ),
-      icon: <CheckCircle className="h-8 w-8 text-green-600" />,
     },
   ];
 
@@ -326,12 +296,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
   };
 
   const handleClose = () => {
-    // Tutorial shown this session - will show again in new session
-    onClose();
-  };
-
-  const handleSkip = () => {
-    // Skip the tutorial - still counts as shown for this session
+    setCurrentStep(0);
     onClose();
   };
 
@@ -340,96 +305,86 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
     onStartGame();
   };
 
-  const currentTutorialStep = tutorialSteps[currentStep];
+  const step = tutorialSteps[currentStep];
+  const isLastStep = currentStep === tutorialSteps.length - 1;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-full sm:w-[95vw] max-w-none sm:max-w-4xl max-h-[95vh] overflow-y-auto p-0 bg-white shadow-2xl border-2 border-accent/20 rounded-none sm:rounded-xl">
-        <DialogHeader className="p-3 sm:p-5 pb-2 sm:pb-3 pt-4 sm:pt-5 pr-10 sm:pr-12 lg:pr-16 border-b bg-gradient-to-r from-accent/5 to-accent/10">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-              <div className="flex-shrink-0">{currentTutorialStep.icon}</div>
-              <div className="min-w-0 flex-1">
-                <DialogTitle className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate break-words">
-                  {currentTutorialStep.title}
-                </DialogTitle>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1 hidden sm:block">
-                  {currentTutorialStep.subtitle}
-                </p>
-              </div>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
+    >
+      <DialogContent className="w-full sm:w-[95vw] max-w-3xl max-h-[92vh] overflow-hidden p-0 bg-gradient-to-b from-[#1a1f3a] to-[#121628] border border-white/10 shadow-2xl rounded-none sm:rounded-2xl text-white">
+        <DialogHeader className="p-4 sm:p-5 pb-3 border-b border-white/10 bg-white/[0.03]">
+          <div className="flex items-start gap-3 pr-6">
+            <div className="shrink-0">{step.icon}</div>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-lg sm:text-xl font-bold text-white">
+                {step.title}
+              </DialogTitle>
+              <p className="text-xs sm:text-sm text-white/55 mt-1">{step.subtitle}</p>
             </div>
           </div>
-
-          {/* Progress indicator */}
-          <div className="flex items-center gap-1 sm:gap-2 mt-3 sm:mt-4 px-1">
+          <div className="flex items-center gap-1.5 mt-4">
             {tutorialSteps.map((_, index) => (
               <div
                 key={index}
-                className={`h-1.5 sm:h-2 lg:h-3 flex-1 rounded-full transition-all duration-300 ${
-                  index <= currentStep ? "bg-accent shadow-sm" : "bg-gray-200"
-                }`}
+                className={cn(
+                  "h-1.5 flex-1 rounded-full transition-all duration-300",
+                  index <= currentStep ? "bg-accent" : "bg-white/15"
+                )}
               />
             ))}
           </div>
-          <p className="text-xs sm:text-sm lg:text-base text-gray-500 text-center mt-2 sm:mt-3 font-medium">
+          <p className="text-xs text-white/45 text-center mt-2">
             Step {currentStep + 1} of {tutorialSteps.length}
           </p>
         </DialogHeader>
 
-        <div className="p-3 sm:p-5 lg:p-8 flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto">{currentTutorialStep.content}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto max-h-[50vh] sm:max-h-[55vh]">
+          {step.content}
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 p-3 sm:p-5 pt-2 sm:pt-3 lg:p-6 lg:pt-4 border-t bg-gradient-to-r from-gray-50 to-gray-100">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 sm:p-5 border-t border-white/10 bg-black/20">
           <Button
             variant="outline"
             onClick={prevStep}
             disabled={currentStep === 0}
-            className="flex items-center justify-center gap-2 order-2 sm:order-1 disabled:opacity-50"
+            className="order-2 sm:order-1 border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white disabled:opacity-40"
             size="sm"
           >
-            <ChevronLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Previous</span>
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
           </Button>
 
-          <div className="flex gap-2 sm:gap-3 order-1 sm:order-2 flex-1 sm:flex-initial justify-center sm:justify-end">
-            {currentStep === tutorialSteps.length - 1 ? (
-              <>
-                <Button
-                  variant="secondary"
-                  onClick={handleSkip}
-                  className="flex-1 sm:flex-initial text-xs sm:text-sm shadow-sm focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  size="sm"
-                >
-                  Skip Tutorial
-                </Button>
-                <Button
-                  onClick={handleStartGame}
-                  className="flex-1 sm:flex-initial bg-gradient-to-r from-accent to-accent-dark hover:from-accent-dark hover:to-accent text-white shadow-lg hover:shadow-xl transition-all duration-200 text-xs sm:text-sm font-semibold"
-                  size="sm"
-                >
-                  🎯 Start Playing!
-                </Button>
-              </>
+          <div className="flex gap-2 order-1 sm:order-2 sm:ml-auto">
+            <Button
+              variant="ghost"
+              onClick={handleClose}
+              className="text-white/70 hover:text-white hover:bg-white/10"
+              size="sm"
+            >
+              {isLastStep ? "Close" : "Skip"}
+            </Button>
+            {isLastStep ? (
+              <Button
+                onClick={handleStartGame}
+                className="bg-accent hover:bg-accent/90 text-primary font-semibold"
+                size="sm"
+              >
+                <Play className="h-4 w-4 mr-1.5" />
+                Start Solo Quiz
+              </Button>
             ) : (
-              <div className="flex gap-3 sm:gap-4">
-                <Button
-                  variant="secondary"
-                  onClick={handleSkip}
-                  className="text-xs sm:text-sm shadow-sm focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  size="sm"
-                >
-                  Skip Tutorial
-                </Button>
-                <Button
-                  onClick={nextStep}
-                  className="flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white shadow-md hover:shadow-lg transition-all duration-200 text-xs sm:text-sm"
-                  size="sm"
-                >
-                  <span className="hidden sm:inline">Next</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+              <Button
+                onClick={nextStep}
+                className="bg-accent hover:bg-accent/90 text-primary font-semibold"
+                size="sm"
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
             )}
           </div>
         </div>

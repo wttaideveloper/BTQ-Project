@@ -34,7 +34,7 @@ const faqData: FAQSectionData[] = [
       {
         question: "How do I start a solo game?",
         answer:
-          'Tap "Solo Quiz" on the home screen, pick Question-Based (10 questions) or Time-Based (15-minute round), then choose your category and difficulty. Hit Start Solo Quiz and you\'re in!',
+          'Tap "Solo Quiz" on the home screen, pick Question-Based (10 questions, 20 sec each) or Time-Based (15-minute round), then choose your category and difficulty. Hit Start Solo Quiz and you\'re in!',
       },
       {
         question: "Can I pause and come back later?",

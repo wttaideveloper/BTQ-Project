@@ -202,7 +202,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
                         Question-Based
                       </span>
                       <p className="text-xs text-white/55 mt-0.5">
-                        10 questions at your pace
+                        10 questions, 20 sec per question
                       </p>
                     </div>
                   </label>
@@ -329,7 +329,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-white/10">
             <div className="flex flex-wrap gap-2">
               <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/70 border border-white/10">
-                {gameType === "question" ? "10 questions" : "15 min timer"}
+                {gameType === "question" ? "10 questions · 20 sec each" : "15 min timer"}
               </span>
               <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/70 border border-white/10">
                 {category}

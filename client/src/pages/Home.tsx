@@ -634,7 +634,7 @@ const Home: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <HomeActionCard
               title="Solo Quiz"
-              description="Play on your own. Pick a category, answer at your pace, and track your score."
+              description="Play on your own. Pick a category, choose your mode, and track your score."
               icon={Target}
               onClick={() => setShowSoloDialog(true)}
               accent="blue"
@@ -972,7 +972,7 @@ const Home: React.FC = () => {
                   />
                   <Label htmlFor="dlg-question" className="cursor-pointer flex-1">
                     <span className="font-medium">Question-Based</span>
-                    <p className="text-xs text-white/60">10 questions at your pace</p>
+                    <p className="text-xs text-white/60">10 questions, 20 sec per question</p>
                   </Label>
                 </div>
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-white/20 bg-white/5 cursor-pointer">

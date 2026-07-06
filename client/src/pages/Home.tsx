@@ -968,6 +968,28 @@ const Home: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
 
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/5 border border-white/15">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold">
+                Play Mode
+              </p>
+              <p className="text-white font-semibold text-sm">Solo Quiz</p>
+              <p className="text-xs text-accent mt-0.5">
+                {gameType === "question"
+                  ? "Question-Based"
+                  : `Time-Based · ${gameDuration} min`}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold">
+                Player
+              </p>
+              <p className="text-white font-semibold text-sm">
+                {profileUser?.username || "Player 1"}
+              </p>
+            </div>
+          </div>
+
           <div className="space-y-5 py-2">
             <div>
               <Label className="text-white/90 mb-2 block">Game Type</Label>

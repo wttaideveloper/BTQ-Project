@@ -1373,6 +1373,32 @@ const Game: React.FC = () => {
           originalGameTime={originalGameTime}
         />
 
+        {gameMode === "single" && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 sm:px-4 sm:py-2.5">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
+              <span className="text-xs sm:text-sm font-bold uppercase tracking-wide text-accent">
+                Solo Quiz
+              </span>
+              <span className="hidden sm:inline text-white/30">·</span>
+              <span className="text-xs sm:text-sm text-white/80 truncate">
+                {gameType === "question"
+                  ? "Question-Based"
+                  : `Time-Based · ${gameDurationMinutes} min`}
+              </span>
+              <span className="hidden sm:inline text-white/30">·</span>
+              <span className="text-xs sm:text-sm text-white/60 truncate">
+                {category} · {difficulty}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <User className="h-4 w-4 text-accent" />
+              <span className="text-sm font-semibold text-white truncate max-w-[140px] sm:max-w-none">
+                {playerNames[0]}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Compact Player turn indicator for multiplayer */}
         {gameMode === "multi" && playerCount > 1 && (
           <div className="mb-4 bg-gradient-to-r from-white/5 to-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/30 shadow-xl">

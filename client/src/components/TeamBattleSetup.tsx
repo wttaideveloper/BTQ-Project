@@ -44,10 +44,10 @@ import {
 } from "lucide-react";
 
 const SETUP_PROGRESS_STEPS = [
-  { id: 1, label: "Create Team", icon: Crown },
-  { id: 2, label: "Invite Players", icon: UserPlus },
-  { id: 3, label: "Ready Up", icon: Check },
-  { id: 4, label: "Start Battle", icon: Swords },
+  { id: 1, label: "Create Team", shortLabel: "Create", icon: Crown },
+  { id: 2, label: "Invite Players", shortLabel: "Invite", icon: UserPlus },
+  { id: 3, label: "Ready Up", shortLabel: "Ready", icon: Check },
+  { id: 4, label: "Start Battle", shortLabel: "Start", icon: Swords },
 ] as const;
 import TeamDisplay from "./TeamDisplay";
 import ClockCountdown from "./ui/ClockCountdown";
@@ -3039,7 +3039,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     <div className="fixed inset-0 bg-gradient-to-br from-black/80 via-primary-dark/80 to-secondary-dark/80 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:py-4 md:py-6 sm:px-4">
       <div className="bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 rounded-none sm:rounded-xl md:rounded-2xl shadow-2xl w-full h-full sm:h-auto sm:max-w-3xl mx-auto my-auto sm:max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden border-0 sm:border border-white/20">
         {/* Header Section */}
-        <div className={`${isRapidFire ? "bg-gradient-to-r from-[#DEB126] via-[#C59D1F] to-[#B58E12]" : "bg-gradient-to-r from-primary via-primary-dark to-secondary"} p-3 sm:p-4 md:p-6 relative overflow-hidden flex-shrink-0 safe-area-top`}>
+        <div className={`${isRapidFire ? "bg-gradient-to-r from-[#DEB126] via-[#C59D1F] to-[#B58E12]" : "bg-gradient-to-r from-primary via-primary-dark to-secondary"} p-2.5 sm:p-4 md:p-6 relative overflow-hidden flex-shrink-0 safe-area-top`}>
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
           <div className="relative z-10 flex justify-between items-center gap-2">
             {currentStage !== "enter" ? (
@@ -3080,11 +3080,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </Button>
             </div>
           </div>
-          <div className="relative z-10 text-center mt-2 sm:mt-3 md:mt-4">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-heading font-extrabold text-white mb-1 sm:mb-2 tracking-tight">
+          <div className="relative z-10 text-center mt-1.5 sm:mt-3 md:mt-4">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-heading font-extrabold text-white mb-0.5 sm:mb-1 md:mb-2 tracking-tight">
               {isRapidFire ? "Rapid Fire Setup" : "Team Battle Setup"}
             </h1>
-            <p className="text-white/90 text-xs sm:text-sm md:text-base font-medium px-2">
+            <p className="text-white/90 text-[11px] sm:text-sm md:text-base font-medium px-2 leading-snug">
               {isRapidFire
                 ? "Set up a fast-paced round, gather players, and jump in."
                 : "Form your team, invite friends, and get ready to play Bible trivia together."}
@@ -3092,62 +3092,63 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           </div>
         </div>
 
+        {/* 4-step progress indicator — pinned above scroll area */}
+        <nav
+          aria-label="Team battle setup progress"
+          className="flex-shrink-0 z-20 border-b border-gray-200 bg-white px-2 py-2 sm:px-4 sm:py-3 shadow-sm"
+        >
+          <ol className="mx-auto grid max-w-3xl grid-cols-4 gap-0.5 sm:gap-2">
+            {SETUP_PROGRESS_STEPS.map((step) => {
+              const StepIcon = step.icon;
+              const isComplete = setupProgressStep > step.id;
+              const isCurrent = setupProgressStep === step.id;
+              return (
+                <li key={step.id} className="flex min-w-0 flex-col items-center text-center">
+                  <div
+                    className={`flex h-7 w-7 sm:h-9 sm:w-9 md:h-10 md:w-10 items-center justify-center rounded-full border-2 transition-colors ${
+                      isComplete
+                        ? isRapidFire
+                          ? "border-[#DEB126] bg-[#DEB126] text-white"
+                          : "border-green-500 bg-green-500 text-white"
+                        : isCurrent
+                          ? isRapidFire
+                            ? "border-[#DEB126] bg-[#DEB126]/15 text-[#856910]"
+                            : "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-gray-200 bg-gray-50 text-gray-400"
+                    }`}
+                  >
+                    {isComplete ? (
+                      <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" aria-hidden="true" />
+                    ) : (
+                      <StepIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5" aria-hidden="true" />
+                    )}
+                  </div>
+                  <span
+                    className={`mt-1 max-w-full truncate px-0.5 text-[9px] font-semibold leading-tight sm:text-[10px] md:text-xs ${
+                      isCurrent
+                        ? isRapidFire
+                          ? "text-[#856910]"
+                          : "text-blue-700"
+                        : isComplete
+                          ? "text-gray-700"
+                          : "text-gray-400"
+                    }`}
+                  >
+                    <span className="sm:hidden">{step.shortLabel}</span>
+                    <span className="hidden sm:inline">{step.label}</span>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+
         {/* Scrollable Content */}
         <div
           ref={scrollContainerRef}
           className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-4 md:p-6 bg-white/95 pb-6 sm:pb-8 md:pb-10 safe-area-bottom"
           style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
         >
-          {/* 4-step progress indicator */}
-          <nav
-            aria-label="Team battle setup progress"
-            className="mb-4 sm:mb-6 rounded-xl border border-gray-200 bg-white p-3 sm:p-4 shadow-sm"
-          >
-            <ol className="grid grid-cols-4 gap-1 sm:gap-2">
-              {SETUP_PROGRESS_STEPS.map((step) => {
-                const StepIcon = step.icon;
-                const isComplete = setupProgressStep > step.id;
-                const isCurrent = setupProgressStep === step.id;
-                return (
-                  <li key={step.id} className="flex flex-col items-center text-center min-w-0">
-                    <div
-                      className={`flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border-2 transition-colors ${
-                        isComplete
-                          ? isRapidFire
-                            ? "border-[#DEB126] bg-[#DEB126] text-white"
-                            : "border-green-500 bg-green-500 text-white"
-                          : isCurrent
-                            ? isRapidFire
-                              ? "border-[#DEB126] bg-[#DEB126]/15 text-[#856910]"
-                              : "border-blue-500 bg-blue-50 text-blue-700"
-                            : "border-gray-200 bg-gray-50 text-gray-400"
-                      }`}
-                    >
-                      {isComplete ? (
-                        <Check className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
-                      ) : (
-                        <StepIcon className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
-                      )}
-                    </div>
-                    <span
-                      className={`mt-1.5 text-[10px] sm:text-xs font-semibold leading-tight px-0.5 ${
-                        isCurrent
-                          ? isRapidFire
-                            ? "text-[#856910]"
-                            : "text-blue-700"
-                          : isComplete
-                            ? "text-gray-700"
-                            : "text-gray-400"
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          </nav>
-
           {/* How Team Battle Works */}
           <div
             className={`mb-4 sm:mb-6 rounded-xl border p-4 sm:p-5 ${

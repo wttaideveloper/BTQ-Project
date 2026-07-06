@@ -290,9 +290,12 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
 
   const handleClick = (answerId: string) => {
     if (isQuestionLocked || isReadOnly) return;
-    // During toss phase, every click should be a direct submit (rapid-fire)
     if (isToss) {
-      onMemberSelect(answerId);
+      if (isCaptain) {
+        onCaptainSubmit(answerId);
+      } else {
+        onMemberSelect(answerId);
+      }
       return;
     }
     if (isCaptain) {

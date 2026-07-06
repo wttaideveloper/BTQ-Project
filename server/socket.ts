@@ -6728,6 +6728,37 @@ async function handleTossSubmission(
       timeSpent: event.timeSpent || 0,
     };
 
+    // Broadcast suggestion to all teammates so captain sees member picks
+    let displayName = client.playerName || event.username;
+    if (!displayName) {
+      try {
+        const user = await database.getUser(client.userId!);
+        displayName = user?.username || `Player ${client.userId}`;
+      } catch {
+        displayName = `Player ${client.userId}`;
+      }
+    }
+
+    const teamMemberConnections = sessionTeam.members
+      .map((member: any) => userConnections.get(member.userId))
+      .filter(present)
+      .flat();
+
+    const suggestionPayload: GameEvent = {
+      type: "team_option_selected",
+      teamId: sessionTeam.id,
+      userId: client.userId,
+      username: displayName,
+      questionId: event.questionId,
+      answerId: event.answerId,
+    };
+
+    teamMemberConnections.forEach((connectionId: string | undefined) => {
+      if (connectionId) {
+        sendToClient(connectionId, suggestionPayload);
+      }
+    });
+
     // Evaluate correctness
     const correctAnswer = tossQuestion.answers?.find((a: any) => a.isCorrect);
     const isCorrect = !!(correctAnswer && event.answerId === correctAnswer.id);

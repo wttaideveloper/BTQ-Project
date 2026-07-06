@@ -572,22 +572,40 @@ export default function TeamBattleGame() {
 
             const winnerTeamId = data.winnerTeamId;
             const winnerUserId = data.winnerUserId || data.userId;
+            const currentState = gameStateRef.current;
 
             let isYourTeamWinner = false;
-            if (winnerTeamId && gameState.teams && gameState.teams.length > 0 && user) {
-              const winningTeamInState = gameState.teams.find((t) => t.id === winnerTeamId);
-              if (winningTeamInState) {
-                isYourTeamWinner = winningTeamInState.members?.some((m: any) => m.userId === user.id) === true;
+            if (winnerTeamId && user) {
+              if (currentState.playerTeam?.id === winnerTeamId) {
+                isYourTeamWinner = true;
+              } else if (currentState.teams?.length) {
+                const winningTeamInState = currentState.teams.find(
+                  (t) => t.id === winnerTeamId
+                );
+                isYourTeamWinner =
+                  winningTeamInState?.members?.some(
+                    (m: any) => m.userId === user.id
+                  ) === true;
               } else {
-                isYourTeamWinner = winnerUserId === user?.id;
+                isYourTeamWinner = winnerUserId === user.id;
               }
             } else {
               isYourTeamWinner = winnerUserId === user?.id;
             }
 
             let winnerTeamName = "Opponent";
-            if (winnerTeamId && gameState.teams) {
-              winnerTeamName = gameState.teams.find((t) => t.id === winnerTeamId)?.name || "Opponent";
+            if (winnerTeamId) {
+              if (isYourTeamWinner) {
+                winnerTeamName =
+                  currentState.playerTeam?.name ||
+                  currentState.teams?.find((t) => t.id === winnerTeamId)?.name ||
+                  "Your team";
+              } else {
+                winnerTeamName =
+                  currentState.opposingTeam?.name ||
+                  currentState.teams?.find((t) => t.id === winnerTeamId)?.name ||
+                  "Opponent";
+              }
             }
 
             // Clear toss answer feedback — toss result dialog replaces CORRECT modal
@@ -1168,8 +1186,21 @@ export default function TeamBattleGame() {
 
     if (!gameState.currentQuestion || !gameState.playerTeam || !user) return;
 
-    // If we're in toss phase submit immediately as an individual submission (race)
+    // Toss: teammates suggest; captain (or solo player) submits for the race
     if (gameState.phase === "toss") {
+      if (!isSoloTeam() && !isTeamCaptain()) {
+        sendGameEvent({
+          type: "team_option_selected",
+          teamId: gameState.playerTeam.id,
+          questionId: gameState.currentQuestion.id,
+          answerId,
+          userId: user.id,
+          username: user.username,
+        });
+        setSelectedAnswer(answerId);
+        return;
+      }
+
       sendGameEvent({
         type: "submit_team_answer",
         teamId: gameState.playerTeam.id,
@@ -1180,7 +1211,6 @@ export default function TeamBattleGame() {
         username: user.username,
         timeSpent: 0,
       });
-      // Show selection locally
       setSelectedAnswer(answerId);
       setHasSubmitted(true);
       return;

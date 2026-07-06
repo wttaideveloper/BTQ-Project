@@ -252,6 +252,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setSelectedOpponentId(null);
       setPendingInviteId(null);
       setSentOpponentInviteIds(new Set());
+      setSentTeammateInviteIds(new Set());
       setPendingResponseId(null);
       setPendingInvitationId(null);
       setNewTeamName("");
@@ -270,6 +271,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       shouldSendLeaveEventRef.current = false;
       prevPendingInviteCountRef.current = 0;
       prevCaptainJoinRequestCountRef.current = 0;
+      prevTeamMemberIdsRef.current = new Set();
 
 
       // ========================================================================
@@ -313,6 +315,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setSelectedOpponentId(null);
       setPendingInviteId(null);
       setSentOpponentInviteIds(new Set());
+      setSentTeammateInviteIds(new Set());
       setPendingResponseId(null);
       setShowTeamNameDialog(false);
       setExitConfirmationMode(null);
@@ -755,6 +758,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 next.delete(data.inviteeId);
                 return next;
               });
+              setSentTeammateInviteIds((prev) => {
+                const next = new Set(prev);
+                next.delete(data.inviteeId);
+                return next;
+              });
             }
 
             // Invalidate invitations to update the UI
@@ -777,20 +785,26 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 next.delete(data.inviteeId);
                 return next;
               });
+              setSentTeammateInviteIds((prev) => {
+                const next = new Set(prev);
+                next.delete(data.inviteeId);
+                return next;
+              });
             }
 
             queryClient.invalidateQueries({
               queryKey: ["/api/team-invitations"],
             });
 
-            if (data.invitationType === "opponent" || !data.invitationType) {
-              toast({
-                title: "Invitation Declined",
-                description:
-                  data.message || "Your opponent invitation was declined.",
-                variant: "destructive",
-              });
-            }
+            toast({
+              title: "Invitation Declined",
+              description:
+                data.message ||
+                (data.invitationType === "teammate"
+                  ? "Your teammate invitation was declined."
+                  : "Your opponent invitation was declined."),
+              variant: "destructive",
+            });
             break;
           }
 
@@ -980,11 +994,21 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "opponent_disconnected": {
             // Handle opponent disconnection in team setup phase
+            if (data.disconnectedUserId) {
+              setSentOpponentInviteIds((prev) => {
+                const next = new Set(prev);
+                next.delete(data.disconnectedUserId);
+                return next;
+              });
+            }
             setDisconnectedPlayerInfo({
               playerName: data.disconnectedPlayerName || "A player",
               teamName: data.disconnectedTeamName || "Opponent team",
             });
             setShowOpponentDisconnectedDialog(true);
+            queryClient.invalidateQueries({
+              queryKey: ["/api/team-invitations"],
+            });
             // Refresh teams data to reflect the disconnection
             if (wsSessionId) {
               queryClient.invalidateQueries({
@@ -1074,6 +1098,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 data.message || `${data.playerName || "A teammate"} has left ${data.teamName || "your team"}.`,
               variant: "default",
             });
+            if (data.userId) {
+              setSentTeammateInviteIds((prev) => {
+                const next = new Set(prev);
+                next.delete(data.userId);
+                return next;
+              });
+            }
+            queryClient.invalidateQueries({
+              queryKey: ["/api/team-invitations"],
+            });
             // Refresh teams data to reflect the change
             if (wsSessionId) {
               queryClient.invalidateQueries({
@@ -1085,11 +1119,21 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
           case "member_removed_by_captain": {
             // Handle confirmation when captain successfully removes a member
+            if (data.removedMemberId) {
+              setSentTeammateInviteIds((prev) => {
+                const next = new Set(prev);
+                next.delete(data.removedMemberId);
+                return next;
+              });
+            }
             toast({
               title: "Member Removed",
               description:
                 data.message || `You have removed ${data.removedMemberName || "the member"} from ${data.teamName || "your team"}.`,
               variant: "default",
+            });
+            queryClient.invalidateQueries({
+              queryKey: ["/api/team-invitations"],
             });
             // Refresh teams data to reflect the change
             if (wsSessionId) {
@@ -1666,6 +1710,9 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const [sentOpponentInviteIds, setSentOpponentInviteIds] = useState<
     Set<number>
   >(new Set());
+  const [sentTeammateInviteIds, setSentTeammateInviteIds] = useState<
+    Set<number>
+  >(new Set());
   const [pendingResponseId, setPendingResponseId] = useState<string | null>(
     null
   );
@@ -1729,6 +1776,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const teamsOverviewRef = useRef<HTMLDivElement>(null);
   const prevPendingInviteCountRef = useRef(0);
   const prevCaptainJoinRequestCountRef = useRef(0);
+  const prevTeamMemberIdsRef = useRef<Set<number>>(new Set());
 
   // Handle page unload (reload, close, exit, network issues)
   useEffect(() => {
@@ -1863,6 +1911,43 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     }
     return invitation.teamId;
   };
+
+  // Clear stale sent-invite locks when players join or leave teams (allows re-invite)
+  useEffect(() => {
+    if (!open) {
+      prevTeamMemberIdsRef.current = new Set();
+      return;
+    }
+
+    const currentMemberIds = new Set(
+      teams.flatMap((team) => team.members.map((member) => member.userId))
+    );
+
+    const pruneSentInvites = (
+      prev: Set<number>,
+      prevMembers: Set<number>,
+      currentMembers: Set<number>
+    ) => {
+      const next = new Set(prev);
+      for (const id of prev) {
+        if (currentMembers.has(id)) {
+          next.delete(id);
+        } else if (prevMembers.has(id)) {
+          next.delete(id);
+        }
+      }
+      return next;
+    };
+
+    setSentOpponentInviteIds((prev) =>
+      pruneSentInvites(prev, prevTeamMemberIdsRef.current, currentMemberIds)
+    );
+    setSentTeammateInviteIds((prev) =>
+      pruneSentInvites(prev, prevTeamMemberIdsRef.current, currentMemberIds)
+    );
+
+    prevTeamMemberIdsRef.current = currentMemberIds;
+  }, [teams, open]);
 
   const [isReady, setIsReady] = useState(false);
 
@@ -2138,14 +2223,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
       if (variables.invitationType === "opponent") {
         setSentOpponentInviteIds((prev) => new Set(prev).add(variables.inviteeId));
-        queryClient.setQueryData<TeamInvitation[]>(
-          ["/api/team-invitations"],
-          (old = []) => {
-            const exists = old.some((inv) => inv.id === invitation.id);
-            return exists ? old : [...old, invitation];
-          }
-        );
+      } else {
+        setSentTeammateInviteIds((prev) => new Set(prev).add(variables.inviteeId));
       }
+
+      queryClient.setQueryData<TeamInvitation[]>(
+        ["/api/team-invitations"],
+        (old = []) => {
+          const exists = old.some((inv) => inv.id === invitation.id);
+          return exists ? old : [...old, invitation];
+        }
+      );
 
       queryClient.invalidateQueries({ queryKey: ["/api/team-invitations"] });
     },
@@ -2166,6 +2254,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setPendingInviteId(null);
       if (variables.invitationType === "opponent") {
         setSentOpponentInviteIds((prev) => {
+          const next = new Set(prev);
+          next.delete(variables.inviteeId);
+          return next;
+        });
+      } else {
+        setSentTeammateInviteIds((prev) => {
           const next = new Set(prev);
           next.delete(variables.inviteeId);
           return next;
@@ -2405,6 +2499,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         inv.invitationType === "opponent"
     );
 
+  const hasPendingTeammateInviteTo = (playerId: number) =>
+    sentTeammateInviteIds.has(playerId) ||
+    invitations.some(
+      (inv: TeamInvitation) =>
+        inv.inviteeId === playerId &&
+        inv.inviterId === user?.id &&
+        inv.status === "pending" &&
+        inv.invitationType === "teammate"
+    );
+
   const handleInviteTeammate = (userId: number, event?: React.MouseEvent) => {
     event?.preventDefault();
     event?.stopPropagation();
@@ -2440,6 +2544,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       return; // Prevent multiple simultaneous invitations
     }
 
+    setSentTeammateInviteIds((prev) => new Set(prev).add(userId));
     setPendingInviteId(userId);
     sendInvitationMutation.mutate({
       teamId: userTeam.id,
@@ -3878,18 +3983,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   {!isLoading && !isError && availableTeammates.length > 0 && (
                     <>
                       {availableTeammates.map((player) => {
-                        const pendingInvitation = invitations.find(
-                          (inv: TeamInvitation) =>
-                            inv.inviteeId === player.id &&
-                            inv.status === "pending" &&
-                            getInvitationTeamId(inv) === userTeam?.id
-                        );
-                        const alreadyInvitedByMe = invitations.some(
-                          (inv: TeamInvitation) =>
-                            inv.inviteeId === player.id &&
-                            inv.inviterId === user?.id &&
-                            inv.status === "pending" &&
-                            inv.invitationType === "teammate"
+                        const pendingTeammateInvite = hasPendingTeammateInviteTo(
+                          player.id
                         );
                         const invitationCount = invitations.filter(
                           (inv: TeamInvitation) =>
@@ -3906,7 +4001,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               <p className="font-medium text-sm sm:text-base text-neutral-900 truncate">
                                 {player.username}
                               </p>
-                              {pendingInvitation && (
+                              {pendingTeammateInvite && (
                                 <span className="text-xs px-2 py-0.5 sm:py-1 rounded-full bg-yellow-100 text-yellow-700 flex-shrink-0">
                                   Invitation Sent
                                 </span>
@@ -3918,22 +4013,21 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                 handleInviteTeammate(player.id, e)
                               }
                               disabled={
-                                pendingInviteId === player.id ||
-                                !!pendingInvitation ||
-                                alreadyInvitedByMe ||
+                                pendingTeammateInvite ||
+                                (pendingInviteId === player.id &&
+                                  sendInvitationMutation.isPending) ||
                                 (userTeam?.members.length || 0) >= 3
                               }
-                              className={`w-full sm:w-auto text-xs font-semibold px-3 py-1.5 sm:py-1 ${isRapidFire ? "bg-[#C59D1F] hover:bg-[#B58E12]" : "bg-purple-600 hover:bg-purple-700"} text-white rounded-lg`}
+                              className={`w-full sm:w-auto text-xs font-semibold px-3 py-1.5 sm:py-1 ${isRapidFire ? "bg-[#C59D1F] hover:bg-[#B58E12]" : "bg-purple-600 hover:bg-purple-700"} text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
-                              {pendingInvitation
-                                ? "Invite Sent"
-                                : alreadyInvitedByMe
-                                  ? "Already Invited"
-                                  : pendingInviteId === player.id
-                                    ? "Sending..."
-                                    : invitationCount > 0
-                                      ? `Invite (${invitationCount} pending)`
-                                      : "Add to My Team"}
+                              {pendingTeammateInvite
+                                ? pendingInviteId === player.id &&
+                                  sendInvitationMutation.isPending
+                                  ? "Sending..."
+                                  : "Invite Sent"
+                                : invitationCount > 0
+                                  ? `Invite (${invitationCount} pending)`
+                                  : "Add to My Team"}
                             </Button>
                           </div>
                         );

@@ -765,6 +765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sendToUser(user.id, {
               type: "member_removed_by_captain",
               gameSessionId: battle.gameSessionId,
+              removedMemberId: userId,
               removedMemberName: removedUserName,
               teamName: teamSide === "a" ? (updatedBattle.teamAName || "Team A") : (updatedBattle.teamBName || "Team B"),
               message: `You have removed ${removedUserName} from your team.`,
@@ -2634,6 +2635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               sendToUser(participantId, {
                 type: "opponent_disconnected",
                 gameSessionId: updatedBattle.gameSessionId,
+                disconnectedUserId: userId,
                 disconnectedPlayerName: req.user?.username || "A player",
                 disconnectedTeamName: oldTeamBName,
                 message: `⚠️ ${req.user?.username || "A player"} (Team B captain) has left the lobby. You can invite a new opponent captain to continue.`,
@@ -2712,6 +2714,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sendToUser(captainId, {
               type: "teammate_left",
               gameSessionId: updatedBattle.gameSessionId,
+              userId: userId,
               playerName: leavingUserName,
               teamName: teamName,
               message: `${leavingUserName} has left ${teamName}.`,
@@ -2931,7 +2934,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const userId = req.user.id;
       const status = req.query.status as string | undefined;
-      const invitations = await database.getTeamInvitationsByUser(
+      const invitations = await database.getAllTeamInvitationsByUser(
         userId,
         status
       );

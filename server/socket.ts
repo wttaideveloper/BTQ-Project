@@ -4037,6 +4037,7 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
         sendToUser(participantId, {
           type: "teammate_left",
           gameSessionId: gameSessionId,
+          userId: userId,
           playerName: username || client.playerName || "A player",
           teamName: leavingTeam.name,
           message: `${username || client.playerName || "A player"} has left ${leavingTeam.name}.`,

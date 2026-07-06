@@ -2867,6 +2867,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const invitation = await database.createTeamInvitation(invitationData);
       console.error("Invitation created:", JSON.stringify(invitation, null, 2));
 
+      // Notify invitee in real time so they see a toast and updated invitation list
+      try {
+        if (invitationType === "opponent") {
+          let recruiterTeamName = "a team";
+          if (teamBattleId) {
+            const battle = await database.getTeamBattle(teamBattleId);
+            if (battle?.teamAName) {
+              recruiterTeamName = battle.teamAName;
+            }
+          }
+
+          sendToUser(req.body.inviteeId, {
+            type: "team_captain_invitation_received",
+            invitation,
+            inviterName: req.user.username,
+            message: `${req.user.username}'s team "${recruiterTeamName}" has invited you to become captain of the opposing team in a Bible trivia battle!`,
+          });
+        } else {
+          let team = null;
+          if (teamBattleId && teamSide) {
+            const battle = await database.getTeamBattle(teamBattleId);
+            if (battle) {
+              const teams = await convertTeamBattleToTeams(battle);
+              team = teams.find((t) => t.teamSide === teamSide) ?? null;
+            }
+          }
+
+          sendToUser(req.body.inviteeId, {
+            type: "team_member_invitation_received",
+            invitation,
+            team,
+            inviterName: req.user.username,
+            message: `${req.user.username} has invited you to join their team${team?.name ? ` "${team.name}"` : ""}!`,
+          });
+        }
+      } catch (wsError) {
+        console.error("Error sending invitation WebSocket notification:", wsError);
+      }
+
       res.status(201).json(invitation);
     } catch (err) {
       console.error("Failed to create team invitation:", err);

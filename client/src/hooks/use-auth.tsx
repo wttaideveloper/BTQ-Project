@@ -10,6 +10,7 @@ import { UpdateProfileData } from "@shared/user-validation";
 import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { setupGameSocket, closeGameSocket } from "@/lib/socket";
+import { useTeamInvitationToasts } from "@/hooks/useTeamInvitationToasts";
 
 type AuthContextType = {
   user: SelectUser | null;
@@ -70,6 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       closeGameSocket();
     }
   }, [user?.id]);
+
+  // Show toast when this user receives a team battle / rapid fire invitation
+  useTeamInvitationToasts(user?.id);
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {

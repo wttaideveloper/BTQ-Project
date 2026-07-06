@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -22,7 +22,7 @@ import GameBoard from "@/components/GameBoard";
 import GameSidebar from "@/components/GameSidebar";
 import LeaderboardModal from "@/components/LeaderboardModal";
 import RewardModal from "@/components/RewardModal";
-import { getGameQuestions } from "@/lib/trivia-api";
+import { getGameQuestions, getRemainingQuestionCount } from "@/lib/trivia-api";
 import { setupGameSocket, GameEvent } from "@/lib/socket";
 import {
   initSounds,
@@ -56,6 +56,8 @@ interface Question {
   category: string;
   difficulty: string;
 }
+
+const TIME_MODE_BATCH_SIZE = 15;
 
 const Game: React.FC = () => {
   const [_, setLocation] = useLocation();
@@ -212,6 +214,17 @@ const Game: React.FC = () => {
 
   const timeLimit = 20; // 20 seconds per question
 
+  // Time-based mode: accumulate questions across batches during the session
+  const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
+  const [isLoadingMoreQuestions, setIsLoadingMoreQuestions] = useState(false);
+  const [questionsExhausted, setQuestionsExhausted] = useState(false);
+  const [initialPoolEmpty, setInitialPoolEmpty] = useState(false);
+  const [initialVerifyComplete, setInitialVerifyComplete] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const sessionQuestionsRef = useRef<Question[]>([]);
+
+  sessionQuestionsRef.current = sessionQuestions;
+
   // Fetch questions from API for game
   const {
     data: questions,
@@ -232,7 +245,7 @@ const Game: React.FC = () => {
             ? gameMode === "multi" && playerCount === 3
               ? 12
               : 10
-            : 20,
+            : TIME_MODE_BATCH_SIZE,
           gameId
         );
         return result;
@@ -256,6 +269,201 @@ const Game: React.FC = () => {
       });
     },
   });
+
+  const activeQuestions =
+    gameType === "time" ? sessionQuestions : questions ?? [];
+
+  const fetchMoreTimeModeQuestions = useCallback(async () => {
+    if (
+      gameType !== "time" ||
+      loadingMoreRef.current ||
+      questionsExhausted ||
+      gameEnded
+    ) {
+      return;
+    }
+
+    loadingMoreRef.current = true;
+    setIsLoadingMoreQuestions(true);
+
+    try {
+      const excludeIds = sessionQuestionsRef.current.map((q) => q.id);
+      let newQuestions = await getGameQuestions(
+        category,
+        difficulty,
+        TIME_MODE_BATCH_SIZE,
+        gameId,
+        excludeIds
+      );
+
+      if (newQuestions.length === 0) {
+        const remaining = await getRemainingQuestionCount(
+          category,
+          difficulty,
+          excludeIds,
+          gameId
+        );
+
+        if (remaining > 0) {
+          newQuestions = await getGameQuestions(
+            category,
+            difficulty,
+            TIME_MODE_BATCH_SIZE,
+            gameId,
+            excludeIds
+          );
+        }
+
+        if (newQuestions.length === 0 && remaining === 0) {
+          setQuestionsExhausted(true);
+          return;
+        }
+      }
+
+      if (newQuestions.length > 0) {
+        const existingIds = new Set(
+          sessionQuestionsRef.current.map((q) => q.id)
+        );
+        const unique = newQuestions.filter((q) => !existingIds.has(q.id));
+
+        if (unique.length > 0) {
+          setSessionQuestions((prev) => [...prev, ...unique]);
+        } else {
+          const remaining = await getRemainingQuestionCount(
+            category,
+            difficulty,
+            excludeIds,
+            gameId
+          );
+          if (remaining === 0) {
+            setQuestionsExhausted(true);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load more time-mode questions:", err);
+    } finally {
+      setIsLoadingMoreQuestions(false);
+      loadingMoreRef.current = false;
+    }
+  }, [
+    gameType,
+    questionsExhausted,
+    gameEnded,
+    category,
+    difficulty,
+    gameId,
+  ]);
+
+  // Seed time-mode session from the initial query batch
+  useEffect(() => {
+    if (gameType !== "time" || !questions?.length) return;
+    setSessionQuestions((prev) => (prev.length === 0 ? questions : prev));
+  }, [gameType, questions]);
+
+  // Verify empty initial load before showing "no questions"
+  useEffect(() => {
+    if (isLoading || initialVerifyComplete) return;
+
+    const loadedCount =
+      gameType === "time" ? sessionQuestions.length : questions?.length ?? 0;
+
+    if (loadedCount > 0) {
+      setInitialVerifyComplete(true);
+      return;
+    }
+
+    if (questions === undefined) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const remaining = await getRemainingQuestionCount(
+        category,
+        difficulty,
+        [],
+        gameId
+      );
+
+      if (cancelled) return;
+
+      if (remaining > 0) {
+        const refetched = await getGameQuestions(
+          category,
+          difficulty,
+          TIME_MODE_BATCH_SIZE,
+          gameId
+        );
+        if (refetched.length > 0) {
+          if (gameType === "time") {
+            setSessionQuestions(refetched);
+          }
+          queryClient.setQueryData(
+            ["/api/game/questions", category, difficulty, gameId],
+            refetched
+          );
+        }
+      } else {
+        setInitialPoolEmpty(true);
+      }
+
+      setInitialVerifyComplete(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isLoading,
+    initialVerifyComplete,
+    gameType,
+    sessionQuestions.length,
+    questions?.length,
+    category,
+    difficulty,
+    gameId,
+  ]);
+
+  // Prefetch the next batch before the player reaches the end of the current list
+  useEffect(() => {
+    if (gameType !== "time" || gameEnded || questionsExhausted) return;
+    if (gameTimeRemaining <= 0) return;
+    if (sessionQuestions.length === 0) return;
+    if (isLoading || isLoadingMoreQuestions) return;
+
+    const prefetchThreshold = Math.max(0, sessionQuestions.length - 2);
+    if (currentQuestionIndex >= prefetchThreshold) {
+      void fetchMoreTimeModeQuestions();
+    }
+  }, [
+    gameType,
+    gameEnded,
+    questionsExhausted,
+    gameTimeRemaining,
+    sessionQuestions.length,
+    currentQuestionIndex,
+    isLoading,
+    isLoadingMoreQuestions,
+    fetchMoreTimeModeQuestions,
+  ]);
+
+  // End time-based game when the question pool is truly exhausted
+  useEffect(() => {
+    if (gameType !== "time" || gameEnded || !questionsExhausted) return;
+    if (
+      currentQuestionIndex >= sessionQuestions.length &&
+      !isLoadingMoreQuestions
+    ) {
+      setGameEnded(true);
+    }
+  }, [
+    gameType,
+    gameEnded,
+    questionsExhausted,
+    currentQuestionIndex,
+    sessionQuestions.length,
+    isLoadingMoreQuestions,
+  ]);
 
   // Calculate reward progress with the new thresholds
   const rewardProgress = {
@@ -332,6 +540,12 @@ const Game: React.FC = () => {
     // Reset game time
     setGameTimeRemaining(gameType === "time" ? 15 * 60 : 0);
     setOriginalGameTime(gameType === "time" ? 15 * 60 : 0);
+
+    setSessionQuestions([]);
+    setQuestionsExhausted(false);
+    setInitialPoolEmpty(false);
+    setInitialVerifyComplete(false);
+    loadingMoreRef.current = false;
 
     // Generate new game ID and update state
     const newGameId =
@@ -570,8 +784,8 @@ const Game: React.FC = () => {
     else if (
       gameMode === "single" &&
       gameType === "question" &&
-      currentQuestionIndex === (questions?.length || 10) - 1 &&
-      correctAnswers === (questions?.length || 10) // Only award certificate for perfect score
+      currentQuestionIndex === (activeQuestions.length || 10) - 1 &&
+      correctAnswers === (activeQuestions.length || 10) // Only award certificate for perfect score
     ) {
       setCurrentReward("certificate");
       setShowReward(true);
@@ -581,7 +795,7 @@ const Game: React.FC = () => {
     correctAnswers,
     isQuestionAnswered,
     currentQuestionIndex,
-    questions,
+    activeQuestions.length,
     gameMode,
     gameType,
     rewardProgress,
@@ -591,7 +805,7 @@ const Game: React.FC = () => {
   useEffect(() => {
     if (
       (gameType === "question" &&
-        currentQuestionIndex >= (questions?.length || 10)) ||
+        currentQuestionIndex >= (activeQuestions.length || 10)) ||
       (gameType === "time" && gameTimeRemaining <= 0)
     ) {
       setGameEnded(true);
@@ -633,7 +847,7 @@ const Game: React.FC = () => {
                 category: category,
                 difficulty: difficulty,
                 gameType: gameType,
-                totalQuestions: questions?.length || 10,
+                totalQuestions: activeQuestions.length || 10,
                 timeLimit: gameType === "time" ? 15 * 60 : undefined,
               }),
             });
@@ -688,7 +902,7 @@ const Game: React.FC = () => {
                     category: category,
                     difficulty: difficulty,
                     gameType: "local-multi", // Mark as local multiplayer
-                    totalQuestions: questions?.length || 10,
+                    totalQuestions: activeQuestions.length || 10,
                     playerCount: playerCount,
                   }),
                 });
@@ -721,7 +935,7 @@ const Game: React.FC = () => {
         // Perfect score check (all questions correct)
         if (
           gameType === "question" &&
-          correctAnswers === (questions?.length || 10)
+          correctAnswers === (activeQuestions.length || 10)
         ) {
           // Celebration sequence for perfect score
           playSound("fanfare");
@@ -760,7 +974,7 @@ const Game: React.FC = () => {
     }
   }, [
     currentQuestionIndex,
-    questions,
+    activeQuestions.length,
     gameType,
     gameTimeRemaining,
     gameMode,
@@ -883,7 +1097,7 @@ const Game: React.FC = () => {
               gameId,
               playerName: playerNames[currentPlayerIndex], // Use the current player's name based on turn
               playerIndex: currentPlayerIndex,
-              questionId: questions?.[currentQuestionIndex].id,
+              questionId: activeQuestions[currentQuestionIndex]?.id,
               answerId: answer.id,
               isCorrect: answer.isCorrect,
               timeSpent,
@@ -982,9 +1196,44 @@ const Game: React.FC = () => {
   }
 
   // Current question
-  const currentQuestion = questions?.[currentQuestionIndex];
+  const currentQuestion = activeQuestions[currentQuestionIndex];
 
-  if (!currentQuestion && !gameEnded) {
+  const isWaitingForMoreQuestions =
+    gameType === "time" &&
+    !gameEnded &&
+    !currentQuestion &&
+    !initialPoolEmpty &&
+    !questionsExhausted &&
+    (isLoading ||
+      isLoadingMoreQuestions ||
+      !initialVerifyComplete ||
+      (sessionQuestions.length > 0 &&
+        currentQuestionIndex >= sessionQuestions.length));
+
+  if (isWaitingForMoreQuestions) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-secondary-dark flex items-center justify-center">
+        <div className="text-center bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-xl">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-accent border-t-transparent mx-auto mb-6"></div>
+          <h2 className="text-2xl font-bold text-white mb-2">
+            Loading Questions
+          </h2>
+          <p className="text-white/80">
+            Fetching more questions for your speed round...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    !currentQuestion &&
+    !gameEnded &&
+    (initialPoolEmpty ||
+      (gameType === "question" &&
+        initialVerifyComplete &&
+        activeQuestions.length === 0))
+  ) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-secondary-dark flex items-center justify-center">
         <div className="text-center bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-xl max-w-md mx-4">
@@ -1224,7 +1473,7 @@ const Game: React.FC = () => {
                 answers={currentQuestion.answers}
                 currentQuestion={currentQuestionIndex + 1}
                 totalQuestions={
-                  gameType === "question" ? questions?.length || 10 : "∞"
+                  gameType === "question" ? activeQuestions.length || 10 : "∞"
                 }
                 category={currentQuestion.category}
                 difficultyLevel={currentQuestion.difficulty}

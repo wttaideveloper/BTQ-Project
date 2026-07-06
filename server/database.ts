@@ -242,6 +242,13 @@ export interface IDatabase {
     excludeIds?: string[];
   }): Promise<Question[]>;
 
+  countAvailableQuestionsForGame(filters: {
+    category?: string;
+    difficulty?: string;
+    userId?: number;
+    excludeIds?: string[];
+  }): Promise<number>;
+
   // Initialize database with sample data
   initializeDatabase(): Promise<void>;
 }
@@ -2929,6 +2936,103 @@ class PostgreSQLDatabase implements IDatabase {
     } catch (error) {
       console.error("Error checking if all questions answered:", error);
       return false;
+    }
+  }
+
+  /**
+   * Count questions still available for a game session (category/difficulty,
+   * excluding user history and in-session question IDs).
+   */
+  async countAvailableQuestionsForGame(filters: {
+    category?: string;
+    difficulty?: string;
+    userId?: number;
+    excludeIds?: string[];
+  }): Promise<number> {
+    try {
+      let excludeQuestionIds: string[] = [];
+      let shouldApplyWordShuffling = false;
+
+      if (filters.userId) {
+        const allAnswered = await this.hasAnsweredAllQuestions(
+          filters.userId,
+          filters.category,
+          filters.difficulty
+        );
+
+        if (allAnswered) {
+          shouldApplyWordShuffling = true;
+        } else {
+          const allAnsweredHistory = await this.getUserQuestionHistory(
+            filters.userId
+          );
+          excludeQuestionIds = Array.from(
+            new Set(allAnsweredHistory.map((h) => h.questionId))
+          );
+        }
+      }
+
+      if (filters.excludeIds && filters.excludeIds.length > 0) {
+        excludeQuestionIds = [
+          ...new Set([...excludeQuestionIds, ...filters.excludeIds]),
+        ];
+      }
+
+      if (
+        filters.userId &&
+        excludeQuestionIds.length > 0 &&
+        !shouldApplyWordShuffling
+      ) {
+        const targetPool = await this.getQuestions({
+          category: filters.category,
+          difficulty: filters.difficulty,
+        });
+        if (
+          targetPool.length > 0 &&
+          targetPool.every((q) => excludeQuestionIds.includes(q.id))
+        ) {
+          shouldApplyWordShuffling = true;
+          excludeQuestionIds = filters.excludeIds ?? [];
+        }
+      }
+
+      const allQuestions = await this.getQuestions({});
+      const validQuestions = allQuestions.filter(
+        (q) =>
+          q &&
+          typeof q.id === "string" &&
+          q.id.length > 0 &&
+          q.answers &&
+          q.answers.length > 0
+      );
+
+      let availableQuestions = validQuestions;
+      if (!shouldApplyWordShuffling && excludeQuestionIds.length > 0) {
+        availableQuestions = validQuestions.filter(
+          (q) => !excludeQuestionIds.includes(q.id)
+        );
+      } else if (shouldApplyWordShuffling && filters.excludeIds?.length) {
+        availableQuestions = validQuestions.filter(
+          (q) => !filters.excludeIds!.includes(q.id)
+        );
+      }
+
+      let filteredQuestions = availableQuestions;
+      if (filters.category && filters.category !== "All Categories") {
+        filteredQuestions = filteredQuestions.filter(
+          (q) => q.category === filters.category
+        );
+      }
+      if (filters.difficulty && filters.difficulty !== "All") {
+        filteredQuestions = filteredQuestions.filter(
+          (q) => q.difficulty === filters.difficulty
+        );
+      }
+
+      return filteredQuestions.length;
+    } catch (error) {
+      console.error("Error counting available questions:", error);
+      return 0;
     }
   }
 

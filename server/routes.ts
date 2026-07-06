@@ -1103,6 +1103,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
 
+  const parseExcludeIds = (value: unknown): string[] | undefined => {
+    if (typeof value !== "string" || !value.trim()) {
+      return undefined;
+    }
+    const ids = value.split(",").map((id) => id.trim()).filter(Boolean);
+    return ids.length > 0 ? ids : undefined;
+  };
+
   // Get questions for a game with enhanced user-specific selection
   app.get("/api/game/questions", async (req, res) => {
     try {
@@ -1111,6 +1119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = parseInt(req.query.count as string) || 10;
       const gameId = req.query.gameId as string; // Unique game session ID
       const userId = req.user?.id; // Get user ID if authenticated
+      const excludeIds = parseExcludeIds(req.query.excludeIds);
 
       // Add cache-busting headers to prevent caching
       res.set({
@@ -1127,13 +1136,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         difficulty,
         count,
         userId: userId || undefined,
+        excludeIds,
         // Don't pass excludeRecentHours - this will make it exclude ALL answered questions
         // and apply word shuffling when all questions are answered
       });
-
-
-      // Log first few question IDs for debugging
-      const questionIds = questions.slice(0, 3).map(q => q.id.substring(0, 8));
 
       // History tracking is automatically done by getRandomQuestionsWithHistory when userId is provided
       // Additional tracking happens when user answers via /api/question-analytics/track
@@ -1143,6 +1149,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("Error fetching game questions:", err);
       res.status(500).json({ message: "Failed to fetch game questions" });
+    }
+  });
+
+  // Verify remaining question pool before ending a time-based session
+  app.get("/api/game/questions/remaining-count", async (req, res) => {
+    try {
+      const category = req.query.category as string;
+      const difficulty = req.query.difficulty as string;
+      const userId = req.user?.id;
+      const excludeIds = parseExcludeIds(req.query.excludeIds);
+
+      res.set({
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+
+      const count = await database.countAvailableQuestionsForGame({
+        category: category !== "All Categories" ? category : undefined,
+        difficulty,
+        userId: userId || undefined,
+        excludeIds,
+      });
+
+      res.json({ count });
+    } catch (err) {
+      console.error("Error counting remaining game questions:", err);
+      res.status(500).json({ message: "Failed to count remaining questions" });
     }
   });
 

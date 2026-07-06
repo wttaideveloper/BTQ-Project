@@ -91,7 +91,8 @@ export async function getGameQuestions(
   category: string = 'All Categories',
   difficulty: string = 'Beginner',
   count: number = 10,
-  gameId?: string
+  gameId?: string,
+  excludeIds?: string[]
 ): Promise<any[]> {
   try {
     const params = new URLSearchParams();
@@ -102,11 +103,46 @@ export async function getGameQuestions(
     if (gameId) {
       params.append('gameId', gameId);
     }
+
+    if (excludeIds && excludeIds.length > 0) {
+      params.append('excludeIds', excludeIds.join(','));
+    }
     
     const res = await apiRequest('GET', `/api/game/questions?${params.toString()}`, undefined);
     return await res.json();
   } catch (error) {
     console.error('Failed to get game questions:', error);
     throw error;
+  }
+}
+
+// Count questions still available for the current game session
+export async function getRemainingQuestionCount(
+  category: string = 'All Categories',
+  difficulty: string = 'Beginner',
+  excludeIds: string[] = [],
+  gameId?: string
+): Promise<number> {
+  try {
+    const params = new URLSearchParams();
+    if (category !== 'All Categories') params.append('category', category);
+    if (difficulty !== 'All') params.append('difficulty', difficulty);
+    if (excludeIds.length > 0) {
+      params.append('excludeIds', excludeIds.join(','));
+    }
+    if (gameId) {
+      params.append('gameId', gameId);
+    }
+
+    const res = await apiRequest(
+      'GET',
+      `/api/game/questions/remaining-count?${params.toString()}`,
+      undefined
+    );
+    const data = await res.json();
+    return typeof data.count === 'number' ? data.count : 0;
+  } catch (error) {
+    console.error('Failed to get remaining question count:', error);
+    return 0;
   }
 }

@@ -268,6 +268,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
       // Ref state
       shouldSendLeaveEventRef.current = false;
+      prevPendingInviteCountRef.current = 0;
+      prevCaptainJoinRequestCountRef.current = 0;
 
 
       // ========================================================================
@@ -1722,6 +1724,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const sessionStartedAtRef = useRef<number | null>(null); // Timestamp when current session started
   const cleanupCompleteRef = useRef<boolean>(false); // Track cleanup completion for socket guard
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pendingInvitationsRef = useRef<HTMLDivElement>(null);
+  const teamsOverviewRef = useRef<HTMLDivElement>(null);
+  const prevPendingInviteCountRef = useRef(0);
+  const prevCaptainJoinRequestCountRef = useRef(0);
+
   // Handle page unload (reload, close, exit, network issues)
   useEffect(() => {
     if (!open || !userTeam) {
@@ -2574,6 +2582,114 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     );
   }, [joinRequests, user]);
 
+  const pendingInvitationsForMe = useMemo(
+    () =>
+      invitations.filter(
+        (inv: TeamInvitation) =>
+          inv.status === "pending" && inv.inviteeId === user?.id
+      ),
+    [invitations, user?.id]
+  );
+
+  const captainPendingJoinRequests = useMemo(
+    () =>
+      (joinRequests || []).filter((jr) => jr.status === "pending"),
+    [joinRequests]
+  );
+
+  const scrollToElement = useCallback(
+    (targetRef: React.RefObject<HTMLElement | null>) => {
+      const container = scrollContainerRef.current;
+      const target = targetRef.current;
+      if (!container || !target) return false;
+
+      requestAnimationFrame(() => {
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const scrollOffset =
+          targetRect.top - containerRect.top + container.scrollTop - 16;
+        container.scrollTo({ top: Math.max(0, scrollOffset), behavior: "smooth" });
+      });
+      return true;
+    },
+    []
+  );
+
+  const scrollToRefWithRetry = useCallback(
+    (targetRef: React.RefObject<HTMLElement | null>, retries = 6) => {
+      const attempt = (remaining: number) => {
+        if (scrollToElement(targetRef) || remaining <= 0) return;
+        setTimeout(() => attempt(remaining - 1), 200);
+      };
+      setTimeout(() => attempt(retries), 100);
+    },
+    [scrollToElement]
+  );
+
+  const scrollToPendingInvitations = useCallback(() => {
+    scrollToRefWithRetry(pendingInvitationsRef);
+  }, [scrollToRefWithRetry]);
+
+  const scrollToTeamsOverview = useCallback(() => {
+    scrollToRefWithRetry(teamsOverviewRef);
+  }, [scrollToRefWithRetry]);
+
+  // Auto-scroll when new team invitations arrive (captain or member)
+  useEffect(() => {
+    if (!open) return;
+
+    const count = pendingInvitationsForMe.length;
+    if (count > prevPendingInviteCountRef.current) {
+      scrollToPendingInvitations();
+    }
+    prevPendingInviteCountRef.current = count;
+  }, [open, pendingInvitationsForMe.length, scrollToPendingInvitations]);
+
+  // Auto-scroll when captain receives a new join request
+  useEffect(() => {
+    if (!open) return;
+
+    const count = captainPendingJoinRequests.length;
+    if (count > prevCaptainJoinRequestCountRef.current) {
+      scrollToTeamsOverview();
+    }
+    prevCaptainJoinRequestCountRef.current = count;
+  }, [open, captainPendingJoinRequests.length, scrollToTeamsOverview]);
+
+  // Auto-scroll on real-time invitation / join-request socket events
+  useEffect(() => {
+    if (!open || !user) return;
+
+    const offCaptainInvitation = onEvent(
+      "team_captain_invitation_received",
+      () => {
+        scrollToPendingInvitations();
+      }
+    );
+
+    const offMemberInvitation = onEvent(
+      "team_member_invitation_received",
+      () => {
+        scrollToPendingInvitations();
+      }
+    );
+
+    const offGenericInvitation = onEvent("team_invitation_received", () => {
+      scrollToPendingInvitations();
+    });
+
+    const offJoinRequestCreated = onEvent("join_request_created", () => {
+      scrollToTeamsOverview();
+    });
+
+    return () => {
+      offCaptainInvitation();
+      offMemberInvitation();
+      offGenericInvitation();
+      offJoinRequestCreated();
+    };
+  }, [open, user, scrollToPendingInvitations, scrollToTeamsOverview]);
+
   const availableTeamsForJoin = useMemo(() => {
     // Teams that are not full (max 3) and not playing/finished
     // Use allAvailableTeams if in join-as-member stage, otherwise use teams from current session
@@ -2872,7 +2988,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-4 md:p-6 bg-white/95 pb-6 sm:pb-8 md:pb-10 safe-area-bottom" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
+        <div
+          ref={scrollContainerRef}
+          className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-4 md:p-6 bg-white/95 pb-6 sm:pb-8 md:pb-10 safe-area-bottom"
+          style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+        >
           {/* 4-step progress indicator */}
           <nav
             aria-label="Team battle setup progress"
@@ -3056,7 +3176,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           </div>
 
           {/* Battle Lobby */}
-          <div className="mb-3 sm:mb-6 space-y-3 sm:space-y-4">
+          <div
+            ref={teamsOverviewRef}
+            className="mb-3 sm:mb-6 space-y-3 sm:space-y-4"
+          >
             <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 bg-gradient-to-r ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20 border-[#DEB126]/30" : "from-blue-50 to-purple-50 border-blue-200/50"} rounded-lg sm:rounded-xl p-3 sm:p-4 border`}>
               <div className="flex-1 min-w-0">
                 <h3 className="text-lg sm:text-xl font-heading font-bold text-gray-900 flex items-center gap-2">
@@ -3823,22 +3946,17 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           )}
 
           {/* Pending Invitations */}
-          {invitations.filter(
-            (inv: TeamInvitation) =>
-              inv.status === "pending" && inv.inviteeId === user?.id
-          ).length > 0 && (
-              <div className="mt-3 sm:mt-6 space-y-3 sm:space-y-4">
+          {pendingInvitationsForMe.length > 0 && (
+              <div
+                ref={pendingInvitationsRef}
+                className="mt-3 sm:mt-6 space-y-3 sm:space-y-4"
+              >
                 <div className={`bg-gradient-to-r ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20" : "from-blue-50 to-purple-50"} p-3 sm:p-4 rounded-lg sm:rounded-xl border ${isRapidFire ? "border-[#DEB126]/30" : "border-blue-200"}`}>
                   <h4 className="font-heading font-bold text-base sm:text-lg text-gray-900 mb-1 flex items-center gap-2 flex-wrap">
                     <Mail className={`h-4 w-4 sm:h-5 sm:w-5 ${isRapidFire ? "text-[#DEB126]" : "text-blue-600"} flex-shrink-0`} />
                     <span>Choose Your Team</span>
                     <span className={`ml-auto ${isRapidFire ? "bg-[#DEB126]" : "bg-blue-500"} text-white text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full`}>
-                      {
-                        invitations.filter(
-                          (inv: TeamInvitation) =>
-                            inv.status === "pending" && inv.inviteeId === user?.id
-                        ).length
-                      }
+                      {pendingInvitationsForMe.length}
                     </span>
                   </h4>
                   <p className="text-xs sm:text-sm text-gray-600">
@@ -3846,12 +3964,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     like to join
                   </p>
                 </div>
-                {invitations
-                  .filter(
-                    (inv: TeamInvitation) =>
-                      inv.status === "pending" && inv.inviteeId === user?.id
-                  )
-                  .map((invitation: TeamInvitation) => {
+                {pendingInvitationsForMe.map((invitation: TeamInvitation) => {
                     const derivedTeamId = getInvitationTeamId(invitation);
                     const team = derivedTeamId
                       ? teams.find((t: Team) => t.id === derivedTeamId)

@@ -208,6 +208,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   // Ref for tracking previous ready status (used in effect below, after userTeam is defined)
   const prevReadyStatusRef = useRef<{ teamAReady: boolean; teamBReady: boolean } | null>(null);
+  const manualStageRef = useRef(false);
 
   const createGameSession = useCallback(() => {
     const newGameSessionId = `battle-${Date.now()}-${Math.random()
@@ -256,7 +257,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
       // Dialog states
       setShowTeamNameDialog(false);
-      setShowBackConfirmation(false);
+      setExitConfirmationMode(null);
+      manualStageRef.current = false;
       setShowOpponentDisconnectedDialog(false);
       setDisconnectedPlayerInfo(null);
 
@@ -309,7 +311,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setPendingInviteId(null);
       setPendingResponseId(null);
       setShowTeamNameDialog(false);
-      setShowBackConfirmation(false);
+      setExitConfirmationMode(null);
+      manualStageRef.current = false;
     }
   }, [open, queryClient]);
 
@@ -1630,8 +1633,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     null
   );
 
-  // Back button confirmation dialog
-  const [showBackConfirmation, setShowBackConfirmation] = useState(false);
+  // Back / close confirmation: 'back' = leave team and return to lobby choice; 'close' = leave and go home
+  const [exitConfirmationMode, setExitConfirmationMode] = useState<
+    "back" | "close" | null
+  >(null);
 
   // Opponent disconnected dialog
   const [showOpponentDisconnectedDialog, setShowOpponentDisconnectedDialog] =
@@ -1975,13 +1980,15 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   };
 
   useEffect(() => {
-    if (!userTeam) {
-      // Show landing stage until user chooses
+    if (userTeam) {
+      manualStageRef.current = false;
+      if (!opponentAccepted) {
+        setCurrentStage("invite-opponent");
+      } else {
+        setCurrentStage("invite-teammates");
+      }
+    } else if (!manualStageRef.current) {
       setCurrentStage("enter");
-    } else if (!opponentAccepted) {
-      setCurrentStage("invite-opponent");
-    } else {
-      setCurrentStage("invite-teammates");
     }
   }, [userTeam, opponentAccepted]);
 
@@ -2635,9 +2642,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     },
   });
 
-  // Enhanced back button handler with confirmation
-  const handleBackButton = () => {
-    // Prevent leaving if battle is in progress (countdown active)
+  const blockExitDuringCountdown = () => {
     if (countdown !== null && countdown > 0) {
       toast({
         title: "Cannot Leave Now",
@@ -2645,38 +2650,65 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           "Battle is starting soon. Please wait for it to begin or use the Leave Team button after it starts.",
         variant: "destructive",
       });
-      return;
+      return true;
     }
+    return false;
+  };
 
-    // If user is in a team, show confirmation dialog
+  const handleCloseButton = () => {
+    if (blockExitDuringCountdown()) return;
+
     if (userTeam) {
-      setShowBackConfirmation(true);
+      setExitConfirmationMode("close");
     } else {
-      // No team to leave, just close the modal
       onClose();
     }
   };
 
-  // Handle confirmed back action
-  const handleConfirmBack = async () => {
-    if (!userTeam) return;
+  const handleBackButton = () => {
+    if (blockExitDuringCountdown()) return;
 
-    setShowBackConfirmation(false);
+    if (currentStage === "create-team" || currentStage === "join-as-member") {
+      manualStageRef.current = false;
+      setCurrentStage("enter");
+      return;
+    }
 
-    try {
-      // Leave the team first
-      await leaveTeamMutation.mutateAsync(userTeam.id);
-      // Then close the modal
+    if (currentStage === "enter") {
       onClose();
-    } catch (error) {
-      // If leaving fails, still close the modal but show error
-      console.error("Failed to leave team on back:", error);
-      toast({
-        title: "Warning",
-        description: "Could not leave team properly, but closing setup.",
-        variant: "destructive",
-      });
+      return;
+    }
+
+    if (userTeam) {
+      setExitConfirmationMode("back");
+    } else {
+      manualStageRef.current = false;
+      setCurrentStage("enter");
+    }
+  };
+
+  const handleConfirmExit = async () => {
+    const mode = exitConfirmationMode;
+    setExitConfirmationMode(null);
+
+    if (userTeam) {
+      try {
+        await leaveTeamMutation.mutateAsync(userTeam.id);
+      } catch (error) {
+        console.error("Failed to leave team:", error);
+        toast({
+          title: "Warning",
+          description: "Could not leave team properly.",
+          variant: "destructive",
+        });
+      }
+    }
+
+    if (mode === "close") {
       onClose();
+    } else {
+      manualStageRef.current = false;
+      setCurrentStage("enter");
     }
   };
 
@@ -2717,23 +2749,42 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         <div className={`${isRapidFire ? "bg-gradient-to-r from-[#DEB126] via-[#C59D1F] to-[#B58E12]" : "bg-gradient-to-r from-primary via-primary-dark to-secondary"} p-3 sm:p-4 md:p-6 relative overflow-hidden flex-shrink-0 safe-area-top`}>
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
           <div className="relative z-10 flex justify-between items-center gap-2">
-            <Button
-              variant="ghost"
-              className="flex items-center gap-1 sm:gap-2 text-white hover:bg-white/20 transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 text-sm sm:text-base"
-              onClick={handleBackButton}
-              disabled={
-                leaveTeamMutation.isPending ||
-                (countdown !== null && countdown > 0)
-              }
-            >
-              <span className="text-base sm:text-lg">←</span>
-              <span className="font-medium hidden xs:inline">
-                {leaveTeamMutation.isPending ? "Leaving..." : "Back"}
-              </span>
-            </Button>
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="text-white/80 text-xs sm:text-sm font-medium">Live</span>
+            {currentStage !== "enter" ? (
+              <Button
+                variant="ghost"
+                className="flex items-center gap-1 sm:gap-2 text-white hover:bg-white/20 transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 text-sm sm:text-base"
+                onClick={handleBackButton}
+                disabled={
+                  leaveTeamMutation.isPending ||
+                  (countdown !== null && countdown > 0)
+                }
+              >
+                <span className="text-base sm:text-lg">←</span>
+                <span className="font-medium hidden xs:inline">
+                  {leaveTeamMutation.isPending ? "Leaving..." : "Back"}
+                </span>
+              </Button>
+            ) : (
+              <div className="w-[72px] sm:w-[88px]" aria-hidden="true" />
+            )}
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span className="text-white/80 text-xs sm:text-sm font-medium">Live</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 sm:h-9 sm:w-9 text-white hover:bg-white/20 rounded-full shrink-0"
+                onClick={handleCloseButton}
+                disabled={
+                  leaveTeamMutation.isPending ||
+                  (countdown !== null && countdown > 0)
+                }
+                aria-label="Close and return to home"
+              >
+                <X className="h-4 w-4 sm:h-5 sm:w-5" />
+              </Button>
             </div>
           </div>
           <div className="relative z-10 text-center mt-2 sm:mt-3 md:mt-4">
@@ -3137,7 +3188,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <button
-                  onClick={() => setCurrentStage("create-team")}
+                  onClick={() => {
+                    manualStageRef.current = true;
+                    setCurrentStage("create-team");
+                  }}
                   className={`group relative overflow-hidden bg-gradient-to-br ${isRapidFire ? "from-[#DEB126] to-[#C59D1F] hover:from-[#C59D1F] hover:to-[#B58E12]" : "from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"} text-white rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] sm:hover:scale-105`}
                 >
                   <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -3154,7 +3208,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                   </div>
                 </button>
                 <button
-                  onClick={() => setCurrentStage("join-as-member")}
+                  onClick={() => {
+                    manualStageRef.current = true;
+                    setCurrentStage("join-as-member");
+                  }}
                   className={`group relative overflow-hidden bg-white hover:bg-gray-50 border-2 border-gray-300 ${isRapidFire ? "hover:border-[#DEB126]" : "hover:border-blue-400"} rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] sm:hover:scale-105`}
                 >
                   <div className={`absolute inset-0 bg-gradient-to-br ${isRapidFire ? "from-[#DEB126]/10 to-[#DEB126]/20" : "from-blue-50/50 to-purple-50/50"} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}></div>
@@ -3896,20 +3953,25 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Back Button Confirmation Dialog */}
+      {/* Leave / close confirmation dialog */}
       <Dialog
-        open={showBackConfirmation}
-        onOpenChange={setShowBackConfirmation}
+        open={exitConfirmationMode !== null}
+        onOpenChange={(open) => {
+          if (!open) setExitConfirmationMode(null);
+        }}
       >
         <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <X className="h-5 w-5 text-red-500" />
-              Leave Team Battle Setup?
+              {exitConfirmationMode === "close"
+                ? "Leave Team Battle Setup?"
+                : "Go Back to Lobby?"}
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to leave the team battle setup? This will
-              remove you from your current team.
+              {exitConfirmationMode === "close"
+                ? "You will leave your current team and return to the home screen."
+                : "You will leave your current team and return to the create or join team screen."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -3918,7 +3980,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 <strong>What happens when you leave:</strong>
               </p>
               <ul className="text-xs text-amber-700 mt-2 space-y-1 ml-4 list-disc">
-                <li>You will be removed from "{userTeam?.name}"</li>
+                {userTeam && <li>You will be removed from &quot;{userTeam.name}&quot;</li>}
                 <li>Any pending invitations will be cancelled</li>
                 <li>You can start a new team battle anytime</li>
               </ul>
@@ -3927,17 +3989,21 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2">
             <Button
               variant="outline"
-              onClick={() => setShowBackConfirmation(false)}
+              onClick={() => setExitConfirmationMode(null)}
               className="w-full sm:w-auto"
             >
               Stay in Setup
             </Button>
             <Button
-              onClick={handleConfirmBack}
+              onClick={handleConfirmExit}
               disabled={leaveTeamMutation.isPending}
               className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto"
             >
-              {leaveTeamMutation.isPending ? "Leaving..." : "Yes, Leave Team"}
+              {leaveTeamMutation.isPending
+                ? "Leaving..."
+                : exitConfirmationMode === "close"
+                  ? "Yes, Go Home"
+                  : "Yes, Go Back"}
             </Button>
           </DialogFooter>
         </DialogContent>

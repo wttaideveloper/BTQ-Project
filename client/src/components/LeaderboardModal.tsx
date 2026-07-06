@@ -2,13 +2,17 @@ import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Trophy, Medal, Award, Timer, CheckCircle2, Crown } from 'lucide-react';
 import { playSound } from '@/lib/sounds';
+import { formatAverageAnswerTime, normalizePlayerAvgTime } from '@/lib/game-stats';
 
 export interface Player {
   id: string;
   name: string;
   score: number;
   correctAnswers: number;
-  avgTime: number;
+  avgTime?: number;
+  averageTime?: number;
+  totalTimeSpent?: number;
+  incorrectAnswers?: number;
   isCurrentUser?: boolean;
 }
 
@@ -36,10 +40,7 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
       return b.correctAnswers - a.correctAnswers;
     }
     // Tie-breaker 2: Sort by average time (lowest/fastest first)
-    // Handle undefined/NaN values
-    const aTime = a.avgTime || 0;
-    const bTime = b.avgTime || 0;
-    return aTime - bTime;
+    return normalizePlayerAvgTime(a) - normalizePlayerAvgTime(b);
   });
   const hasWinner = sortedPlayers.length > 0 && isGameOver;
   const winner = hasWinner ? sortedPlayers[0] : null;
@@ -50,10 +51,12 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
     sortedPlayers[0].score === sortedPlayers[1].score &&
     sortedPlayers[0].correctAnswers === sortedPlayers[1].correctAnswers &&
     (
-      // Both have no time data, or times are very close (within 0.5 seconds)
-      (!sortedPlayers[0].avgTime && !sortedPlayers[1].avgTime) ||
-      (sortedPlayers[0].avgTime && sortedPlayers[1].avgTime && 
-       Math.abs(sortedPlayers[0].avgTime - sortedPlayers[1].avgTime) < 0.5)
+      (normalizePlayerAvgTime(sortedPlayers[0]) === 0 &&
+        normalizePlayerAvgTime(sortedPlayers[1]) === 0) ||
+      Math.abs(
+        normalizePlayerAvgTime(sortedPlayers[0]) -
+          normalizePlayerAvgTime(sortedPlayers[1])
+      ) < 0.5
     );
   
   // Debug logging
@@ -141,7 +144,9 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                       {isTie ? "IT'S A TIE!" : winner?.isCurrentUser ? 'YOU WIN!' : `${winner?.name || 'Player'} WINS!`}
                     </h4>
                     <p className="text-accent text-xs sm:text-sm">
-                      {isTie ? `Both players: ${winner?.correctAnswers || 0} correct answers` : `${winner?.correctAnswers || 0} correct answers in an average of ${(winner?.avgTime || 0).toFixed(1)}s`}
+                      {isTie
+                        ? `Both players: ${winner?.correctAnswers || 0} correct answers`
+                        : `${winner?.correctAnswers || 0} correct answers in an average of ${formatAverageAnswerTime(normalizePlayerAvgTime(winner || {}))}`}
                     </p>
                   </div>
                 </div>
@@ -203,7 +208,7 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                       </div>
                       <div className="flex items-center text-[8px] sm:text-xs text-gray-300">
                         <Timer className="h-2 w-2 sm:h-3 sm:w-3 text-yellow-400 mr-0.5 sm:mr-1" />
-                        <span>Time: <span className="text-yellow-400 font-medium">{(player.avgTime || 0).toFixed(1)}s</span></span>
+                        <span>Time: <span className="text-yellow-400 font-medium">{formatAverageAnswerTime(normalizePlayerAvgTime(player))}</span></span>
                       </div>
                     </div>
                   </div>

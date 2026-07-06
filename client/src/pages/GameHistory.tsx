@@ -35,6 +35,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { formatAverageAnswerTime } from "@/lib/game-stats";
 
 interface ScoreRecord {
   id: string;
@@ -133,6 +134,15 @@ export default function GameHistory() {
 
   const players: LeaderboardPlayer[] = leaderboardData?.data ?? [];
 
+  const recentScores = useMemo(
+    () =>
+      [...scores].sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      ),
+    [scores]
+  );
+
   const stats = useMemo(() => {
     const totalGames = scores.length;
     const totalScore = scores.reduce((sum, s) => sum + (s.score ?? 0), 0);
@@ -166,6 +176,11 @@ export default function GameHistory() {
         ) + 1
       : null;
 
+    const lastGame = recentScores[0];
+    const lastGameAvgTime = lastGame?.average_time
+      ? parseFloat(lastGame.average_time)
+      : 0;
+
     return {
       totalGames,
       bestScore,
@@ -176,8 +191,10 @@ export default function GameHistory() {
       favoriteDifficulty: modeValue(scores.map((s) => s.difficulty)),
       rank,
       globalPlayers: leaderboardData?.metadata?.totalPlayers ?? players.length,
+      lastScore: lastGame?.score ?? null,
+      lastScoreAvgTime: Number.isFinite(lastGameAvgTime) ? lastGameAvgTime : 0,
     };
-  }, [scores, players, user, leaderboardData]);
+  }, [scores, players, user, leaderboardData, recentScores]);
 
   const isLoading = scoresLoading || leaderboardLoading;
   const isRefreshing = scoresFetching || leaderboardFetching;
@@ -210,8 +227,12 @@ export default function GameHistory() {
       iconClass: "home-stat-icon-gold",
     },
     {
-      label: "Best Score",
-      value: stats.bestScore,
+      label: "Last Score",
+      value: stats.lastScore ?? "—",
+      detail:
+        stats.lastScore != null && stats.lastScoreAvgTime > 0
+          ? `${formatAverageAnswerTime(stats.lastScoreAvgTime)} avg`
+          : undefined,
       icon: TrendingUp,
       iconClass: "home-stat-icon-purple",
     },
@@ -287,6 +308,11 @@ export default function GameHistory() {
                 <p className="text-xs sm:text-sm text-white/55 mt-1 font-medium">
                   {stat.label}
                 </p>
+                {"detail" in stat && stat.detail && (
+                  <p className="text-[11px] sm:text-xs text-accent/90 mt-0.5 font-medium">
+                    {stat.detail}
+                  </p>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -303,13 +329,20 @@ export default function GameHistory() {
             <CardContent className="grid grid-cols-2 gap-4 text-center sm:text-left">
               <div>
                 <p className="text-2xl font-bold text-white">
-                  {stats.averageScore.toFixed(1)}
+                  {stats.bestScore}
                 </p>
-                <p className="text-white/55 text-sm">Avg Score</p>
+                <p className="text-white/55 text-sm">Best Score</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-white">{stats.totalScore}</p>
-                <p className="text-white/55 text-sm">Total Points</p>
+                <p className="text-2xl font-bold text-white">
+                  {stats.lastScore ?? "—"}
+                </p>
+                <p className="text-white/55 text-sm">
+                  Last Score
+                  {stats.lastScoreAvgTime > 0
+                    ? ` · ${formatAverageAnswerTime(stats.lastScoreAvgTime)} avg`
+                    : ""}
+                </p>
               </div>
               <div>
                 <p className="text-lg font-semibold text-white truncate">
@@ -368,7 +401,7 @@ export default function GameHistory() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {scores.map((game) => {
+                    {recentScores.map((game) => {
                       const acc = accuracyPct(
                         game.correct_answers,
                         game.incorrect_answers
@@ -396,9 +429,21 @@ export default function GameHistory() {
                             <p className="text-white/50 text-xs">
                               {formatDate(game.timestamp)} · {game.correct_answers}/
                               {game.correct_answers + game.incorrect_answers} correct
+                              {game.average_time
+                                ? ` · ${formatAverageAnswerTime(parseFloat(game.average_time))} avg`
+                                : ""}
                             </p>
                           </div>
                           <div className="flex items-center gap-3 flex-shrink-0">
+                            {game.average_time &&
+                              parseFloat(game.average_time) > 0 && (
+                                <span className="px-2.5 py-1 rounded-md text-sm font-medium bg-yellow-500/15 text-yellow-300">
+                                  {formatAverageAnswerTime(
+                                    parseFloat(game.average_time)
+                                  )}{" "}
+                                  avg
+                                </span>
+                              )}
                             <span
                               className={cn(
                                 "px-2.5 py-1 rounded-md text-sm font-medium",

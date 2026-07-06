@@ -3,11 +3,17 @@ import { Button } from '@/components/ui/button';
 import { Home, Users } from 'lucide-react';
 import { Link } from 'wouter';
 import Avatar from './Avatar';
+import {
+  calculateAverageAnswerTime,
+  formatAverageAnswerTime,
+  getAnsweredQuestionCount,
+} from '@/lib/game-stats';
 
 interface GameStats {
   correctAnswers: number;
   incorrectAnswers: number;
   averageTime: number;
+  totalTimeSpent?: number;
 }
 
 interface PlayerStat {
@@ -61,6 +67,11 @@ const GameSidebar: React.FC<GameSidebarProps> = ({
     ? Math.round((stats.correctAnswers / (stats.correctAnswers + stats.incorrectAnswers)) * 100)
     : 0;
 
+  const singlePlayerAverageTime = calculateAverageAnswerTime(
+    stats.totalTimeSpent ?? 0,
+    getAnsweredQuestionCount(stats.correctAnswers, stats.incorrectAnswers)
+  ) || stats.averageTime;
+
   // Color schemes for different players
   const playerColors = [
     { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500' },
@@ -101,7 +112,9 @@ const GameSidebar: React.FC<GameSidebarProps> = ({
               </div>
               <div className="flex justify-between items-center bg-primary-dark/50 p-2 sm:p-3 rounded-xl reveal-animation" style={{animationDelay: '0.4s'}}>
                 <span className="text-white text-sm sm:text-base font-medium">Avg. Time:</span>
-                <span className="font-bold text-yellow-400 bg-black/30 px-2 sm:px-3 py-0.5 sm:py-1 text-sm sm:text-base rounded-lg">{stats.averageTime.toFixed(1)}s</span>
+                <span className="font-bold text-yellow-400 bg-black/30 px-2 sm:px-3 py-0.5 sm:py-1 text-sm sm:text-base rounded-lg">
+                  {formatAverageAnswerTime(singlePlayerAverageTime)}
+                </span>
               </div>
             </div>
           ) : (
@@ -112,6 +125,15 @@ const GameSidebar: React.FC<GameSidebarProps> = ({
                 const playerAccuracy = playerStat.correctAnswers + playerStat.incorrectAnswers > 0
                   ? Math.round((playerStat.correctAnswers / (playerStat.correctAnswers + playerStat.incorrectAnswers)) * 100)
                   : 0;
+                
+                const playerAverageTime =
+                  calculateAverageAnswerTime(
+                    playerStat.totalTimeSpent ?? 0,
+                    getAnsweredQuestionCount(
+                      playerStat.correctAnswers,
+                      playerStat.incorrectAnswers
+                    )
+                  ) || playerStat.averageTime;
                 
                 return (
                   <div 
@@ -144,7 +166,9 @@ const GameSidebar: React.FC<GameSidebarProps> = ({
                       </div>
                       <div className="flex flex-col items-center bg-black/20 p-1 sm:p-1.5 rounded min-w-0">
                         <span className="text-gray-400 text-[10px] sm:text-xs mb-0.5">Time</span>
-                        <span className="font-bold text-yellow-400 truncate">{playerStat.averageTime.toFixed(1)}s</span>
+                        <span className="font-bold text-yellow-400 truncate">
+                          {formatAverageAnswerTime(playerAverageTime)}
+                        </span>
                       </div>
                     </div>
                   </div>

@@ -35,6 +35,12 @@ import { voiceService } from "@/lib/voice-service";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/queryClient";
+import {
+  calculateAverageAnswerTime,
+  getAnsweredQuestionCount,
+  normalizePlayerAvgTime,
+  formatAverageAnswerTime,
+} from "@/lib/game-stats";
 
 interface Answer {
   id: string;
@@ -270,14 +276,20 @@ const Game: React.FC = () => {
     },
   };
 
+  const answeredQuestionCount = getAnsweredQuestionCount(
+    correctAnswers,
+    incorrectAnswers
+  );
+
   // Player stats
   const stats = {
     correctAnswers,
     incorrectAnswers,
-    averageTime:
-      correctAnswers + incorrectAnswers > 0
-        ? totalTimeSpent / (correctAnswers + incorrectAnswers)
-        : 0,
+    totalTimeSpent,
+    averageTime: calculateAverageAnswerTime(
+      totalTimeSpent,
+      answeredQuestionCount
+    ),
   };
 
   // Function to reset game state for PLAY AGAIN functionality
@@ -415,7 +427,12 @@ const Game: React.FC = () => {
             case "answer_submitted":
               // Update leaderboard (only for online multiplayer, not local)
               if (data.leaderboard && !gameId.includes("local-multi")) {
-                setLeaderboardData(data.leaderboard);
+                setLeaderboardData(
+                  data.leaderboard.map((player: any) => ({
+                    ...player,
+                    avgTime: normalizePlayerAvgTime(player),
+                  }))
+                );
               }
               break;
             case "game_ended":
@@ -594,6 +611,11 @@ const Game: React.FC = () => {
       }
 
       // Save scores to database
+      const savedAverageTime = calculateAverageAnswerTime(
+        totalTimeSpent,
+        answeredQuestionCount
+      );
+
       if (gameMode === "single") {
         const saveSinglePlayerScore = async () => {
           try {
@@ -607,7 +629,7 @@ const Game: React.FC = () => {
                 score: score,
                 correctAnswers: correctAnswers,
                 incorrectAnswers: incorrectAnswers,
-                averageTime: stats.averageTime.toString(),
+                averageTime: savedAverageTime.toString(),
                 category: category,
                 difficulty: difficulty,
                 gameType: gameType,
@@ -642,6 +664,14 @@ const Game: React.FC = () => {
 
               if (playerStat && playerName) {
 
+                const playerAverageTime = calculateAverageAnswerTime(
+                  playerStat.totalTimeSpent,
+                  getAnsweredQuestionCount(
+                    playerStat.correctAnswers,
+                    playerStat.incorrectAnswers
+                  )
+                );
+
                 const response = await fetch("/api/multiplayer/scores", {
                   method: "POST",
                   headers: {
@@ -654,7 +684,7 @@ const Game: React.FC = () => {
                     score: playerStat.score,
                     correctAnswers: playerStat.correctAnswers,
                     incorrectAnswers: playerStat.incorrectAnswers,
-                    averageTime: playerStat.averageTime.toString(),
+                    averageTime: playerAverageTime.toString(),
                     category: category,
                     difficulty: difficulty,
                     gameType: "local-multi", // Mark as local multiplayer
@@ -737,7 +767,8 @@ const Game: React.FC = () => {
     correctAnswers,
     incorrectAnswers,
     score,
-    stats.averageTime,
+    totalTimeSpent,
+    answeredQuestionCount,
     category,
     difficulty,
   ]);
@@ -815,6 +846,12 @@ const Game: React.FC = () => {
         const playerStat = updatedStats[currentPlayerIndex];
 
         // Update this player's stats
+        const nextTotalTimeSpent = playerStat.totalTimeSpent + timeSpent;
+        const nextAnsweredCount =
+          playerStat.correctAnswers +
+          playerStat.incorrectAnswers +
+          1;
+
         updatedStats[currentPlayerIndex] = {
           ...playerStat,
           score: answer.isCorrect ? playerStat.score + 1 : playerStat.score,
@@ -824,10 +861,11 @@ const Game: React.FC = () => {
           incorrectAnswers: !answer.isCorrect
             ? playerStat.incorrectAnswers + 1
             : playerStat.incorrectAnswers,
-          totalTimeSpent: playerStat.totalTimeSpent + timeSpent,
-          averageTime:
-            (playerStat.totalTimeSpent + timeSpent) /
-            (playerStat.correctAnswers + playerStat.incorrectAnswers + 1),
+          totalTimeSpent: nextTotalTimeSpent,
+          averageTime: calculateAverageAnswerTime(
+            nextTotalTimeSpent,
+            nextAnsweredCount
+          ),
         };
 
 
@@ -990,7 +1028,7 @@ const Game: React.FC = () => {
           </h2>
 
           <div className="mb-8 p-6 bg-white/5 rounded-2xl border border-white/10">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="text-center p-4 bg-white/5 rounded-xl">
                 <div className="text-3xl font-bold text-accent mb-1">
                   {score}
@@ -1008,6 +1046,12 @@ const Game: React.FC = () => {
                   {incorrectAnswers}
                 </div>
                 <div className="text-white/80 text-sm">Incorrect</div>
+              </div>
+              <div className="text-center p-4 bg-white/5 rounded-xl">
+                <div className="text-3xl font-bold text-yellow-400 mb-1">
+                  {formatAverageAnswerTime(stats.averageTime)}
+                </div>
+                <div className="text-white/80 text-sm">Avg. Time</div>
               </div>
             </div>
           </div>
@@ -1232,14 +1276,17 @@ const Game: React.FC = () => {
                     name: name,
                     score: playerStats[index]?.score || 0,
                     correctAnswers: playerStats[index]?.correctAnswers || 0,
-                    avgTime: playerStats[index]?.averageTime || 0,
+                    avgTime: normalizePlayerAvgTime(playerStats[index] || {}),
                     isCurrentUser: false,
                   }));
                   return playersData;
                 })()
               : // If we have server data (online multiplayer), use it
               leaderboardData.length > 0
-              ? leaderboardData
+              ? leaderboardData.map((player) => ({
+                  ...player,
+                  avgTime: normalizePlayerAvgTime(player),
+                }))
               : // If multiplayer (online), use player-specific stats we've tracked
               gameMode === "multi"
               ? (() => {
@@ -1248,7 +1295,7 @@ const Game: React.FC = () => {
                     name: name,
                     score: playerStats[index]?.score || 0,
                     correctAnswers: playerStats[index]?.correctAnswers || 0,
-                    avgTime: playerStats[index]?.averageTime || 0,
+                    avgTime: normalizePlayerAvgTime(playerStats[index] || {}),
                     isCurrentUser: false, // For local multiplayer, no "current user" concept
                   }));
                   return playersData;

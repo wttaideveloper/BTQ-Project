@@ -3,6 +3,7 @@ import { useRoute } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { calculateAverageAnswerTime } from '@/lib/game-stats';
 import { setupGameSocket, submitChallengeAnswer, completeChallenge } from '@/lib/socket';
 import {
   Trophy,
@@ -254,7 +255,10 @@ export default function ChallengePage() {
     // Calculate stats
     const correctCount = newAnswers.filter(a => a.isCorrect).length;
     const incorrectCount = newAnswers.length - correctCount;
-    const avgTime = newAnswers.reduce((sum, a) => sum + a.timeSpent, 0) / newAnswers.length;
+    const avgTime = calculateAverageAnswerTime(
+      newAnswers.reduce((sum, a) => sum + a.timeSpent, 0),
+      newAnswers.length
+    );
     
     setTotalCorrect(correctCount);
     setStats({

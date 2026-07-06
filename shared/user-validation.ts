@@ -1,6 +1,23 @@
 import { z } from "zod";
 
-const phoneRegex = /^[+]?[\d\s\-().]{7,20}$/;
+const phoneDigitsSchema = z
+  .union([
+    z.literal(""),
+    z
+      .string()
+      .regex(/^\d{10}$/, "Phone number must be exactly 10 digits"),
+  ])
+  .optional();
+
+const countryTextSchema = z
+  .union([
+    z.literal(""),
+    z
+      .string()
+      .max(100, "Country name is too long")
+      .regex(/^[a-zA-Z\s\-'.]+$/, "Country can only contain letters"),
+  ])
+  .optional();
 
 export const DEFAULT_AVATARS = [
   { id: "default-1", label: "Ocean Blue", path: "/avatars/default-1.svg" },
@@ -29,22 +46,13 @@ export const registerUserSchema = z.object({
     .string()
     .min(6, "Password must be at least 6 characters")
     .max(128, "Password is too long"),
-  phone: z
-    .union([
-      z.literal(""),
-      z.string().regex(phoneRegex, "Please enter a valid phone number"),
-    ])
-    .optional(),
+  phone: phoneDigitsSchema,
   bio: z
     .string()
     .max(500, "Bio must be 500 characters or less")
     .optional()
     .or(z.literal("")),
-  country: z
-    .string()
-    .max(100, "Country name is too long")
-    .optional()
-    .or(z.literal("")),
+  country: countryTextSchema,
   defaultAvatar: z.string().optional(),
 });
 
@@ -68,22 +76,13 @@ export const updateProfileSchema = z
         "Username can only contain letters, numbers, and underscores"
       ),
     email: z.string().email("Please enter a valid email address"),
-    phone: z
-      .union([
-        z.literal(""),
-        z.string().regex(phoneRegex, "Please enter a valid phone number"),
-      ])
-      .optional(),
+    phone: phoneDigitsSchema,
     bio: z
       .string()
       .max(500, "Bio must be 500 characters or less")
       .optional()
       .or(z.literal("")),
-    country: z
-      .string()
-      .max(100, "Country name is too long")
-      .optional()
-      .or(z.literal("")),
+    country: countryTextSchema,
     defaultAvatar: z.string().optional(),
     currentPassword: z.string().optional(),
     newPassword: z

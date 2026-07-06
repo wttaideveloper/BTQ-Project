@@ -497,9 +497,16 @@ const AuthPage: React.FC = () => {
                                 <FormControl>
                                   <Input
                                     type="tel"
-                                    placeholder="+1 555 123 4567"
+                                    inputMode="numeric"
+                                    placeholder="10-digit phone number"
                                     autoComplete="tel"
+                                    maxLength={10}
                                     {...field}
+                                    onChange={(e) => {
+                                      field.onChange(
+                                        e.target.value.replace(/\D/g, "").slice(0, 10)
+                                      );
+                                    }}
                                     className={inputClassName}
                                   />
                                 </FormControl>
@@ -517,9 +524,15 @@ const AuthPage: React.FC = () => {
                                 </FormLabel>
                                 <FormControl>
                                   <Input
-                                    placeholder="United States"
+                                    type="text"
+                                    placeholder="India"
                                     autoComplete="country-name"
                                     {...field}
+                                    onChange={(e) => {
+                                      field.onChange(
+                                        e.target.value.replace(/[^a-zA-Z\s\-'.]/g, "")
+                                      );
+                                    }}
                                     className={inputClassName}
                                   />
                                 </FormControl>

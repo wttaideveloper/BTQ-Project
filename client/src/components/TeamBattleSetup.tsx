@@ -1862,7 +1862,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       sendGameEvent({
         type: "team_battle_unready",
         gameSessionId: userTeam.gameSessionId || gameSessionId || undefined,
-        teamBattleId: userTeam.teamBattleId || battleState?.battleId,
+        teamBattleId:
+          userTeam.teamBattleId ?? battleState?.battleId ?? undefined,
         teamSide: userTeam.teamSide,
         userId: user.id,
       });

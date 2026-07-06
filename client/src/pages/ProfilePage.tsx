@@ -34,6 +34,8 @@ import {
   Save,
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 const profileFormSchema = updateProfileSchema;
@@ -57,6 +59,8 @@ const ProfilePage: React.FC = () => {
   const { user, updateProfileMutation } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [selectedDefaultAvatar, setSelectedDefaultAvatar] = useState<string>(
     DEFAULT_AVATARS[0].id
   );
@@ -219,20 +223,11 @@ const ProfilePage: React.FC = () => {
                 {user.fullName || user.username}
               </h1>
               <p className="text-white/60 mt-1">@{user.username}</p>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
-                {user.isAdmin && (
+              {user.isAdmin && (
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
                   <Badge className="bg-accent text-primary">Admin</Badge>
-                )}
-                {user.isEmailVerified ? (
-                  <Badge variant="outline" className="border-green-500/40 text-green-300">
-                    Email verified
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="border-yellow-500/40 text-yellow-300">
-                    Email unverified
-                  </Badge>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -437,12 +432,30 @@ const ProfilePage: React.FC = () => {
                             Current Password
                           </FormLabel>
                           <FormControl>
-                            <Input
-                              type="password"
-                              autoComplete="current-password"
-                              {...field}
-                              className="bg-white/5 border-white/15 text-white"
-                            />
+                            <div className="relative">
+                              <Input
+                                type={showCurrentPassword ? "text" : "password"}
+                                autoComplete="current-password"
+                                {...field}
+                                className="bg-white/5 border-white/15 text-white pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowCurrentPassword((v) => !v)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/45 hover:text-white/80 transition-colors"
+                                aria-label={
+                                  showCurrentPassword
+                                    ? "Hide password"
+                                    : "Show password"
+                                }
+                              >
+                                {showCurrentPassword ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
                           </FormControl>
                           <FormMessage className="text-red-400" />
                         </FormItem>
@@ -457,12 +470,28 @@ const ProfilePage: React.FC = () => {
                             New Password
                           </FormLabel>
                           <FormControl>
-                            <Input
-                              type="password"
-                              autoComplete="new-password"
-                              {...field}
-                              className="bg-white/5 border-white/15 text-white"
-                            />
+                            <div className="relative">
+                              <Input
+                                type={showNewPassword ? "text" : "password"}
+                                autoComplete="new-password"
+                                {...field}
+                                className="bg-white/5 border-white/15 text-white pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowNewPassword((v) => !v)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/45 hover:text-white/80 transition-colors"
+                                aria-label={
+                                  showNewPassword ? "Hide password" : "Show password"
+                                }
+                              >
+                                {showNewPassword ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
                           </FormControl>
                           <FormMessage className="text-red-400" />
                         </FormItem>

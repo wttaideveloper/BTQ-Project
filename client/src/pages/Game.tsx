@@ -814,6 +814,12 @@ const Game: React.FC = () => {
     rewardProgress,
   ]);
 
+  const scoreSavedRef = useRef(false);
+
+  useEffect(() => {
+    scoreSavedRef.current = false;
+  }, [gameId]);
+
   // Game over check
   useEffect(() => {
     if (
@@ -844,28 +850,46 @@ const Game: React.FC = () => {
       );
 
       if (gameMode === "single") {
-        const saveSinglePlayerScore = async () => {
-          try {
-            await apiRequest("POST", "/api/single-player/scores", {
-              score: score,
-              correctAnswers: correctAnswers,
-              incorrectAnswers: incorrectAnswers,
-              averageTime: savedAverageTime.toString(),
-              category: category,
-              difficulty: difficulty,
-              gameType: gameType,
-              totalQuestions: activeQuestions.length || 10,
-              timeLimit: gameType === "time" ? timeBasedDurationSeconds : undefined,
-            });
+        if (!user?.id) {
+          console.warn("Solo score not saved: user not logged in");
+        } else if (!scoreSavedRef.current) {
+          scoreSavedRef.current = true;
 
-            queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/single-player/scores"] });
-          } catch (error) {
-            console.error("Error saving single player score:", error);
-          }
-        };
+          const saveSinglePlayerScore = async () => {
+            try {
+              await apiRequest("POST", "/api/single-player/scores", {
+                score: score,
+                correctAnswers: correctAnswers,
+                incorrectAnswers: incorrectAnswers,
+                averageTime: savedAverageTime.toString(),
+                category: category,
+                difficulty: difficulty,
+                gameType: gameType,
+                totalQuestions: activeQuestions.length || 10,
+                timeLimit:
+                  gameType === "time" ? timeBasedDurationSeconds : undefined,
+              });
 
-        saveSinglePlayerScore();
+              queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+              queryClient.invalidateQueries({
+                queryKey: ["/api/single-player/scores"],
+              });
+              queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+            } catch (error) {
+              scoreSavedRef.current = false;
+              console.error("Error saving single player score:", error);
+              toast({
+                title: "Score not saved",
+                description:
+                  "Your game finished but the score could not be saved. Please log in and try again.",
+                variant: "destructive",
+              });
+            }
+          };
+
+          saveSinglePlayerScore();
+        }
       } else if (gameMode === "multi") {
         // Save local multiplayer scores for each player
         const saveLocalMultiplayerScores = async () => {
@@ -972,6 +996,9 @@ const Game: React.FC = () => {
     answeredQuestionCount,
     category,
     difficulty,
+    user?.id,
+    timeBasedDurationSeconds,
+    toast,
   ]);
 
   const handleAnswer = (answer: Answer, timeSpent: number) => {

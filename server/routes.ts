@@ -1428,22 +1428,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ message: "Authentication required" });
         }
 
+        const score = Number(req.body.score) || 0;
+        const correctAnswers = Number(req.body.correctAnswers) || 0;
+        const incorrectAnswers = Number(req.body.incorrectAnswers) || 0;
+        const totalQuestions =
+          Number(req.body.totalQuestions) ||
+          correctAnswers + incorrectAnswers ||
+          10;
+
         const singlePlayerScore = {
           id: uuidv4(),
           userId: req.user.id,
           playerName: req.user.username,
-          score: req.body.score,
-          correctAnswers: req.body.correctAnswers,
-          incorrectAnswers: req.body.incorrectAnswers,
-          averageTime: req.body.averageTime,
-          category: req.body.category,
-          difficulty: req.body.difficulty,
-          gameType: req.body.gameType, // 'question' or 'time'
-          totalQuestions: req.body.totalQuestions,
-          timeLimit: req.body.timeLimit, // Optional, for time-based games
+          score,
+          correctAnswers,
+          incorrectAnswers,
+          averageTime: String(req.body.averageTime ?? "0"),
+          category: req.body.category || "All Categories",
+          difficulty: req.body.difficulty || "Beginner",
+          gameType: req.body.gameType || "question",
+          totalQuestions,
+          timeLimit:
+            req.body.timeLimit != null ? Number(req.body.timeLimit) : undefined,
         };
 
         await database.saveSinglePlayerScore(singlePlayerScore);
+
+        // Keep user profile stats in sync with solo play
+        await database.updateUser(req.user.id, {
+          totalGames: (req.user.totalGames ?? 0) + 1,
+        });
+
         res.status(201).json(singlePlayerScore);
       } catch (err) {
         console.error("Failed to save single player score:", err);

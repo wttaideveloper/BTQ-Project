@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { markOpenTeamBattleSetup } from "@/lib/team-battle-navigation";
+import { markOpenTeamBattleSetup, consumeTeamBattleLaunch } from "@/lib/team-battle-navigation";
 import { setupGameSocket, sendGameEvent, closeGameSocket } from "@/lib/socket";
 import { registerNavigationProtection, unregisterNavigationProtection } from "@/lib/navigationGuard";
 import { apiRequest } from "@/lib/queryClient";
@@ -116,7 +116,18 @@ export default function TeamBattleGame() {
     setLocation("/");
   };
 
-  const [gameState, setGameState] = useState<GameState>({ phase: "waiting" });
+  const [gameState, setGameState] = useState<GameState>(() => {
+    if (typeof window === "undefined") return { phase: "waiting" };
+    const params = new URLSearchParams(window.location.search);
+    const sessionId =
+      params.get("session") ??
+      params.get("gameSessionId") ??
+      params.get("gameSession");
+    if (sessionId && consumeTeamBattleLaunch(sessionId)) {
+      return { phase: "playing" };
+    }
+    return { phase: "waiting" };
+  });
   const gameStateRef = useRef<GameState>(gameState);
   const isRapidFireRef = useRef<boolean>(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -144,6 +155,7 @@ export default function TeamBattleGame() {
     isVoiceEnabled()
   );
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+  const [showConnectExit, setShowConnectExit] = useState(false);
   const [showRefreshLoader, setShowRefreshLoader] = useState(false);
   const [currentRapidQuestion, setCurrentRapidQuestion] = useState<Question | null>(null);
   const [showTossInstruction, setShowTossInstruction] = useState(false);
@@ -316,6 +328,53 @@ export default function TeamBattleGame() {
     params.get("gameSessionId") ??
     params.get("gameSession");
 
+  // Skip waiting overlay when battle already started (reconnect / refresh)
+  useEffect(() => {
+    if (!gameSessionId || !user || gameState.phase !== "waiting") return;
+
+    let cancelled = false;
+
+    const bootstrapFromServer = async () => {
+      try {
+        const res = await apiRequest(
+          "GET",
+          `/api/team-battle/phase?gameSessionId=${gameSessionId}`
+        );
+        const phaseData = await res.json();
+        if (cancelled) return;
+
+        const battleActive =
+          phaseData.status === "playing" ||
+          phaseData.phase === "IN_GAME" ||
+          phaseData.status === "ready" ||
+          phaseData.phase === "COUNTDOWN";
+
+        if (battleActive) {
+          setGameState((prev) =>
+            prev.phase === "waiting" ? { ...prev, phase: "playing" } : prev
+          );
+        }
+      } catch {
+        // WebSocket will provide state as fallback
+      }
+    };
+
+    bootstrapFromServer();
+    return () => {
+      cancelled = true;
+    };
+  }, [gameSessionId, user, gameState.phase]);
+
+  // Only show Exit on connect screen after a delay (avoids flash on normal start)
+  useEffect(() => {
+    if (gameState.phase !== "waiting") {
+      setShowConnectExit(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowConnectExit(true), 5000);
+    return () => clearTimeout(timer);
+  }, [gameState.phase]);
+
   useEffect(() => {
     if (!user) {
       setLocation("/");
@@ -344,9 +403,7 @@ export default function TeamBattleGame() {
     // If socket is already open, request game state after a short delay
     // (authentication might already be complete)
     if (socket.readyState === WebSocket.OPEN) {
-      setTimeout(() => {
-        requestGameState();
-      }, 500);
+      requestGameState();
     }
 
     // Add beforeunload listener to notify server when page is about to unload
@@ -1438,24 +1495,24 @@ export default function TeamBattleGame() {
           <div className="h-3 w-3 rounded-full bg-blue-600 animate-bounce delay-300"></div>
         </div>
 
-        {/* Exit button - more prominent */}
-        <div className="flex justify-center">
-          <Button
-            onClick={() => {
-              // If the battle has finished, perform the exit/cleanup immediately.
-              // Otherwise, show the confirmation dialog to avoid accidental mid-game leaves.
-              if (gameState.phase === "finished") {
-                handleExitGame();
-              } else {
-                setShowExitConfirmation(true);
-              }
-            }}
-            className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border-0 whitespace-nowrap w-full sm:w-auto shadow-lg hover:shadow-red-500/20 transition-all duration-200"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Exit to Home
-          </Button>
-        </div>
+        {/* Exit button — only after prolonged connect wait */}
+        {showConnectExit && (
+          <div className="flex justify-center">
+            <Button
+              onClick={() => {
+                if (gameState.phase === "finished") {
+                  handleExitGame();
+                } else {
+                  setShowExitConfirmation(true);
+                }
+              }}
+              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border-0 whitespace-nowrap w-full sm:w-auto shadow-lg hover:shadow-red-500/20 transition-all duration-200"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Exit to Home
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );

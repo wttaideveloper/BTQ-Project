@@ -1,5 +1,32 @@
 const OPEN_TEAM_BATTLE_SETUP_KEY = "openTeamBattleSetup";
 const OPEN_RAPID_FIRE_SETUP_KEY = "openRapidFireSetup";
+const TEAM_BATTLE_LAUNCH_PREFIX = "teamBattleLaunch:";
+
+/** Mark that the user is entering the game from setup/countdown (skip connect overlay). */
+export function markTeamBattleLaunch(gameSessionId: string): void {
+  sessionStorage.setItem(
+    `${TEAM_BATTLE_LAUNCH_PREFIX}${gameSessionId}`,
+    Date.now().toString()
+  );
+}
+
+/** Returns true once if this session was just launched from setup (within 30s). */
+export function consumeTeamBattleLaunch(gameSessionId: string): boolean {
+  const key = `${TEAM_BATTLE_LAUNCH_PREFIX}${gameSessionId}`;
+  const value = sessionStorage.getItem(key);
+  if (!value) return false;
+  sessionStorage.removeItem(key);
+  const age = Date.now() - parseInt(value, 10);
+  return Number.isFinite(age) && age >= 0 && age < 30_000;
+}
+
+export function navigateToTeamBattleGame(
+  setLocation: (path: string) => void,
+  gameSessionId: string
+): void {
+  markTeamBattleLaunch(gameSessionId);
+  setLocation(`/team-battle-game?session=${gameSessionId}`);
+}
 
 /** Mark that Home should open the Team Battle setup modal (not the legacy /team-battle page). */
 export function markOpenTeamBattleSetup(options?: { isRapidFire?: boolean }): void {

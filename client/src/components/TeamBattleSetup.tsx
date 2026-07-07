@@ -53,6 +53,7 @@ import TeamDisplay from "./TeamDisplay";
 import ClockCountdown from "./ui/ClockCountdown";
 import { setupGameSocket, sendGameEvent, onEvent } from "@/lib/socket";
 import { useBattleState, type BattleState } from "@/hooks/useBattleState";
+import { navigateToTeamBattleGame } from "@/lib/team-battle-navigation";
 
 export interface TeamBattleSetupProps {
   open: boolean;
@@ -514,7 +515,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           setHasNavigatedToGame(true);
           setCountdown(null); // Clear countdown
           onClose();
-          setLocation(`/team-battle-game?session=${gameSessionId}`);
+          navigateToTeamBattleGame(setLocation, gameSessionId);
           if (checkInterval) clearInterval(checkInterval);
           return;
         }
@@ -1026,7 +1027,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               });
               onClose();
               // CRITICAL FIX #5: Standardize URL parameter to use 'session'
-              setLocation(`/team-battle-game?session=${targetSessionId}`);
+              navigateToTeamBattleGame(setLocation, targetSessionId);
             } else if (!open) {
             }
             break;
@@ -1719,7 +1720,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setCountdown(null);
       onClose();
       // CRITICAL FIX #5: Standardize URL parameter to use 'session'
-      setLocation(`/team-battle-game?session=${gameSessionId}`);
+      navigateToTeamBattleGame(setLocation, gameSessionId);
       return;
     }
 
@@ -1728,7 +1729,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     if (effectiveCountdown === null && gameSessionId && isInAnyTeam && dbPhase === "started") {
       setHasNavigatedToGame(true);
       onClose();
-      setLocation(`/team-battle-game?session=${gameSessionId}`);
+      navigateToTeamBattleGame(setLocation, gameSessionId);
       return;
     }
   }, [

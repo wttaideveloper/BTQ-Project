@@ -42,6 +42,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { setupGameSocket, onEvent, sendGameEvent } from "@/lib/socket";
 import { useTeamBattleSetup } from "@/hooks/useTeamBattleSetup";
+import { navigateToTeamBattleGame } from "@/lib/team-battle-navigation";
 
 interface User {
   id: number;
@@ -389,7 +390,7 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
         });
         // CRITICAL FIX #5: Standardize URL parameter to use 'session'
         // Navigate to game when WebSocket confirms battle started
-        setLocation(`/team-battle-game?session=${targetSessionId}`);
+        navigateToTeamBattleGame(setLocation, targetSessionId);
       } else {
       }
     });
@@ -914,7 +915,7 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
             return;
           }
 
-          setLocation(`/team-battle-game?session=${gameSessionId}`);
+          navigateToTeamBattleGame(setLocation, gameSessionId);
           if (checkInterval) clearInterval(checkInterval);
           return;
         }

@@ -1007,7 +1007,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const questions = await database.getQuestions({
         category: category !== "All Categories" ? category : undefined,
-        difficulty,
+        difficulty:
+          difficulty && difficulty !== "All Difficulties"
+            ? difficulty
+            : undefined,
         search,
       });
 

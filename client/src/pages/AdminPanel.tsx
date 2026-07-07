@@ -80,7 +80,7 @@ const categories = [
   "Theme-Based"
 ];
 
-const difficulties = ["Beginner", "Intermediate", "Advanced"];
+const difficulties = ["All Difficulties", "Beginner", "Intermediate", "Advanced"];
 
 interface Question {
   id: string;
@@ -113,7 +113,7 @@ const AdminPanel: React.FC = () => {
   // States
   const [activeTab, setActiveTab] = useState<string>("questions");
   const [selectedCategory, setSelectedCategory] = useState<string>("All Categories");
-  const [selectedDifficulty, setSelectedDifficulty] = useState<string>("Beginner");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>("All Difficulties");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showAddDialog, setShowAddDialog] = useState<boolean>(false);
   const [showEditDialog, setShowEditDialog] = useState<boolean>(false);
@@ -211,13 +211,37 @@ const AdminPanel: React.FC = () => {
   // Fetch questions
   const { 
     data: questions, 
-    isLoading, 
+    isLoading,
+    isFetching,
     error,
     refetch 
   } = useQuery({
     queryKey: ['/api/questions', selectedCategory, selectedDifficulty, searchQuery],
     queryFn: () => fetchQuestions(selectedCategory, selectedDifficulty, searchQuery),
+    staleTime: 0,
   });
+
+  const handleRefreshQuestions = async () => {
+    const result = await refetch({ throwOnError: false });
+    if (result.isError) {
+      toast({
+        title: "Refresh failed",
+        description: "Could not reload questions. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Questions refreshed",
+      description: `Loaded ${result.data?.length ?? 0} question${result.data?.length === 1 ? "" : "s"}.`,
+    });
+  };
+
+  const handleClearFilters = () => {
+    setSelectedCategory("All Categories");
+    setSelectedDifficulty("All Difficulties");
+    setSearchQuery("");
+  };
 
   // Fetch voice status
   const { 
@@ -747,13 +771,29 @@ const AdminPanel: React.FC = () => {
                       </SelectContent>
                     </Select>
 
-                    <Button 
-                      onClick={() => refetch()} 
-                      variant="outline"
-                      className="flex items-center gap-2 bg-white border-gray-200 hover:bg-gray-50"
-                    >
-                      <RefreshCw size={16} /> Refresh
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        onClick={handleClearFilters}
+                        variant="outline"
+                        className="flex-1 bg-white border-gray-200 hover:bg-gray-50"
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleRefreshQuestions}
+                        variant="outline"
+                        disabled={isFetching}
+                        className="flex-1 flex items-center justify-center gap-2 bg-white border-gray-200 hover:bg-gray-50"
+                      >
+                        <RefreshCw
+                          size={16}
+                          className={isFetching ? "animate-spin" : ""}
+                        />
+                        {isFetching ? "Refreshing…" : "Refresh"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -829,6 +869,14 @@ const AdminPanel: React.FC = () => {
                       <XCircle size={48} className="mx-auto text-red-500 mb-4" />
                       <p className="text-red-600 font-medium">Error loading questions</p>
                       <p className="text-gray-500 mt-2">Please try again later</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-4"
+                        onClick={handleRefreshQuestions}
+                      >
+                        Retry
+                      </Button>
                     </div>
                   ) : filteredQuestions.length === 0 ? (
                     <div className="text-center p-12 flex-1">
@@ -837,7 +885,7 @@ const AdminPanel: React.FC = () => {
                       <p className="text-gray-500 mt-2">Add some questions or adjust your filters</p>
                     </div>
                   ) : (
-                    <div className="flex-1 overflow-auto">
+                    <div className={`flex-1 overflow-auto ${isFetching ? "opacity-70" : ""}`}>
                       <Table>
                         <TableHeader className="sticky top-0 bg-white z-10">
                           <TableRow className="bg-gray-50 hover:bg-gray-50">

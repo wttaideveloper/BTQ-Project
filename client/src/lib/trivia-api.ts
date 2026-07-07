@@ -3,16 +3,30 @@ import { apiRequest } from './queryClient';
 // Fetch a list of questions
 export async function fetchQuestions(
   category: string = 'All Categories',
-  difficulty: string = 'Beginner',
+  difficulty: string = 'All Difficulties',
   searchQuery: string = ''
 ): Promise<any[]> {
   try {
     const params = new URLSearchParams();
     if (category !== 'All Categories') params.append('category', category);
-    if (difficulty !== 'All') params.append('difficulty', difficulty);
+    if (
+      difficulty &&
+      difficulty !== 'All' &&
+      difficulty !== 'All Difficulties'
+    ) {
+      params.append('difficulty', difficulty);
+    }
     if (searchQuery) params.append('search', searchQuery);
     
-    const res = await apiRequest('GET', `/api/questions?${params.toString()}`, undefined);
+    const res = await fetch(`/api/questions?${params.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      const text = (await res.text()) || res.statusText;
+      throw new Error(text || 'Failed to fetch questions');
+    }
     return await res.json();
   } catch (error) {
     console.error('Failed to fetch questions:', error);

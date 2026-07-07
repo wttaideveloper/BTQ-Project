@@ -1412,6 +1412,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/admin/dashboard-stats", ensureAdmin, async (_req, res) => {
+    try {
+      const stats = await database.getAdminDashboardStats();
+      res.json(stats);
+    } catch (err) {
+      console.error("Error fetching admin dashboard stats:", err);
+      res.status(500).json({ message: "Failed to fetch dashboard statistics" });
+    }
+  });
+
   // Submit game results (for multiplayer games)
   app.post("/api/game/results", async (req, res) => {
     try {

@@ -104,6 +104,18 @@ export interface IDatabase {
     gameType?: string;
   }): Promise<any[]>;
   getLeaderboardData(gameType?: string, category?: string): Promise<any[]>;
+  getAdminDashboardStats(): Promise<{
+    totalUsers: number;
+    totalQuestions: number;
+    soloGames: number;
+    multiGames: number;
+    teamBattlesTotal: number;
+    teamBattlesFinished: number;
+    teamBattlesActive: number;
+    avgSoloScore: number;
+    soloGamesLast24h: number;
+    leaderboardPlayers: number;
+  }>;
 
   // Multiplayer score methods
   saveMultiplayerScore(score: any): Promise<any>;
@@ -1396,6 +1408,75 @@ class PostgreSQLDatabase implements IDatabase {
     } catch (error) {
       console.error("Error in getSinglePlayerScores:", error);
       return [];
+    }
+  }
+
+  async getAdminDashboardStats(): Promise<{
+    totalUsers: number;
+    totalQuestions: number;
+    soloGames: number;
+    multiGames: number;
+    teamBattlesTotal: number;
+    teamBattlesFinished: number;
+    teamBattlesActive: number;
+    avgSoloScore: number;
+    soloGamesLast24h: number;
+    leaderboardPlayers: number;
+  }> {
+    const empty = {
+      totalUsers: 0,
+      totalQuestions: 0,
+      soloGames: 0,
+      multiGames: 0,
+      teamBattlesTotal: 0,
+      teamBattlesFinished: 0,
+      teamBattlesActive: 0,
+      avgSoloScore: 0,
+      soloGamesLast24h: 0,
+      leaderboardPlayers: 0,
+    };
+
+    try {
+      const [
+        usersResult,
+        questionsResult,
+        soloResult,
+        multiResult,
+        teamResult,
+        soloAvgResult,
+        recentSoloResult,
+      ] = await Promise.all([
+        sql`SELECT COUNT(*)::int AS count FROM users`,
+        sql`SELECT COUNT(*)::int AS count FROM questions`,
+        sql`SELECT COUNT(*)::int AS count FROM single_player_scores`,
+        sql`SELECT COUNT(*)::int AS count FROM multiplayer_scores`,
+        sql`SELECT
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE status = 'finished')::int AS finished,
+              COUNT(*) FILTER (WHERE status = 'playing')::int AS active
+            FROM team_battles`,
+        sql`SELECT COALESCE(AVG(score), 0)::float AS avg FROM single_player_scores`,
+        sql`SELECT COUNT(*)::int AS count FROM single_player_scores WHERE timestamp >= NOW() - INTERVAL '24 hours'`,
+      ]);
+
+      const leaderboard = await this.getLeaderboardData("all");
+
+      return {
+        totalUsers: Number(usersResult[0]?.count ?? 0),
+        totalQuestions: Number(questionsResult[0]?.count ?? 0),
+        soloGames: Number(soloResult[0]?.count ?? 0),
+        multiGames: Number(multiResult[0]?.count ?? 0),
+        teamBattlesTotal: Number(teamResult[0]?.total ?? 0),
+        teamBattlesFinished: Number(teamResult[0]?.finished ?? 0),
+        teamBattlesActive: Number(teamResult[0]?.active ?? 0),
+        avgSoloScore:
+          Math.round(Number(soloAvgResult[0]?.avg ?? 0) * 10) / 10,
+        soloGamesLast24h: Number(recentSoloResult[0]?.count ?? 0),
+        leaderboardPlayers: leaderboard.length,
+      };
+    } catch (error) {
+      console.error("Error in getAdminDashboardStats:", error);
+      return empty;
     }
   }
 

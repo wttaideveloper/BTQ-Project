@@ -68,6 +68,8 @@ import {
 } from '@/lib/trivia-api';
 import { QuestionReviewPanel } from '@/components/QuestionReviewPanel';
 import { UserManagementPanel } from '@/components/admin/UserManagementPanel';
+import { GameStatsPanel } from '@/components/admin/GameStatsPanel';
+import { AdminLeaderboardPanel } from '@/components/admin/AdminLeaderboardPanel';
 
 const categories = [
   "All Categories",
@@ -625,6 +627,18 @@ const AdminPanel: React.FC = () => {
               <BarChart3 size={20} />
               <span className="font-medium">Game Statistics</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab("leaderboard")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                activeTab === "leaderboard"
+                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <Trophy size={20} />
+              <span className="font-medium">Leaderboard</span>
+            </button>
           </div>
         </nav>
 
@@ -665,11 +679,13 @@ const AdminPanel: React.FC = () => {
                     {activeTab === "questions" && "Question Management"}
                     {activeTab === "users" && "User Management"}
                     {activeTab === "stats" && "Game Statistics"}
+                    {activeTab === "leaderboard" && "Leaderboard"}
                   </h1>
                   <p className="text-sm text-gray-600">
                     {activeTab === "questions" && "Manage your Bible trivia questions and content"}
                     {activeTab === "users" && "View registered users, profiles, and activity status"}
-                    {activeTab === "stats" && "View game analytics and performance metrics"}
+                    {activeTab === "stats" && "Live platform metrics and game activity"}
+                    {activeTab === "leaderboard" && "View top players across solo and multiplayer games"}
                   </p>
                 </div>
               </div>
@@ -899,62 +915,13 @@ const AdminPanel: React.FC = () => {
             {/* Stats Tab Content */}
             {activeTab === "stats" && (
               <div className="p-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-blue-600 font-medium">Total Games</p>
-                          <p className="text-3xl font-bold text-blue-800">24</p>
-                          <p className="text-xs text-blue-600 mt-1">+12% from last week</p>
-                        </div>
-                        <div className="h-12 w-12 bg-blue-500 rounded-xl flex items-center justify-center">
-                          <FileText className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-green-600 font-medium">Avg. Score</p>
-                          <p className="text-3xl font-bold text-green-800">7.2</p>
-                          <p className="text-xs text-green-600 mt-1">+0.8 from last week</p>
-                        </div>
-                        <div className="h-12 w-12 bg-green-500 rounded-xl flex items-center justify-center">
-                          <CheckCircle className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-purple-100">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-purple-600 font-medium">Rewards Claimed</p>
-                          <p className="text-3xl font-bold text-purple-800">12</p>
-                          <p className="text-xs text-purple-600 mt-1">+3 from last week</p>
-                        </div>
-                        <div className="h-12 w-12 bg-purple-500 rounded-xl flex items-center justify-center">
-                          <Trophy className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-                
-                <Card className="border-0 shadow-sm">
-                  <CardContent className="p-8">
-                    <div className="text-center">
-                      <BarChart3 size={48} className="mx-auto text-gray-400 mb-4" />
-                      <p className="text-gray-600 font-medium">Detailed Statistics</p>
-                      <p className="text-gray-500 mt-2">Comprehensive analytics and insights will be available soon</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <GameStatsPanel />
+              </div>
+            )}
+
+            {activeTab === "leaderboard" && (
+              <div className="p-8">
+                <AdminLeaderboardPanel />
               </div>
             )}
 

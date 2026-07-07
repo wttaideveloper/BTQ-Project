@@ -55,7 +55,6 @@ import {
   Trophy,
   Users,
   BarChart3,
-  Settings,
   Mic,
   Volume2
 } from 'lucide-react';
@@ -559,13 +558,23 @@ const AdminPanel: React.FC = () => {
     }
   };
 
+  const goToAdminDashboard = () => {
+    setActiveTab("questions");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex">
       {/* Fixed Sidebar */}
       <div className="w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col fixed h-screen">
         {/* Sidebar Header */}
         <div className="p-6 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={goToAdminDashboard}
+            className="flex items-center gap-3 w-full text-left hover:opacity-90 transition-opacity cursor-pointer"
+            aria-label="Go to admin dashboard"
+          >
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
               <Trophy className="w-7 h-7 text-white" />
             </div>
@@ -575,7 +584,7 @@ const AdminPanel: React.FC = () => {
               </h1>
               <p className="text-xs text-gray-500">Bible Trivia Management</p>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Sidebar Navigation */}
@@ -616,30 +625,6 @@ const AdminPanel: React.FC = () => {
               <BarChart3 size={20} />
               <span className="font-medium">Game Statistics</span>
             </button>
-            
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === "settings"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <Settings size={20} />
-              <span className="font-medium">Settings</span>
-            </button>
-            
-            <button
-              onClick={() => setActiveTab("voices")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === "voices"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <Mic size={20} />
-              <span className="font-medium">Voice Management</span>
-            </button>
           </div>
         </nav>
 
@@ -667,23 +652,24 @@ const AdminPanel: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={goToAdminDashboard}
+                  className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer"
+                  aria-label="Go to admin dashboard"
+                >
                   <Trophy className="w-6 h-6 text-white" />
-                </div>
+                </button>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">
                     {activeTab === "questions" && "Question Management"}
                     {activeTab === "users" && "User Management"}
                     {activeTab === "stats" && "Game Statistics"}
-                    {activeTab === "settings" && "Settings"}
-                    {activeTab === "voices" && "Voice Management"}
                   </h1>
                   <p className="text-sm text-gray-600">
                     {activeTab === "questions" && "Manage your Bible trivia questions and content"}
                     {activeTab === "users" && "View registered users, profiles, and activity status"}
                     {activeTab === "stats" && "View game analytics and performance metrics"}
-                    {activeTab === "settings" && "Configure game parameters and behavior"}
-                    {activeTab === "voices" && "Manage voice settings and AI voice cloning"}
                   </p>
                 </div>
               </div>
@@ -693,11 +679,6 @@ const AdminPanel: React.FC = () => {
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 FaithIQ Admin
               </div>
-              <div className="h-6 w-px bg-gray-300"></div>
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Settings size={16} />
-                Quick Settings
-              </Button>
             </div>
           </div>
         </div>
@@ -778,22 +759,6 @@ const AdminPanel: React.FC = () => {
                     className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
                   >
                     <Sparkles size={18} /> Generate with AI
-                  </Button>
-                  
-                  <Button 
-                    onClick={() => setShowVoiceCloneDialog(true)}
-                    variant="outline" 
-                    className="flex items-center gap-2 border-2 border-dashed border-orange-300 hover:border-orange-500 hover:bg-orange-50 bg-gradient-to-r from-orange-50 to-amber-50"
-                  >
-                    <Mic size={18} className="text-orange-600" />
-                    <span className="text-orange-700 font-medium">
-                      {voiceStatus?.hasVoiceClone ? 'Update Voice Clone' : 'Upload Voice Clone'}
-                    </span>
-                    {voiceStatus?.hasVoiceClone && (
-                      <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full animate-pulse">
-                        Active: {voiceStatus.name || 'Your Voice'}
-                      </span>
-                    )}
                   </Button>
                   
                   <Button 
@@ -988,68 +953,6 @@ const AdminPanel: React.FC = () => {
                       <p className="text-gray-600 font-medium">Detailed Statistics</p>
                       <p className="text-gray-500 mt-2">Comprehensive analytics and insights will be available soon</p>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* Settings Tab Content */}
-            {activeTab === "settings" && (
-              <div className="p-8">
-                <Card className="border-0 shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-xl">Game Settings</CardTitle>
-                    <CardDescription>
-                      Configure game parameters and behavior
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 mb-2 block">Time per Question (seconds)</label>
-                        <Input 
-                          type="number" 
-                          defaultValue="20" 
-                          min="5" 
-                          max="60" 
-                          className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 mb-2 block">Time-based Game Duration (minutes)</label>
-                        <Input 
-                          type="number" 
-                          defaultValue="15" 
-                          min="5" 
-                          max="30" 
-                          className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 mb-2 block">Questions per Game</label>
-                        <Input 
-                          type="number" 
-                          defaultValue="10" 
-                          min="5" 
-                          max="20" 
-                          className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 mb-2 block">Max Players per Game</label>
-                        <Input 
-                          type="number" 
-                          defaultValue="4" 
-                          min="2" 
-                          max="8" 
-                          className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                    
-                    <Button disabled className="bg-blue-600 hover:bg-blue-700 shadow-sm">
-                      Save Settings
-                    </Button>
                   </CardContent>
                 </Card>
               </div>

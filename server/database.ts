@@ -116,15 +116,24 @@ export interface IDatabase {
     soloGamesLast24h: number;
     leaderboardPlayers: number;
   }>;
-  getAdminRecentActivity(limit?: number): Promise<
-    Array<{
+  getAdminRecentActivity(limit?: number): Promise<{
+    items: Array<{
       id: string;
       type: "signup" | "solo_game" | "multi_game" | "team_battle";
       title: string;
-      description: string;
+      subtitle: string;
       timestamp: string;
-    }>
-  >;
+      meta: Record<string, string | number | null>;
+    }>;
+    summary: {
+      total: number;
+      signups: number;
+      soloGames: number;
+      multiGames: number;
+      teamBattles: number;
+      lastUpdated: string;
+    };
+  }>;
 
   // Multiplayer score methods
   saveMultiplayerScore(score: any): Promise<any>;
@@ -1489,40 +1498,61 @@ class PostgreSQLDatabase implements IDatabase {
     }
   }
 
-  async getAdminRecentActivity(limit = 30): Promise<
-    Array<{
+  async getAdminRecentActivity(limit = 40) {
+    const perSource = Math.max(Math.ceil(limit / 2), 12);
+    type ActivityItem = {
       id: string;
       type: "signup" | "solo_game" | "multi_game" | "team_battle";
       title: string;
-      description: string;
+      subtitle: string;
       timestamp: string;
-    }>
-  > {
-    const perSource = Math.max(Math.ceil(limit / 2), 10);
-    const items: Array<{
-      id: string;
-      type: "signup" | "solo_game" | "multi_game" | "team_battle";
-      title: string;
-      description: string;
-      timestamp: string;
-    }> = [];
+      meta: Record<string, string | number | null>;
+    };
+
+    const items: ActivityItem[] = [];
 
     try {
-      const signups = await sql`
-        SELECT id, username, full_name, email,
-               COALESCE(created_at, last_login_at, last_seen) AS ts
-        FROM users
-        ORDER BY COALESCE(created_at, last_login_at, last_seen) DESC NULLS LAST
-        LIMIT ${perSource}
-      `;
+      let signups: Array<{
+        id: number;
+        username: string;
+        full_name: string | null;
+        email: string | null;
+        ts: Date;
+      }> = [];
+
+      try {
+        signups = await sql`
+          SELECT id, username, full_name, email,
+                 COALESCE(created_at, last_login_at, last_seen) AS ts
+          FROM users
+          ORDER BY COALESCE(created_at, last_login_at, last_seen) DESC NULLS LAST
+          LIMIT ${perSource}
+        `;
+      } catch {
+        signups = await sql`
+          SELECT id, username, full_name, email,
+                 COALESCE(last_login_at, last_seen) AS ts
+          FROM users
+          ORDER BY COALESCE(last_login_at, last_seen) DESC NULLS LAST
+          LIMIT ${perSource}
+        `;
+      }
+
       for (const row of signups) {
-        const name = row.full_name || row.username;
+        if (!row.ts) continue;
+        const displayName = row.full_name || row.username;
         items.push({
           id: `signup-${row.id}`,
           type: "signup",
-          title: "New user registered",
-          description: `${name}${row.email ? ` (${row.email})` : ""}`,
+          title: "New member joined",
+          subtitle: `${displayName} created an account`,
           timestamp: new Date(row.ts).toISOString(),
+          meta: {
+            userId: row.id,
+            username: row.username,
+            displayName,
+            email: row.email,
+          },
         });
       }
     } catch (error) {
@@ -1531,18 +1561,36 @@ class PostgreSQLDatabase implements IDatabase {
 
     try {
       const soloGames = await sql`
-        SELECT id, player_name, score, category, difficulty, timestamp AS ts
+        SELECT id, player_name, score, correct_answers, incorrect_answers,
+               category, difficulty, game_type, total_questions, timestamp AS ts
         FROM single_player_scores
         ORDER BY timestamp DESC NULLS LAST
         LIMIT ${perSource}
       `;
       for (const row of soloGames) {
+        const correct = Number(row.correct_answers ?? 0);
+        const incorrect = Number(row.incorrect_answers ?? 0);
+        const total = correct + incorrect;
+        const accuracy =
+          total > 0 ? Math.round((correct / total) * 100) : null;
+
         items.push({
           id: `solo-${row.id}`,
           type: "solo_game",
-          title: "Solo game completed",
-          description: `${row.player_name} scored ${row.score} · ${row.category} · ${row.difficulty}`,
+          title: "Solo quiz completed",
+          subtitle: `${row.player_name} finished with ${row.score} points`,
           timestamp: new Date(row.ts).toISOString(),
+          meta: {
+            playerName: row.player_name,
+            score: Number(row.score),
+            correctAnswers: correct,
+            incorrectAnswers: incorrect,
+            accuracy,
+            category: row.category,
+            difficulty: row.difficulty,
+            gameType: row.game_type,
+            totalQuestions: Number(row.total_questions ?? 0),
+          },
         });
       }
     } catch (error) {
@@ -1551,18 +1599,39 @@ class PostgreSQLDatabase implements IDatabase {
 
     try {
       const multiGames = await sql`
-        SELECT id, player_name, score, category, difficulty, player_count, timestamp AS ts
+        SELECT id, player_name, score, correct_answers, incorrect_answers,
+               category, difficulty, player_count, game_type, total_questions,
+               timestamp AS ts
         FROM multiplayer_scores
         ORDER BY timestamp DESC NULLS LAST
         LIMIT ${perSource}
       `;
       for (const row of multiGames) {
+        const correct = Number(row.correct_answers ?? 0);
+        const incorrect = Number(row.incorrect_answers ?? 0);
+        const total = correct + incorrect;
+        const accuracy =
+          total > 0 ? Math.round((correct / total) * 100) : null;
+        const playerCount = Number(row.player_count ?? 0);
+
         items.push({
           id: `multi-${row.id}`,
           type: "multi_game",
-          title: "Multiplayer game completed",
-          description: `${row.player_name} scored ${row.score} · ${row.player_count} players · ${row.category}`,
+          title: "Multiplayer match finished",
+          subtitle: `${row.player_name} scored ${row.score} pts in a ${playerCount}-player game`,
           timestamp: new Date(row.ts).toISOString(),
+          meta: {
+            playerName: row.player_name,
+            score: Number(row.score),
+            correctAnswers: correct,
+            incorrectAnswers: incorrect,
+            accuracy,
+            category: row.category,
+            difficulty: row.difficulty,
+            playerCount,
+            gameType: row.game_type,
+            totalQuestions: Number(row.total_questions ?? 0),
+          },
         });
       }
     } catch (error) {
@@ -1572,41 +1641,88 @@ class PostgreSQLDatabase implements IDatabase {
     try {
       const teamBattles = await sql`
         SELECT id, team_a_name, team_b_name, status, category, difficulty,
-               team_a_score, team_b_score, created_at, started_at, finished_at,
+               team_a_score, team_b_score, game_type,
+               created_at, started_at, finished_at,
                COALESCE(finished_at, started_at, created_at) AS ts
         FROM team_battles
         ORDER BY COALESCE(finished_at, started_at, created_at) DESC NULLS LAST
         LIMIT ${perSource}
       `;
       for (const row of teamBattles) {
-        const opponent = row.team_b_name || "Waiting for opponent";
-        const scoreLine =
-          row.status === "finished"
-            ? `${row.team_a_score ?? 0} – ${row.team_b_score ?? 0}`
-            : row.status;
+        const teamA = row.team_a_name;
+        const teamB = row.team_b_name;
+        const scoreA = Number(row.team_a_score ?? 0);
+        const scoreB = Number(row.team_b_score ?? 0);
+        const status = row.status as string;
+        const opponent = teamB || "Waiting for opponent";
+
+        let title = "Team battle lobby opened";
+        let subtitle = `${teamA} is waiting for an opponent`;
+        let winner: string | null = null;
+
+        if (status === "ready") {
+          title = "Teams are ready";
+          subtitle = `${teamA} vs ${opponent} — both sides ready to start`;
+        } else if (status === "playing") {
+          title = "Team battle in progress";
+          subtitle = `${teamA} vs ${opponent} — live score ${scoreA}–${scoreB}`;
+        } else if (status === "finished") {
+          title = "Team battle completed";
+          if (teamB) {
+            if (scoreA > scoreB) winner = teamA;
+            else if (scoreB > scoreA) winner = teamB;
+            else winner = "Draw";
+            subtitle = winner === "Draw"
+              ? `${teamA} vs ${teamB} ended in a draw (${scoreA}–${scoreB})`
+              : `${winner} beat ${winner === teamA ? teamB : teamA} (${scoreA}–${scoreB})`;
+          } else {
+            subtitle = `${teamA} vs ${opponent} — final score ${scoreA}–${scoreB}`;
+          }
+        } else if (teamB) {
+          subtitle = `${teamA} vs ${teamB} — waiting in lobby`;
+        }
+
         items.push({
           id: `battle-${row.id}`,
           type: "team_battle",
-          title:
-            row.status === "finished"
-              ? "Team battle finished"
-              : row.status === "playing"
-                ? "Team battle in progress"
-                : "Team battle created",
-          description: `${row.team_a_name} vs ${opponent} · ${scoreLine} · ${row.category}`,
+          title,
+          subtitle,
           timestamp: new Date(row.ts).toISOString(),
+          meta: {
+            teamAName: teamA,
+            teamBName: teamB,
+            teamAScore: scoreA,
+            teamBScore: scoreB,
+            status,
+            winner,
+            category: row.category,
+            difficulty: row.difficulty,
+            gameType: row.game_type,
+          },
         });
       }
     } catch (error) {
       console.error("Error fetching team battle activity:", error);
     }
 
-    return items
+    const sorted = items
       .sort(
         (a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       )
       .slice(0, limit);
+
+    return {
+      items: sorted,
+      summary: {
+        total: sorted.length,
+        signups: sorted.filter((i) => i.type === "signup").length,
+        soloGames: sorted.filter((i) => i.type === "solo_game").length,
+        multiGames: sorted.filter((i) => i.type === "multi_game").length,
+        teamBattles: sorted.filter((i) => i.type === "team_battle").length,
+        lastUpdated: new Date().toISOString(),
+      },
+    };
   }
 
   // Multiplayer score methods
@@ -3665,6 +3781,12 @@ class PostgreSQLDatabase implements IDatabase {
         `);
         await db.execute(`
           ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+        `);
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+        `);
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
         `);
         await db.execute(`
           CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique

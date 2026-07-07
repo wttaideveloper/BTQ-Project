@@ -1428,8 +1428,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/recent-activity", ensureAdmin, async (req, res) => {
     try {
       const limit = req.query.limit
-        ? Math.min(parseInt(req.query.limit as string, 10) || 30, 100)
-        : 30;
+        ? Math.min(parseInt(req.query.limit as string, 10) || 40, 100)
+        : 40;
       const activity = await database.getAdminRecentActivity(limit);
       res.json(activity);
     } catch (err) {

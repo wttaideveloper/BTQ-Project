@@ -116,6 +116,15 @@ export interface IDatabase {
     soloGamesLast24h: number;
     leaderboardPlayers: number;
   }>;
+  getAdminRecentActivity(limit?: number): Promise<
+    Array<{
+      id: string;
+      type: "signup" | "solo_game" | "multi_game" | "team_battle";
+      title: string;
+      description: string;
+      timestamp: string;
+    }>
+  >;
 
   // Multiplayer score methods
   saveMultiplayerScore(score: any): Promise<any>;
@@ -1478,6 +1487,126 @@ class PostgreSQLDatabase implements IDatabase {
       console.error("Error in getAdminDashboardStats:", error);
       return empty;
     }
+  }
+
+  async getAdminRecentActivity(limit = 30): Promise<
+    Array<{
+      id: string;
+      type: "signup" | "solo_game" | "multi_game" | "team_battle";
+      title: string;
+      description: string;
+      timestamp: string;
+    }>
+  > {
+    const perSource = Math.max(Math.ceil(limit / 2), 10);
+    const items: Array<{
+      id: string;
+      type: "signup" | "solo_game" | "multi_game" | "team_battle";
+      title: string;
+      description: string;
+      timestamp: string;
+    }> = [];
+
+    try {
+      const signups = await sql`
+        SELECT id, username, full_name, email,
+               COALESCE(created_at, last_login_at, last_seen) AS ts
+        FROM users
+        ORDER BY COALESCE(created_at, last_login_at, last_seen) DESC NULLS LAST
+        LIMIT ${perSource}
+      `;
+      for (const row of signups) {
+        const name = row.full_name || row.username;
+        items.push({
+          id: `signup-${row.id}`,
+          type: "signup",
+          title: "New user registered",
+          description: `${name}${row.email ? ` (${row.email})` : ""}`,
+          timestamp: new Date(row.ts).toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching signup activity:", error);
+    }
+
+    try {
+      const soloGames = await sql`
+        SELECT id, player_name, score, category, difficulty, timestamp AS ts
+        FROM single_player_scores
+        ORDER BY timestamp DESC NULLS LAST
+        LIMIT ${perSource}
+      `;
+      for (const row of soloGames) {
+        items.push({
+          id: `solo-${row.id}`,
+          type: "solo_game",
+          title: "Solo game completed",
+          description: `${row.player_name} scored ${row.score} · ${row.category} · ${row.difficulty}`,
+          timestamp: new Date(row.ts).toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching solo game activity:", error);
+    }
+
+    try {
+      const multiGames = await sql`
+        SELECT id, player_name, score, category, difficulty, player_count, timestamp AS ts
+        FROM multiplayer_scores
+        ORDER BY timestamp DESC NULLS LAST
+        LIMIT ${perSource}
+      `;
+      for (const row of multiGames) {
+        items.push({
+          id: `multi-${row.id}`,
+          type: "multi_game",
+          title: "Multiplayer game completed",
+          description: `${row.player_name} scored ${row.score} · ${row.player_count} players · ${row.category}`,
+          timestamp: new Date(row.ts).toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching multiplayer activity:", error);
+    }
+
+    try {
+      const teamBattles = await sql`
+        SELECT id, team_a_name, team_b_name, status, category, difficulty,
+               team_a_score, team_b_score, created_at, started_at, finished_at,
+               COALESCE(finished_at, started_at, created_at) AS ts
+        FROM team_battles
+        ORDER BY COALESCE(finished_at, started_at, created_at) DESC NULLS LAST
+        LIMIT ${perSource}
+      `;
+      for (const row of teamBattles) {
+        const opponent = row.team_b_name || "Waiting for opponent";
+        const scoreLine =
+          row.status === "finished"
+            ? `${row.team_a_score ?? 0} – ${row.team_b_score ?? 0}`
+            : row.status;
+        items.push({
+          id: `battle-${row.id}`,
+          type: "team_battle",
+          title:
+            row.status === "finished"
+              ? "Team battle finished"
+              : row.status === "playing"
+                ? "Team battle in progress"
+                : "Team battle created",
+          description: `${row.team_a_name} vs ${opponent} · ${scoreLine} · ${row.category}`,
+          timestamp: new Date(row.ts).toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching team battle activity:", error);
+    }
+
+    return items
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )
+      .slice(0, limit);
   }
 
   // Multiplayer score methods

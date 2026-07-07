@@ -1422,6 +1422,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/admin/recent-activity", ensureAdmin, async (req, res) => {
+    try {
+      const limit = req.query.limit
+        ? Math.min(parseInt(req.query.limit as string, 10) || 30, 100)
+        : 30;
+      const activity = await database.getAdminRecentActivity(limit);
+      res.json(activity);
+    } catch (err) {
+      console.error("Error fetching admin recent activity:", err);
+      res.status(500).json({ message: "Failed to fetch recent activity" });
+    }
+  });
+
+  app.get("/api/admin/leaderboard/export", ensureAdmin, async (req, res) => {
+    try {
+      const gameType = (req.query.gameType as string) || "all";
+      if (!["all", "single", "multi"].includes(gameType)) {
+        return res.status(400).json({ message: "Invalid gameType" });
+      }
+
+      const players = await database.getLeaderboardData(gameType);
+      const escapeCsv = (value: string | number) => {
+        const str = String(value ?? "");
+        return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+
+      const header = [
+        "Rank",
+        "Player",
+        "Score",
+        "Games Played",
+        "Correct",
+        "Incorrect",
+        "Accuracy (%)",
+        "Game Type Filter",
+      ].join(",");
+
+      const rows = players.map((player, index) =>
+        [
+          index + 1,
+          player.name,
+          player.score,
+          player.gamesPlayed,
+          player.correctAnswers,
+          player.incorrectAnswers,
+          player.accuracy,
+          gameType,
+        ]
+          .map(escapeCsv)
+          .join(",")
+      );
+
+      const csv = [header, ...rows].join("\r\n");
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="faithiq-leaderboard-${gameType}-${dateStamp}.csv"`
+      );
+      res.send(csv);
+    } catch (err) {
+      console.error("Error exporting leaderboard CSV:", err);
+      res.status(500).json({ message: "Failed to export leaderboard" });
+    }
+  });
+
   // Submit game results (for multiplayer games)
   app.post("/api/game/results", async (req, res) => {
     try {

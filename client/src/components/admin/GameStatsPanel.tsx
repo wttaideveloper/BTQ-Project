@@ -18,6 +18,7 @@ import {
   Users,
 } from "lucide-react";
 import { getQueryFn } from "@/lib/queryClient";
+import { RecentActivityFeed } from "@/components/admin/RecentActivityFeed";
 
 type DashboardStats = {
   totalUsers: number;
@@ -195,6 +196,8 @@ export function GameStatsPanel() {
               </div>
             </CardContent>
           </Card>
+
+          <RecentActivityFeed />
         </>
       )}
     </div>

@@ -13,10 +13,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Award,
+  Download,
   Medal,
   RefreshCw,
   Trophy,
 } from "lucide-react";
+import { buildLeaderboardCsv, downloadCsv } from "@/lib/csv-export";
 
 interface LeaderboardPlayer {
   id: string;
@@ -52,6 +54,7 @@ function RankIcon({ rank }: { rank: string }) {
 
 export function AdminLeaderboardPanel() {
   const [gameType, setGameType] = useState<GameType>("all");
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["/api/leaderboard", gameType],
@@ -73,6 +76,37 @@ export function AdminLeaderboardPanel() {
     refetch();
   }, [refetch]);
 
+  const handleExportCsv = useCallback(async () => {
+    setIsExporting(true);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const fallbackFilename = `faithiq-leaderboard-${gameType}-${dateStamp}.csv`;
+
+    try {
+      const res = await fetch(
+        `/api/admin/leaderboard/export?gameType=${gameType}`,
+        { credentials: "include" }
+      );
+
+      if (res.ok) {
+        const csv = await res.text();
+        const disposition = res.headers.get("Content-Disposition") ?? "";
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        downloadCsv(csv, match?.[1] ?? fallbackFilename);
+        return;
+      }
+
+      if (players.length > 0) {
+        downloadCsv(buildLeaderboardCsv(players, gameType), fallbackFilename);
+      }
+    } catch {
+      if (players.length > 0) {
+        downloadCsv(buildLeaderboardCsv(players, gameType), fallbackFilename);
+      }
+    } finally {
+      setIsExporting(false);
+    }
+  }, [gameType, players]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
@@ -87,15 +121,26 @@ export function AdminLeaderboardPanel() {
             )}
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleRefresh}
-          disabled={isFetching}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExportCsv}
+            disabled={isExporting || (players.length === 0 && !isLoading)}
+            className="flex items-center gap-2"
+          >
+            <Download className={`h-4 w-4 ${isExporting ? "animate-pulse" : ""}`} />
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={isFetching}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <Tabs

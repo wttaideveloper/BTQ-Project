@@ -385,21 +385,21 @@ export default function TeamBattleGame() {
           // Silent error handling - page might be closing
         }
 
-        // Show a small loader overlay to indicate we're cleaning up before refresh/navigation
-        try {
-          setShowRefreshLoader(true);
-        } catch (_) {
-          // ignore - defensive
-        }
+        // Do not show the loader here — beforeunload fires before the browser
+        // confirm dialog, so if the user clicks Cancel the page stays and the
+        // overlay would never be cleared.
+      }
+    };
 
-        // DO NOT call event.preventDefault() or set returnValue —
-        // we intentionally avoid the native browser confirmation dialog here
-        // because the app already uses a custom exit dialog. Allow the
-        // navigation/refresh to proceed immediately.
+    const resetLoaderIfNavigationCancelled = () => {
+      if (!isExitingRef.current) {
+        setShowRefreshLoader(false);
       }
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pageshow", resetLoaderIfNavigationCancelled);
+    window.addEventListener("focus", resetLoaderIfNavigationCancelled);
 
     // Register a global navigation protection for this team battle instance.
     const protectionId = `team-battle-${gameSessionId}-${user?.id}`;
@@ -1062,6 +1062,8 @@ export default function TeamBattleGame() {
     return () => {
       socket.removeEventListener("message", handleMessage);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pageshow", resetLoaderIfNavigationCancelled);
+      window.removeEventListener("focus", resetLoaderIfNavigationCancelled);
       unregisterNavigationProtection(`team-battle-${gameSessionId}-${user?.id}`);
     };
   }, [user, gameSessionId]);
@@ -2551,7 +2553,20 @@ export default function TeamBattleGame() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showExitConfirmation} onOpenChange={setShowExitConfirmation}>
+      <Dialog
+        open={showExitConfirmation}
+        onOpenChange={(open) => {
+          setShowExitConfirmation(open);
+          if (!open && confirmResolverRef.current) {
+            setShowRefreshLoader(false);
+            try {
+              confirmResolverRef.current(false);
+            } finally {
+              confirmResolverRef.current = null;
+            }
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white border border-white/20">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-center flex items-center justify-center gap-2">

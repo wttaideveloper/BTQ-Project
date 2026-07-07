@@ -35,7 +35,12 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import { formatAverageAnswerTime } from "@/lib/game-stats";
+import {
+  formatAverageAnswerTime,
+  getScoreCategory,
+  getScoreDifficulty,
+  mostPlayedLabel,
+} from "@/lib/game-stats";
 
 interface ScoreRecord {
   id: string;
@@ -60,23 +65,6 @@ interface LeaderboardPlayer {
   gamesPlayed: number;
   accuracy: number;
   isCurrentUser?: boolean;
-}
-
-function modeValue(items: string[]): string {
-  if (items.length === 0) return "—";
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    counts.set(item, (counts.get(item) ?? 0) + 1);
-  }
-  let best = items[0];
-  let bestCount = 0;
-  counts.forEach((count, key) => {
-    if (count > bestCount) {
-      bestCount = count;
-      best = key;
-    }
-  });
-  return best;
 }
 
 function formatDate(ts: string) {
@@ -112,6 +100,8 @@ export default function GameHistory() {
     },
     enabled: !!user,
     staleTime: 30_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const {
@@ -181,14 +171,19 @@ export default function GameHistory() {
       ? parseFloat(lastGame.average_time)
       : 0;
 
+    const favoriteCategory = mostPlayedLabel(recentScores, "category");
+    const favoriteDifficulty = mostPlayedLabel(recentScores, "difficulty");
+
     return {
       totalGames,
       bestScore,
       averageScore,
       accuracy,
       totalScore,
-      favoriteCategory: modeValue(scores.map((s) => s.category)),
-      favoriteDifficulty: modeValue(scores.map((s) => s.difficulty)),
+      favoriteCategory: favoriteCategory.label,
+      favoriteCategoryCount: favoriteCategory.count,
+      favoriteDifficulty: favoriteDifficulty.label,
+      favoriteDifficultyCount: favoriteDifficulty.count,
       rank,
       globalPlayers: leaderboardData?.metadata?.totalPlayers ?? players.length,
       lastScore: lastGame?.score ?? null,
@@ -348,13 +343,23 @@ export default function GameHistory() {
                 <p className="text-lg font-semibold text-white truncate">
                   {stats.favoriteCategory}
                 </p>
-                <p className="text-white/55 text-sm">Favorite Category</p>
+                <p className="text-white/55 text-sm">
+                  Most Played Category
+                  {stats.favoriteCategoryCount > 0
+                    ? ` · ${stats.favoriteCategoryCount} game${stats.favoriteCategoryCount === 1 ? "" : "s"}`
+                    : ""}
+                </p>
               </div>
               <div>
                 <p className="text-lg font-semibold text-white">
                   {stats.favoriteDifficulty}
                 </p>
-                <p className="text-white/55 text-sm">Favorite Difficulty</p>
+                <p className="text-white/55 text-sm">
+                  Most Played Difficulty
+                  {stats.favoriteDifficultyCount > 0
+                    ? ` · ${stats.favoriteDifficultyCount} game${stats.favoriteDifficultyCount === 1 ? "" : "s"}`
+                    : ""}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -417,10 +422,10 @@ export default function GameHistory() {
                                 {game.score} pts
                               </span>
                               <Badge className="bg-accent/15 text-accent border-accent/25 text-xs">
-                                {game.category}
+                                {getScoreCategory(game)}
                               </Badge>
                               <Badge className="bg-white/10 text-white/80 border-white/15 text-xs">
-                                {game.difficulty}
+                                {getScoreDifficulty(game)}
                               </Badge>
                               <Badge className="bg-white/10 text-white/70 border-white/15 text-xs capitalize">
                                 {game.game_type}

@@ -40,9 +40,10 @@ import {
   getScoreCategory,
   getScoreDifficulty,
   mostPlayedLabel,
+  type ScoreHistoryRow,
 } from "@/lib/game-stats";
 
-interface ScoreRecord {
+interface ScoreRecord extends ScoreHistoryRow {
   id: string;
   user_id: number;
   player_name: string;
@@ -314,14 +315,14 @@ export default function GameHistory() {
         </div>
 
         {/* Detail cards */}
-        <div className="grid md:grid-cols-1 gap-4 max-w-2xl">
+        <div className="grid gap-4">
           <Card className="home-glass-card rounded-xl border-white/10">
             <CardHeader className="pb-2">
               <CardTitle className="text-white flex items-center gap-2 text-lg">
                 <BarChart3 className="h-5 w-5 text-accent" /> Your Performance
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4 text-center sm:text-left">
+            <CardContent className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 text-center sm:text-left">
               <div>
                 <p className="text-2xl font-bold text-white">
                   {stats.bestScore}

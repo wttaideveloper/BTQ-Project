@@ -103,7 +103,7 @@ function formatLastLogin(value?: string | Date | null) {
 }
 
 const Home: React.FC = () => {
-  const [_, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [showGameSetup, setShowGameSetup] = useState(false);
   const [gameSetupKey, setGameSetupKey] = useState(0);
   const [showTeamBattleSetup, setShowTeamBattleSetup] = useState(false);
@@ -367,19 +367,32 @@ const Home: React.FC = () => {
     return `#${index + 1}`;
   };
 
+  const handleLogoClick = () => {
+    if (location === "/") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    setLocation("/");
+  };
+
   return (
-    <div className="home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] font-heading overflow-x-hidden">
-      {/* Header */}
-      <header className="sticky top-0 z-40 backdrop-blur-lg bg-[#121628]/90 border-b border-white/10">
+    <div className="home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] font-heading">
+      {/* Header — fixed (sticky breaks when root has overflow-x:hidden) */}
+      <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-lg bg-[#121628]/90 border-b border-white/10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleLogoClick}
+            className="flex items-center gap-2.5 hover:opacity-90 transition-opacity cursor-pointer"
+            aria-label="Go to dashboard"
+          >
             <div className="w-9 h-9 bg-accent rounded-xl flex items-center justify-center shadow-lg">
               <span className="text-primary font-bold text-lg">F</span>
             </div>
             <span className="text-xl font-bold text-white">
               Faith<span className="text-accent">IQ</span>
             </span>
-          </div>
+          </button>
 
           <div className="flex items-center gap-2">
             {user ? (
@@ -482,7 +495,7 @@ const Home: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 pb-12 space-y-6 sm:space-y-8">
+      <main className="max-w-6xl mx-auto px-4 pb-12 pt-[4.25rem] space-y-6 sm:space-y-8 overflow-x-hidden">
         {/* Hero */}
         <section className="pt-6 sm:pt-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8 lg:gap-10">

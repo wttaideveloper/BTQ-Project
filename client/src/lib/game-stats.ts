@@ -21,7 +21,6 @@ export function getAnsweredQuestionCount(
 export type ScoreHistoryRow = {
   category?: string;
   difficulty?: string;
-  [key: string]: unknown;
 };
 
 export function getScoreCategory(score: ScoreHistoryRow): string {

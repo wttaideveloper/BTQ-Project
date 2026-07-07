@@ -1,7 +1,6 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Home, Users } from 'lucide-react';
-import { Link } from 'wouter';
 import Avatar from './Avatar';
 import {
   calculateAverageAnswerTime,
@@ -32,6 +31,7 @@ interface GameSidebarProps {
   playerNames?: string[];
   currentPlayerIndex?: number;
   isMultiplayer?: boolean;
+  onExitClick?: () => void;
 }
 
 const GameSidebar: React.FC<GameSidebarProps> = ({
@@ -41,7 +41,8 @@ const GameSidebar: React.FC<GameSidebarProps> = ({
   playerStats = [],
   playerNames = [],
   currentPlayerIndex = 0,
-  isMultiplayer = false
+  isMultiplayer = false,
+  onExitClick,
 }) => {
   const accuracy = stats.correctAnswers + stats.incorrectAnswers > 0
     ? Math.round((stats.correctAnswers / (stats.correctAnswers + stats.incorrectAnswers)) * 100)
@@ -161,13 +162,12 @@ const GameSidebar: React.FC<GameSidebarProps> = ({
       
       {/* Game Options - Family Feud Style */}
       <div className="mt-3 sm:mt-auto">
-        <Link href="/">
-          <Button 
-            className="w-full bg-gradient-to-r from-red-600 to-red-800 text-white py-2 sm:py-3 rounded-xl hover:from-red-700 hover:to-red-900 font-bold flex items-center justify-center text-sm sm:text-base md:text-lg shadow-lg"
-          >
-            <Home className="mr-1 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" /> EXIT GAME
-          </Button>
-        </Link>
+        <Button
+          onClick={onExitClick}
+          className="w-full bg-gradient-to-r from-red-600 to-red-800 text-white py-2 sm:py-3 rounded-xl hover:from-red-700 hover:to-red-900 font-bold flex items-center justify-center text-sm sm:text-base md:text-lg shadow-lg"
+        >
+          <Home className="mr-1 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" /> EXIT GAME
+        </Button>
       </div>
     </div>
   );

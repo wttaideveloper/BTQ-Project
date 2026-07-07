@@ -131,7 +131,7 @@ const Home: React.FC = () => {
   const [gameDuration, setGameDuration] = useState<TimeBasedDurationMinutes>(
     DEFAULT_TIME_BASED_DURATION
   );
-  const [category, setCategory] = useState("Bible Stories");
+  const [category, setCategory] = useState("All Categories");
   const [difficulty, setDifficulty] = useState("Beginner");
 
   const dailyVerse = useMemo(() => getDailyVerse(), []);

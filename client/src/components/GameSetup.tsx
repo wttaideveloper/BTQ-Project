@@ -59,7 +59,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
   const params = new URLSearchParams(search);
   const initialGameType =
     (params.get("gameType") as "question" | "time") || "question";
-  const initialCategory = params.get("category") || "Bible Stories";
+  const initialCategory = params.get("category") || "All Categories";
   const initialDifficulty = params.get("difficulty") || "Beginner";
   const initialGameDuration = parseInt(
     params.get("gameDuration") || String(DEFAULT_TIME_BASED_DURATION),

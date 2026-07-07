@@ -17,6 +17,14 @@ import {
   LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import GameHeader from "@/components/GameHeader";
 import GameBoard from "@/components/GameBoard";
 import GameSidebar from "@/components/GameSidebar";
@@ -194,6 +202,7 @@ const Game: React.FC = () => {
   >(null);
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
   const [gameEnded, setGameEnded] = useState(false);
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(
     savedState?.currentPlayerIndex ?? 0
   ); // Track which player's turn it is
@@ -273,15 +282,17 @@ const Game: React.FC = () => {
     refetchOnWindowFocus: false,
     retry: 2, // Retry twice on failure
     enabled: !!gameId, // Only fetch when gameId is available
-    onError: (error) => {
-      console.error("❌ Error fetching questions:", error);
-      toast({
-        title: "Error Loading Questions",
-        description: error instanceof Error ? error.message : "Failed to load questions. Please try again.",
-        variant: "destructive",
-      });
-    },
   });
+
+  useEffect(() => {
+    if (!error) return;
+    console.error("❌ Error fetching questions:", error);
+    toast({
+      title: "Error Loading Questions",
+      description: error instanceof Error ? error.message : "Failed to load questions. Please try again.",
+      variant: "destructive",
+    });
+  }, [error, toast]);
 
   const activeQuestions =
     gameType === "time" ? sessionQuestions : questions ?? [];
@@ -590,6 +601,27 @@ const Game: React.FC = () => {
     });
 
 
+  };
+
+  const handleExitGame = () => {
+    setShowExitConfirmation(false);
+    voiceService.stopAllAudio(true);
+    stopSpeaking();
+    sessionStorage.removeItem("currentGameId");
+    sessionStorage.removeItem(`gameState_${gameId}`);
+    sessionStorage.removeItem("questionRead");
+    for (let i = 0; i <= 20; i++) {
+      sessionStorage.removeItem(`questionRead_${i}`);
+    }
+    setLocation("/");
+  };
+
+  const handleExitClick = () => {
+    if (gameMode === "multi" && !gameEnded) {
+      setShowExitConfirmation(true);
+      return;
+    }
+    handleExitGame();
   };
 
   // Initialize sounds and socket connection
@@ -1545,6 +1577,7 @@ const Game: React.FC = () => {
               playerNames={playerNames}
               currentPlayerIndex={currentPlayerIndex}
               isMultiplayer={gameMode === "multi" && playerCount > 1}
+              onExitClick={handleExitClick}
             />
           </div>
         </main>
@@ -1710,6 +1743,51 @@ const Game: React.FC = () => {
           }}
         />
       )}
+
+      <Dialog
+        open={showExitConfirmation}
+        onOpenChange={setShowExitConfirmation}
+      >
+        <DialogContent className="sm:max-w-md bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white border border-white/20">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-center flex items-center justify-center gap-2">
+              <LogOut className="h-5 w-5 text-red-400" />
+              Exit Game?
+            </DialogTitle>
+            <DialogDescription className="text-white/80 text-center pt-2">
+              Are you sure you want to leave the game? Your progress will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2">
+              <p className="text-sm font-semibold text-red-400">What happens when you leave:</p>
+              <ul className="text-xs sm:text-sm text-white/70 space-y-1 list-disc list-inside">
+                <li>The current game session will end</li>
+                <li>All player scores and progress will be lost</li>
+                {gameMode === "multi" && playerCount > 1 && (
+                  <li className="text-red-400 font-semibold">Other players on this device will lose their progress too</li>
+                )}
+              </ul>
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowExitConfirmation(false)}
+              className="w-full sm:w-auto bg-white/5 border-white/30 text-white hover:bg-white/10 hover:border-white/40 hover:text-white transition-all duration-200"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExitGame}
+              className="w-full sm:w-auto bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold shadow-lg transition-all duration-200"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Yes, Exit Game
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

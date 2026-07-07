@@ -24,6 +24,7 @@ import {
   MicOff,
   HelpCircle,
   LogOut,
+  User,
   Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -2109,6 +2110,17 @@ export default function TeamBattleGame() {
     gameState.phase !== "toss" &&
     !isTossOverlayActive;
 
+  const isRapidFireMode =
+    gameState.gameType === "rapid_fire" || isRapidFireRef.current;
+  const activeQuestion = currentRapidQuestion || gameState.currentQuestion;
+  const displayCategory = activeQuestion?.category;
+  const displayDifficulty = activeQuestion?.difficulty;
+  const currentPlayerName =
+    user?.username ||
+    gameState.playerTeam?.members.find((m) => m.userId === user?.id)
+      ?.username ||
+    "Player";
+
 
 
   useEffect(() => {
@@ -2140,76 +2152,6 @@ export default function TeamBattleGame() {
         </div>
       )}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
-        {/* Team Scores Header - Show during game (normal or rapid fire) - even during preparing/loading phase */}
-        {((gameState.phase === "question") || (gameState.phase === "playing")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && (
-          <div className="mb-3 sm:mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
-              {/* Your Team */}
-              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${gameState.isYourTurn !== false
-                ? 'bg-accent/20 border-accent shadow-lg shadow-accent/30'
-                : 'bg-primary/10 border-primary/30'
-                }`}>
-                <div className="flex items-center justify-between gap-2 sm:gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Your Team</div>
-                    <div className="text-base sm:text-lg md:text-xl font-bold text-white truncate">{gameState.playerTeam.name}</div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Score</div>
-                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-accent">{gameState.playerTeam.score || 0}</div>
-                  </div>
-                  {gameState.isYourTurn !== false && (
-                    <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-accent text-primary rounded-full text-xs font-bold animate-pulse flex-shrink-0 whitespace-nowrap">
-                      YOUR TURN
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* VS Separator */}
-              <div className="text-white/50 font-bold text-lg sm:text-xl text-center flex-shrink-0">VS</div>
-
-              {/* Opposing Team */}
-              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${gameState.isYourTurn === false
-                ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/30'
-                : 'bg-secondary/10 border-secondary/30'
-                }`}>
-                <div className="flex items-center justify-between gap-2 sm:gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Opponent</div>
-                    <div className="text-base sm:text-lg md:text-xl font-bold text-white truncate">{gameState.opposingTeam.name}</div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Score</div>
-                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-secondary">{gameState.opposingTeam.score || 0}</div>
-                  </div>
-                  {gameState.isYourTurn === false && (
-                    <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-yellow-500 text-black rounded-full text-xs font-bold animate-pulse flex-shrink-0 whitespace-nowrap">
-                      THEIR TURN
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Question Progress */}
-            {gameState.questionNumber && gameState.totalQuestions && (
-              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/10">
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm text-white/80 text-center">
-                  <span>Question {gameState.questionNumber} of {gameState.totalQuestions}</span>
-                  <span className="hidden sm:inline text-white/50">•</span>
-                  <span className="text-white/70">
-                    {gameState.isYourTurn !== false
-                      ? `Your team answers this question`
-                      : `${gameState.answeringTeamName || 'Opponent'} is answering`
-                    }
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Header with logo on left and controls on right */}
         <header className="mb-3 sm:mb-4">
           {/* First Row: Logo and Exit Game Button */}
@@ -2315,6 +2257,111 @@ export default function TeamBattleGame() {
             </Button>
           </div>
         </header>
+
+        {/* Mode & player — matches Solo Quiz header strip */}
+        {user && (
+          <div className="mb-3 sm:mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 sm:px-4 sm:py-2.5">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
+              <span
+                className={`text-xs sm:text-sm font-bold uppercase tracking-wide ${
+                  isRapidFireMode ? "text-[#DEB126]" : "text-accent"
+                }`}
+              >
+                {isRapidFireMode ? "Rapid Fire" : "Team Battle"}
+              </span>
+              {(displayCategory || displayDifficulty) && (
+                <>
+                  <span className="hidden sm:inline text-white/30">·</span>
+                  <span className="text-xs sm:text-sm text-white/60 truncate">
+                    {[displayCategory, displayDifficulty]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <User
+                className={`h-4 w-4 ${
+                  isRapidFireMode ? "text-[#DEB126]" : "text-accent"
+                }`}
+              />
+              <span className="text-sm font-semibold text-white truncate max-w-[140px] sm:max-w-none">
+                {currentPlayerName}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Team Scores Header - Show during game (normal or rapid fire) - even during preparing/loading phase */}
+        {((gameState.phase === "question") || (gameState.phase === "playing")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && (
+          <div className="mb-3 sm:mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
+              {/* Your Team */}
+              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${gameState.isYourTurn !== false
+                ? 'bg-accent/20 border-accent shadow-lg shadow-accent/30'
+                : 'bg-primary/10 border-primary/30'
+                }`}>
+                <div className="flex items-center justify-between gap-2 sm:gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Your Team</div>
+                    <div className="text-base sm:text-lg md:text-xl font-bold text-white truncate">{gameState.playerTeam.name}</div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Score</div>
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-accent">{gameState.playerTeam.score || 0}</div>
+                  </div>
+                  {gameState.isYourTurn !== false && (
+                    <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-accent text-primary rounded-full text-xs font-bold animate-pulse flex-shrink-0 whitespace-nowrap">
+                      YOUR TURN
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* VS Separator */}
+              <div className="text-white/50 font-bold text-lg sm:text-xl text-center flex-shrink-0">VS</div>
+
+              {/* Opposing Team */}
+              <div className={`flex-1 w-full sm:w-auto p-2.5 sm:p-3 rounded-lg sm:rounded-xl border-2 transition-all ${gameState.isYourTurn === false
+                ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/30'
+                : 'bg-secondary/10 border-secondary/30'
+                }`}>
+                <div className="flex items-center justify-between gap-2 sm:gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Opponent</div>
+                    <div className="text-base sm:text-lg md:text-xl font-bold text-white truncate">{gameState.opposingTeam.name}</div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-xs text-white/70 mb-0.5 sm:mb-1">Score</div>
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-secondary">{gameState.opposingTeam.score || 0}</div>
+                  </div>
+                  {gameState.isYourTurn === false && (
+                    <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-yellow-500 text-black rounded-full text-xs font-bold animate-pulse flex-shrink-0 whitespace-nowrap">
+                      THEIR TURN
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Question Progress */}
+            {gameState.questionNumber && gameState.totalQuestions && (
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/10">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm text-white/80 text-center">
+                  <span>Question {gameState.questionNumber} of {gameState.totalQuestions}</span>
+                  <span className="hidden sm:inline text-white/50">•</span>
+                  <span className="text-white/70">
+                    {gameState.isYourTurn !== false
+                      ? `Your team answers this question`
+                      : `${gameState.answeringTeamName || 'Opponent'} is answering`
+                    }
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {gameState.phase === "waiting" && renderWaitingPhase()}
       {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && (

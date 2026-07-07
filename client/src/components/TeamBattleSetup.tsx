@@ -3594,7 +3594,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             <ClockCountdown
               countdown={effectiveCountdown}
               message="Both teams are ready!"
-              subMessage="Your Bible battle is about to begin..."
             />
           )}
 

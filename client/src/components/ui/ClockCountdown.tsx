@@ -9,7 +9,7 @@ interface ClockCountdownProps {
 const ClockCountdown: React.FC<ClockCountdownProps> = ({
   countdown,
   message = "Both teams are ready",
-  subMessage = "Game starting soon...",
+  subMessage,
 }) => {
   const [progress, setProgress] = useState(0);
   const animationFrameRef = useRef<number | null>(null);
@@ -193,9 +193,11 @@ const ClockCountdown: React.FC<ClockCountdownProps> = ({
                 />
               ))}
             </div>
-            <p className="text-sm sm:text-base font-medium text-white/90 mt-2">
-              {subMessage}
-            </p>
+            {subMessage ? (
+              <p className="text-sm sm:text-base font-medium text-white/90 mt-2 text-center px-4">
+                {subMessage}
+              </p>
+            ) : null}
           </div>
         </div>
 

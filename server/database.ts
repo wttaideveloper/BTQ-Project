@@ -3703,6 +3703,28 @@ class PostgreSQLDatabase implements IDatabase {
     }
   }
 
+  async getPendingJoinRequestForUserAndTeam(
+    userId: number,
+    teamId: string
+  ): Promise<any | null> {
+    try {
+      const rows = await sql`
+        SELECT *
+        FROM team_join_request
+        WHERE requester_id = ${userId}
+          AND team_id = ${teamId}
+          AND status = 'pending'
+          AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      return rows[0] ?? null;
+    } catch (error) {
+      console.error("Error getPendingJoinRequestForUserAndTeam:", error);
+      return null;
+    }
+  }
+
   async getJoinRequestsByTeam(teamId: string): Promise<any[]> {
     try {
       const rows = await sql`SELECT * FROM team_join_request WHERE team_id = ${teamId} ORDER BY created_at DESC`;

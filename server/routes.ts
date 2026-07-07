@@ -390,8 +390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  // GET - Fetch join requests for current user
-  // Get join requests for teams where user is captain (similar to team invitations)
+  // GET - Fetch join requests for current user (incoming as captain + outgoing as requester)
   app.get("/api/team-join-requests", ensureAuthenticated, async (req, res) => {
     try {
       if (!req.user) {
@@ -400,11 +399,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const userId = req.user.id;
 
+      const [captainRequests, userRequests] = await Promise.all([
+        database.getJoinRequestsForCaptain(userId),
+        database.getJoinRequestsByUser(userId),
+      ]);
 
-      const joinRequests = await database.getJoinRequestsForCaptain(userId);
+      const outgoingPending = userRequests.filter(
+        (r: any) =>
+          r.status === "pending" &&
+          (r.requester_id === userId || r.requesterId === userId)
+      );
 
+      const merged = new Map<string, any>();
+      for (const jr of [...captainRequests, ...outgoingPending]) {
+        merged.set(jr.id, jr);
+      }
 
-      res.json(joinRequests);
+      res.json(Array.from(merged.values()));
     } catch (err) {
       console.error("Failed to fetch team join requests:", err);
       res.status(500).json({ message: "Failed to fetch team join requests" });
@@ -444,12 +455,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user already has a pending request for this team
-      const allUserRequests = await database.getJoinRequestsByUser(user.id);
-      const existingRequest = allUserRequests.find((r: any) => r.teamId === team.id && r.status === "pending");
-      if (existingRequest) {
-        console.error('[POST /api/team-join-requests] User already has pending request');
+      const actualTeamId = team.id;
+
+      const existingPending =
+        await database.getPendingJoinRequestForUserAndTeam(
+          user.id,
+          actualTeamId
+        );
+      if (existingPending) {
         return res.status(400).json({
           message: "You already have a pending request for this team",
+          joinRequestId: existingPending.id,
         });
       }
 
@@ -460,14 +476,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // CRITICAL FIX: Use the actual team.id (from database) instead of the input teamId
-      // This ensures the join request is created with the correct team ID that matches the database
-      const actualTeamId = team.id;
-
       // Create join request with 5 minute expiry (increased from 60s to handle timezone issues)
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
       const joinRequest = await database.createJoinRequest(
-        actualTeamId,  // ✅ FIX: Use the correct team ID
+        actualTeamId,
         user.id,
         user.username,
         expiresAt
@@ -635,6 +647,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await database.updateJoinRequestStatus(id, status);
+
+      // Reject/expire duplicate pending requests from the same user to the same team
+      if (
+        requesterId &&
+        teamId &&
+        ["accepted", "rejected", "expired", "cancelled"].includes(status)
+      ) {
+        try {
+          const teamPending = await database.getJoinRequestsByTeam(teamId);
+          for (const dup of teamPending) {
+            const dupRequester = dup.requester_id ?? dup.requesterId;
+            if (
+              dupRequester === requesterId &&
+              dup.id !== id &&
+              dup.status === "pending"
+            ) {
+              await database.updateJoinRequestStatus(
+                dup.id,
+                status === "accepted" ? "expired" : "rejected"
+              );
+            }
+          }
+        } catch (dupError) {
+          console.error("[PATCH] Error clearing duplicate join requests:", dupError);
+        }
+      }
 
       if (status === "accepted") {
         // add member to team battle (virtual team)

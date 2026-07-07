@@ -251,6 +251,11 @@ const TeamDisplay = ({
                     (member) => member.userId === jr.requesterId
                   )
               )
+              .filter(
+                (jr, index, arr) =>
+                  arr.findIndex((x) => x.requesterId === jr.requesterId) ===
+                  index
+              )
               .map((jr) => {
                 return (
                   <li

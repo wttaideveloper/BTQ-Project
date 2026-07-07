@@ -113,6 +113,18 @@ interface TeamJoinRequest {
   expiresAt?: Date | null;
 }
 
+function dedupeJoinRequestsByRequester(
+  requests: TeamJoinRequest[]
+): TeamJoinRequest[] {
+  const byRequester = new Map<number, TeamJoinRequest>();
+  for (const jr of requests) {
+    if (!byRequester.has(jr.requesterId)) {
+      byRequester.set(jr.requesterId, jr);
+    }
+  }
+  return Array.from(byRequester.values());
+}
+
 const BATTLE_CATEGORIES = [
   "All Categories",
   "Old Testament",
@@ -266,6 +278,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
       // Join request state
       setJoinRequestingTeamId(null);
+      setSentJoinRequestTeamIds(new Set());
 
       // Ref state
       shouldSendLeaveEventRef.current = false;
@@ -687,6 +700,21 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             queryClient.invalidateQueries({
               queryKey: ["/api/team-join-requests"],
             });
+
+            if (
+              data.requesterId === user?.id &&
+              data.teamId &&
+              ["rejected", "expired", "cancelled", "accepted"].includes(
+                data.status
+              )
+            ) {
+              setSentJoinRequestTeamIds((prev) => {
+                if (!prev.has(data.teamId)) return prev;
+                const next = new Set(prev);
+                next.delete(data.teamId);
+                return next;
+              });
+            }
 
             // Invalidate teams for the session
             if (wsSessionId) {
@@ -1716,6 +1744,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const [sentTeammateInviteIds, setSentTeammateInviteIds] = useState<
     Set<number>
   >(new Set());
+  const [joinRequestingTeamId, setJoinRequestingTeamId] = useState<
+    string | null
+  >(null);
+  const [sentJoinRequestTeamIds, setSentJoinRequestTeamIds] = useState<
+    Set<string>
+  >(new Set());
   const [pendingResponseId, setPendingResponseId] = useState<string | null>(
     null
   );
@@ -2600,9 +2634,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   });
 
   // Track which team is being requested for join
-  const [joinRequestingTeamId, setJoinRequestingTeamId] = useState<
-    string | null
-  >(null);
   const sendJoinRequestMutation = useMutation({
     mutationFn: async (data: { teamId: string }) => {
       setJoinRequestingTeamId(data.teamId);
@@ -2612,22 +2643,40 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       const res = await apiRequest("POST", "/api/team-join-requests", payload);
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast({
         title: "Join Request Sent",
         description: "Your request was sent to the team leader.",
       });
       setJoinRequestingTeamId(null);
+      setSentJoinRequestTeamIds((prev) => {
+        const next = new Set(prev);
+        next.add(variables.teamId);
+        return next;
+      });
       queryClient.invalidateQueries({
         queryKey: ["/api/team-join-requests"],
       });
     },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to send join request",
-        variant: "destructive",
-      });
+    onError: (error: any, variables) => {
+      const message = error?.message || "Failed to send join request";
+      if (message.toLowerCase().includes("pending request")) {
+        setSentJoinRequestTeamIds((prev) => {
+          const next = new Set(prev);
+          next.add(variables.teamId);
+          return next;
+        });
+        toast({
+          title: "Request Pending",
+          description: "You already have a pending request for this team.",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: message,
+          variant: "destructive",
+        });
+      }
       setJoinRequestingTeamId(null);
     },
   });
@@ -2641,8 +2690,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       );
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, joinRequestId) => {
       toast({ title: "Cancelled", description: "Join request cancelled." });
+      const cancelled = (joinRequests || []).find((jr) => jr.id === joinRequestId);
+      if (cancelled?.teamId) {
+        setSentJoinRequestTeamIds((prev) => {
+          const next = new Set(prev);
+          next.delete(cancelled.teamId);
+          return next;
+        });
+      }
       queryClient.invalidateQueries({
         queryKey: ["/api/team-join-requests"],
       });
@@ -2682,14 +2739,71 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     },
   });
 
+  const myPendingJoinRequestByTeamId = useMemo(() => {
+    const map = new Map<string, TeamJoinRequest>();
+    if (!user) return map;
+
+    for (const jr of joinRequests || []) {
+      if (
+        jr.requesterId === user.id &&
+        jr.status === "pending" &&
+        jr.teamId
+      ) {
+        map.set(jr.teamId, jr);
+      }
+    }
+
+    for (const teamId of sentJoinRequestTeamIds) {
+      if (!map.has(teamId)) {
+        map.set(teamId, {
+          id: `optimistic-${teamId}`,
+          teamId,
+          requesterId: user.id,
+          requesterUsername: user.username,
+          status: "pending",
+          createdAt: new Date(),
+        });
+      }
+    }
+
+    return map;
+  }, [joinRequests, user, sentJoinRequestTeamIds]);
+
+  const hasPendingJoinRequestTo = useCallback(
+    (teamId: string) => myPendingJoinRequestByTeamId.has(teamId),
+    [myPendingJoinRequestByTeamId]
+  );
+
+  // Keep optimistic pending team IDs aligned with server data after refetch
+  useEffect(() => {
+    if (!user?.id || !open) return;
+    const serverPendingTeamIds = new Set<string>();
+    for (const jr of joinRequests || []) {
+      if (
+        jr.requesterId === user.id &&
+        jr.status === "pending" &&
+        jr.teamId
+      ) {
+        serverPendingTeamIds.add(jr.teamId);
+      }
+    }
+    setSentJoinRequestTeamIds((prev) => {
+      const next = new Set<string>();
+      for (const teamId of prev) {
+        if (serverPendingTeamIds.has(teamId)) next.add(teamId);
+      }
+      for (const teamId of serverPendingTeamIds) {
+        next.add(teamId);
+      }
+      return next;
+    });
+  }, [joinRequests, user?.id, open]);
+
   const myActiveJoinRequest = useMemo(() => {
     if (!user) return null;
-    return (
-      (joinRequests || []).find(
-        (r) => r.requesterId === user.id && r.status === "pending"
-      ) || null
-    );
-  }, [joinRequests, user]);
+    const first = myPendingJoinRequestByTeamId.values().next().value;
+    return first ?? null;
+  }, [myPendingJoinRequestByTeamId, user]);
 
   const pendingInvitationsForMe = useMemo(
     () =>
@@ -3411,15 +3525,16 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     isUserTeam={isUserTeam}
                     isReady={isTeamReady}
                     isReadyLoading={isUserTeam ? isReadyLoading : false}
-                    joinRequests={(joinRequests || []).filter((jr) => {
-                      if (jr.teamId !== team.id || jr.status !== "pending") {
-                        return false;
-                      }
-                      // Hide requests from players who already joined this team
-                      return !team.members.some(
-                        (member) => member.userId === jr.requesterId
-                      );
-                    })}
+                    joinRequests={dedupeJoinRequestsByRequester(
+                      (joinRequests || []).filter((jr) => {
+                        if (jr.teamId !== team.id || jr.status !== "pending") {
+                          return false;
+                        }
+                        return !team.members.some(
+                          (member) => member.userId === jr.requesterId
+                        );
+                      })
+                    )}
                     onAcceptJoinRequest={(jrId) =>
                       respondToJoinRequestMutation.mutate({
                         joinRequestId: jrId,
@@ -3717,7 +3832,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                               disabled={
                                 isFull ||
                                 alreadyMember ||
-                                !!myActiveJoinRequest ||
+                                hasPendingJoinRequestTo(team.id) ||
                                 joinRequestingTeamId === team.id
                               }
                               className={`w-full sm:w-auto text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r ${isRapidFire ? "from-[#DEB126] to-[#C59D1F] hover:from-[#C59D1F] hover:to-[#B58E12]" : "from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"} text-white rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200`}
@@ -3726,7 +3841,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                                 ? "Team Full"
                                 : alreadyMember
                                   ? "Already in Team"
-                                  : myActiveJoinRequest
+                                  : hasPendingJoinRequestTo(team.id)
                                     ? "Request Pending"
                                     : joinRequestingTeamId === team.id
                                       ? "Requesting..."

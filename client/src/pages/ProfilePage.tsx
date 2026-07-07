@@ -186,7 +186,7 @@ const ProfilePage: React.FC = () => {
               Back to Home
             </Button>
           </Link>
-          {!isEditing ? (
+          {!isEditing && (
             <Button
               onClick={handleEdit}
               className="bg-accent hover:bg-accent/90 text-primary font-semibold"
@@ -194,26 +194,6 @@ const ProfilePage: React.FC = () => {
               <Edit3 className="h-4 w-4 mr-2" />
               Edit Profile
             </Button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={handleCancel}
-                className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
-                disabled={updateProfileMutation.isPending}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Cancel
-              </Button>
-              <Button
-                onClick={form.handleSubmit(onSubmit)}
-                className="bg-accent hover:bg-accent/90 text-primary font-semibold"
-                disabled={updateProfileMutation.isPending}
-              >
-                <Save className="h-4 w-4 mr-1" />
-                {updateProfileMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-            </div>
           )}
         </div>
       </header>
@@ -508,6 +488,27 @@ const ProfilePage: React.FC = () => {
                     />
                   </div>
                 )}
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancel}
+                    className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                    disabled={updateProfileMutation.isPending}
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-accent hover:bg-accent/90 text-primary font-semibold"
+                    disabled={updateProfileMutation.isPending}
+                  >
+                    <Save className="h-4 w-4 mr-1" />
+                    {updateProfileMutation.isPending ? "Saving..." : "Save"}
+                  </Button>
+                </div>
               </form>
             </Form>
           </section>

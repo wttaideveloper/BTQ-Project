@@ -151,13 +151,3 @@ export function getUnfinishedGame(): UnfinishedGame | null {
     return null;
   }
 }
-
-export function getWinStreak(userId: number | undefined): number {
-  if (!userId) return 0;
-  const unfinished = getUnfinishedGame();
-  if (unfinished && unfinished.correctAnswers > 0) {
-    return unfinished.correctAnswers;
-  }
-  const stored = localStorage.getItem(`faithiq_win_streak_${userId}`);
-  return stored ? parseInt(stored, 10) || 0 : 0;
-}

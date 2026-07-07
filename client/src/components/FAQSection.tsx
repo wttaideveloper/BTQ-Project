@@ -117,7 +117,7 @@ const faqData: FAQSectionData[] = [
       {
         question: "Where can I see my stats?",
         answer:
-          "Your home screen shows games played, rank, accuracy, and win streak. Open Game History for past solo scores and average answer time, or Leaderboard to compare with other players. Tap your profile (top-right) for account details.",
+          "Your home screen shows games played, rank, best score, and accuracy. Open Game History for past solo scores and average answer time, or Leaderboard to compare with other players. Tap your profile (top-right) for account details.",
       },
       {
         question: "Does the AI host read questions aloud?",

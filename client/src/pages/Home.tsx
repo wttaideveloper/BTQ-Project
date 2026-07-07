@@ -43,7 +43,6 @@ import {
   ChevronRight,
   Zap,
   Target,
-  Flame,
   BookOpen,
   Sparkles,
   Medal,
@@ -83,7 +82,6 @@ import {
   getDailyChallenge,
   getGreeting,
   getUnfinishedGame,
-  getWinStreak,
 } from "@/lib/home-data";
 import { consumeOpenTeamBattleSetup } from "@/lib/team-battle-navigation";
 import holmesImagePath from "@assets/HP HOLMES.jpg";
@@ -170,9 +168,6 @@ const Home: React.FC = () => {
           p.id === String(user?.id)
       ) + 1
     : null;
-
-  // In-game streak from unfinished quiz; otherwise 0 until we persist streaks in DB
-  const winStreak = getWinStreak(user?.id);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -352,9 +347,9 @@ const Home: React.FC = () => {
       iconClass: "home-stat-icon-purple",
     },
     {
-      label: "Win Streak",
-      value: winStreak,
-      icon: Flame,
+      label: "Best Score",
+      value: myEntry?.score ?? 0,
+      icon: Sparkles,
       iconClass: "home-stat-icon-orange",
     },
     {

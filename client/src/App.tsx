@@ -8,6 +8,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Game from "@/pages/Game";
 import AdminPanel from "@/pages/AdminPanel";
+import AdminLoginPage from "@/pages/AdminLoginPage";
 import AuthPage from "@/pages/AuthPage";
 import Leaderboard from "@/pages/Leaderboard";
 import TeamBattleGame from "@/pages/TeamBattleGame";
@@ -40,6 +41,20 @@ function TeamBattleSetupRedirect() {
   return <AuthLoadingScreen />;
 }
 
+function AdminRootRedirect() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (user?.isAdmin) {
+    return <Redirect to="/admin/dashboard" />;
+  }
+
+  return <Redirect to="/admin/login" />;
+}
+
 function Router() {
   const [location] = useLocation();
   const { user, isLoading } = useAuth();
@@ -56,7 +71,7 @@ function Router() {
     }
   }, [location]);
 
-  // Public auth page — no session required
+  // Public auth pages — no player session required
   if (location === "/auth") {
     return (
       <Switch>
@@ -65,7 +80,34 @@ function Router() {
     );
   }
 
-  // Single auth check for all protected pages (avoids N parallel /api/user calls)
+  if (location === "/admin/login") {
+    return (
+      <Switch>
+        <Route path="/admin/login" component={AdminLoginPage} />
+      </Switch>
+    );
+  }
+
+  if (location === "/admin") {
+    return <AdminRootRedirect />;
+  }
+
+  if (location === "/admin/dashboard") {
+    if (isLoading) {
+      return <AuthLoadingScreen />;
+    }
+    return (
+      <Switch>
+        <Route path="/admin/dashboard">
+          <AdminGate>
+            <AdminPanel />
+          </AdminGate>
+        </Route>
+      </Switch>
+    );
+  }
+
+  // Single auth check for all protected player pages
   if (isLoading) {
     return <AuthLoadingScreen />;
   }
@@ -85,11 +127,6 @@ function Router() {
       <Route path="/game-history" component={GameHistory} />
       <Route path="/contact" component={Contact} />
       <Route path="/profile" component={ProfilePage} />
-      <Route path="/admin">
-        <AdminGate>
-          <AdminPanel />
-        </AdminGate>
-      </Route>
       <Route component={NotFound} />
     </Switch>
   );

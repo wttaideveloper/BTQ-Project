@@ -1,17 +1,32 @@
 import React from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Redirect } from "wouter";
+import { Loader2 } from "lucide-react";
 
 interface AdminGateProps {
   children: React.ReactNode;
 }
 
-/** Admin-only wrapper — use inside the authenticated route tree only. */
+function AdminGateLoading() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-[#1a1f3a] via-primary to-[#0f1428]">
+      <Loader2 className="h-8 w-8 animate-spin text-accent" />
+    </div>
+  );
+}
+
+/** Admin-only wrapper — redirects to /admin/login when not an admin. */
 export function AdminGate({ children }: AdminGateProps) {
-  const { user } = useAuth();
-  if (!user?.isAdmin) {
-    return <Redirect to="/" />;
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <AdminGateLoading />;
   }
+
+  if (!user?.isAdmin) {
+    return <Redirect to="/admin/login" />;
+  }
+
   return <>{children}</>;
 }
 

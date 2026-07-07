@@ -69,7 +69,7 @@ const AuthPage: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      setLocation(user.isAdmin ? '/admin' : '/');
+      setLocation("/");
     }
   }, [user, setLocation]);
 

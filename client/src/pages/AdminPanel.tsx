@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Link } from 'wouter';
+import { useLocation } from 'wouter';
+import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Home,
+  LogOut,
   Plus,
   Edit,
   Trash2,
@@ -103,6 +104,8 @@ interface ElevenLabsVoice {
 }
 
 const AdminPanel: React.FC = () => {
+  const [, setLocation] = useLocation();
+  const { logoutMutation } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -642,11 +645,18 @@ const AdminPanel: React.FC = () => {
 
         {/* Sidebar Footer - Fixed at bottom */}
         <div className="p-4 border-t border-gray-100 flex-shrink-0">
-          <Link href="/">
-            <Button variant="outline" className="w-full flex items-center gap-2 hover:bg-gray-50 transition-colors">
-              <Home size={18} /> Return to Home
-            </Button>
-          </Link>
+          <Button
+            variant="outline"
+            className="w-full flex items-center gap-2 hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-colors"
+            disabled={logoutMutation.isPending}
+            onClick={() => {
+              logoutMutation.mutate(undefined, {
+                onSuccess: () => setLocation("/admin/login"),
+              });
+            }}
+          >
+            <LogOut size={18} /> Logout
+          </Button>
         </div>
       </div>
 

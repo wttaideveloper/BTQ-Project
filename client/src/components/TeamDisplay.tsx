@@ -248,7 +248,8 @@ const TeamDisplay = ({
                   jr.teamId === team.id &&
                   jr.status === "pending" &&
                   !team.members.some(
-                    (member) => member.userId === jr.requesterId
+                    (member) =>
+                      Number(member.userId) === Number(jr.requesterId)
                   )
               )
               .filter(

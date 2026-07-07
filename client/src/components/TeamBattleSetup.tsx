@@ -596,8 +596,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           (data.type === "join_request_updated" ||
             data.type === "join_request_created") &&
           Number(data.requesterId) === user.id;
+        const isJoinRequestStatusUpdate =
+          data.type === "join_request_updated" &&
+          ["expired", "rejected", "accepted", "cancelled"].includes(
+            data.status
+          );
 
-        if (wsSessionId && !isJoinRequestForMe) {
+        if (wsSessionId && !isJoinRequestForMe && !isJoinRequestStatusUpdate) {
           const currentSession = currentSessionIdRef.current;
           const sessionStartedAt = sessionStartedAtRef.current;
           const isCleanupComplete = cleanupCompleteRef.current;
@@ -3535,7 +3540,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                           return false;
                         }
                         return !team.members.some(
-                          (member) => member.userId === jr.requesterId
+                          (member) =>
+                            Number(member.userId) === Number(jr.requesterId)
                         );
                       })
                     )}

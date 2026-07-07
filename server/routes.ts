@@ -1,7 +1,7 @@
 import express, { type Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { database } from "./database";
-import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser, hasPlayerLeftAnyActiveGame } from "./socket";
+import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser, expireJoinRequestsForUserOnTeamAndNotify, hasPlayerLeftAnyActiveGame } from "./socket";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
@@ -470,7 +470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Block if user is already on this team (e.g. joined via invitation)
-      if (team.members?.some((member: any) => member.userId === user.id)) {
+      if (team.members?.some((member: any) => Number(member.userId) === user.id)) {
         return res.status(400).json({
           message: "You are already on this team",
         });
@@ -3347,6 +3347,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
               invitation.teamBattleId,
               updates
             );
+
+            const joinedTeamId = `${invitation.teamBattleId}-team-${String(
+              invitation.teamSide
+            ).toLowerCase()}`;
+
+            // Clear any pending join request for this team (invitation accepted first)
+            try {
+              await expireJoinRequestsForUserOnTeamAndNotify(
+                req.user!.id,
+                joinedTeamId,
+                updatedBattle.gameSessionId,
+                "This join request expired because the player accepted your team invitation."
+              );
+            } catch (teamJoinRequestExpireError: any) {
+              console.error(
+                "Error expiring same-team join request after invitation accept:",
+                teamJoinRequestExpireError
+              );
+            }
 
             // Expire pending join requests / invitations now that the player joined
             try {

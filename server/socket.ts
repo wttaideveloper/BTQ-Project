@@ -835,6 +835,107 @@ export function getOnlineUserIds(): number[] {
   return Array.from(onlineUserIds);
 }
 
+async function resolveCaptainAndSessionForTeamId(teamId: string): Promise<{
+  captainId: number | null;
+  gameSessionId?: string;
+}> {
+  const parts = teamId.split("-team-");
+  if (parts.length !== 2) {
+    return { captainId: null };
+  }
+
+  const rawBattleId = parts[0];
+  const battleId = rawBattleId.startsWith("battle-")
+    ? rawBattleId.substring("battle-".length)
+    : rawBattleId;
+  const teamSide = parts[1].toLowerCase();
+
+  let battle = await database.getTeamBattle(battleId);
+  if (!battle && rawBattleId !== battleId) {
+    battle = await database.getTeamBattle(rawBattleId);
+  }
+  if (!battle) {
+    return { captainId: null };
+  }
+
+  const captainId =
+    teamSide === "a" ? battle.teamACaptainId : battle.teamBCaptainId ?? null;
+
+  return {
+    captainId: captainId ?? null,
+    gameSessionId: battle.gameSessionId || undefined,
+  };
+}
+
+function notifyJoinRequestExpired(
+  jr: any,
+  requesterId: number,
+  options?: {
+    captainId?: number | null;
+    gameSessionId?: string;
+    message?: string;
+  }
+): void {
+  const teamId = jr.team_id || jr.teamId;
+  const expiredPayload = {
+    type: "join_request_updated" as const,
+    joinRequestId: jr.id,
+    status: "expired" as const,
+    teamId,
+    requesterId,
+    gameSessionId: options?.gameSessionId,
+    message:
+      options?.message ||
+      "This join request has expired because you joined another team.",
+  };
+
+  sendToUser(requesterId, expiredPayload);
+
+  const captainId = options?.captainId;
+  if (captainId && captainId !== requesterId) {
+    sendToUser(captainId, expiredPayload);
+  }
+}
+
+/**
+ * Expire pending join requests from a user to a specific team and notify both parties.
+ * Used when a player joins via invitation while a join request is still pending.
+ */
+export async function expireJoinRequestsForUserOnTeamAndNotify(
+  userId: number,
+  teamId: string,
+  gameSessionId?: string,
+  message?: string
+): Promise<void> {
+  try {
+    const expiredRows = await database.expirePendingJoinRequestsForUserOnTeam(
+      userId,
+      teamId
+    );
+    if (expiredRows.length === 0) {
+      return;
+    }
+
+    const { captainId, gameSessionId: resolvedSessionId } =
+      await resolveCaptainAndSessionForTeamId(teamId);
+
+    for (const jr of expiredRows) {
+      notifyJoinRequestExpired(jr, userId, {
+        captainId,
+        gameSessionId: gameSessionId || resolvedSessionId,
+        message:
+          message ||
+          "This join request expired because the player accepted your team invitation.",
+      });
+    }
+  } catch (error) {
+    console.error(
+      "[expireJoinRequestsForUserOnTeamAndNotify] Error expiring join requests:",
+      error
+    );
+  }
+}
+
 /**
  * Expires all pending join requests and invitations for a user when they join a team.
  * This ensures a member can only be in one team at a time.
@@ -852,44 +953,16 @@ export async function expireAllPendingRequestsAndInvitationsForUser(userId: numb
       await database.updateJoinRequestStatus(jr.id, "expired");
 
       const teamId = jr.team_id || jr.teamId;
-      const expiredPayload = {
-        type: "join_request_updated" as const,
-        joinRequestId: jr.id,
-        status: "expired" as const,
-        teamId,
-        requesterId: userId,
-        message: "This join request has expired because you joined another team.",
-      };
+      const { captainId, gameSessionId } = teamId
+        ? await resolveCaptainAndSessionForTeamId(teamId)
+        : { captainId: null, gameSessionId: undefined };
 
-      // Notify the requester that their request expired
-      sendToUser(userId, expiredPayload);
-
-      // Notify the team captain so their lobby clears stale requests
-      if (teamId) {
-        try {
-          const parts = teamId.split("-team-");
-          if (parts.length === 2) {
-            const rawBattleId = parts[0];
-            const battleId = rawBattleId.startsWith("battle-")
-              ? rawBattleId.substring("battle-".length)
-              : rawBattleId;
-            const teamSide = parts[1].toLowerCase();
-            const battle = await database.getTeamBattle(battleId);
-            if (battle) {
-              const captainId =
-                teamSide === "a" ? battle.teamACaptainId : battle.teamBCaptainId;
-              if (captainId && captainId !== userId) {
-                sendToUser(captainId, expiredPayload);
-              }
-            }
-          }
-        } catch (captainNotifyError) {
-          console.error(
-            "[expireAllPendingRequestsAndInvitationsForUser] Captain notify failed:",
-            captainNotifyError
-          );
-        }
-      }
+      notifyJoinRequestExpired(jr, userId, {
+        captainId,
+        gameSessionId,
+        message:
+          "This join request has expired because you joined another team.",
+      });
     }
 
     // Get all pending invitations for this user

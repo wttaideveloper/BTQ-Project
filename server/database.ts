@@ -3745,6 +3745,71 @@ class PostgreSQLDatabase implements IDatabase {
     }
   }
 
+  private parseTeammateIdsFromDb(teammates: unknown): number[] {
+    if (!Array.isArray(teammates)) return [];
+    return teammates
+      .map((teammate) => {
+        if (typeof teammate === "number") return teammate;
+        if (
+          typeof teammate === "object" &&
+          teammate !== null &&
+          typeof (teammate as { id?: number }).id === "number"
+        ) {
+          return (teammate as { id: number }).id;
+        }
+        return null;
+      })
+      .filter((id): id is number => typeof id === "number");
+  }
+
+  private buildTeamMemberIdsByTeamId(
+    battles: any[],
+    captainId: number
+  ): Map<string, Set<number>> {
+    const teamMemberIds = new Map<string, Set<number>>();
+
+    for (const battle of battles) {
+      if (battle.team_a_captain_id === captainId) {
+        const teamId = `${battle.id}-team-a`;
+        const members = new Set<number>([battle.team_a_captain_id]);
+        for (const id of this.parseTeammateIdsFromDb(battle.team_a_teammates)) {
+          members.add(id);
+        }
+        teamMemberIds.set(teamId, members);
+      }
+      if (battle.team_b_captain_id === captainId) {
+        const teamId = `${battle.id}-team-b`;
+        const members = new Set<number>([battle.team_b_captain_id]);
+        for (const id of this.parseTeammateIdsFromDb(battle.team_b_teammates)) {
+          members.add(id);
+        }
+        teamMemberIds.set(teamId, members);
+      }
+    }
+
+    return teamMemberIds;
+  }
+
+  async expirePendingJoinRequestsForUserOnTeam(
+    userId: number,
+    teamId: string
+  ): Promise<any[]> {
+    try {
+      const rows = await sql`
+        UPDATE team_join_request
+        SET status = 'expired'
+        WHERE requester_id = ${userId}
+          AND team_id = ${teamId}
+          AND status = 'pending'
+        RETURNING *
+      `;
+      return rows;
+    } catch (error) {
+      console.error("Error expirePendingJoinRequestsForUserOnTeam:", error);
+      return [];
+    }
+  }
+
   async getJoinRequestsForCaptain(captainId: number): Promise<any[]> {
     try {
 
@@ -3755,6 +3820,7 @@ class PostgreSQLDatabase implements IDatabase {
         AND status = 'forming'
       `;
 
+      const teamMemberIds = this.buildTeamMemberIdsByTeamId(battles, captainId);
 
       // Build team IDs for teams where user is captain
       const teamIds: string[] = [];
@@ -3791,10 +3857,33 @@ class PostgreSQLDatabase implements IDatabase {
         ORDER BY created_at DESC
       `;
 
-      joinRequests.forEach(jr => {
-      });
+      const activeRequests: any[] = [];
+      for (const jr of joinRequests) {
+        const requesterId = Number(jr.requester_id ?? jr.requesterId);
+        const teamId = jr.team_id ?? jr.teamId;
+        const members = teamMemberIds.get(teamId);
 
-      return joinRequests;
+        // Player already joined (e.g. via invitation) — expire stale request
+        if (
+          members &&
+          Number.isFinite(requesterId) &&
+          members.has(requesterId)
+        ) {
+          try {
+            await this.updateJoinRequestStatus(jr.id, "expired");
+          } catch (expireError) {
+            console.error(
+              "[DB] Failed to auto-expire stale join request:",
+              expireError
+            );
+          }
+          continue;
+        }
+
+        activeRequests.push(jr);
+      }
+
+      return activeRequests;
     } catch (error) {
       console.error("[DB] Error getJoinRequestsForCaptain:", error);
       return [];

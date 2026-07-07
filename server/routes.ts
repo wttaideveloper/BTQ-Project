@@ -736,7 +736,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message:
             status === "accepted"
               ? `You've been accepted to ${team?.name}!`
-              : `Your join request was ${status}`,
+              : status === "rejected"
+                ? `${team?.name || "The team"} declined your join request.`
+                : `Your join request was ${status}`,
         };
 
         sendToUser(notifyRequesterId, joinUpdatePayload);

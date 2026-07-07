@@ -592,8 +592,12 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           "left_team_battle",
         ]);
         const isCriticalUIEvent = criticalEventTypes.has(data.type);
+        const isJoinRequestForMe =
+          (data.type === "join_request_updated" ||
+            data.type === "join_request_created") &&
+          Number(data.requesterId) === user.id;
 
-        if (wsSessionId) {
+        if (wsSessionId && !isJoinRequestForMe) {
           const currentSession = currentSessionIdRef.current;
           const sessionStartedAt = sessionStartedAtRef.current;
           const isCleanupComplete = cleanupCompleteRef.current;
@@ -651,8 +655,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
             "team_battle_ended",
             "invitation_declined",
             "invitation_expired",
+            "join_request_updated",
+            "join_request_created",
           ];
-          if (!allowedGlobalEvents.includes(data.type) && currentSessionIdRef.current === null) {
+          if (
+            !allowedGlobalEvents.includes(data.type) &&
+            !isJoinRequestForMe &&
+            currentSessionIdRef.current === null
+          ) {
             return;
           }
         }
@@ -744,12 +754,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               // Invalidate teams for the new session
               queryClient.invalidateQueries({
                 queryKey: ["/api/teams", data.gameSessionId],
-              });
-            } else if (data.status === "rejected") {
-              toast({
-                title: "Join Request Rejected",
-                description: "Your request to join the team was rejected.",
-                variant: "destructive",
               });
             }
 

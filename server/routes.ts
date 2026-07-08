@@ -1429,7 +1429,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const settings = await database.getGameSettings();
       res.set({
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        Pragma: "no-cache",
       });
       res.json(settings);
     } catch (err) {

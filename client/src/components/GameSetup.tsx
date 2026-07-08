@@ -64,10 +64,14 @@ const PLAYER_COLORS = [
 ];
 
 const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
-  const { settings } = useGameSettings();
+  const { settings, refetch: refetchGameSettings } = useGameSettings();
   const durationOptions = resolveTimeBasedDurationOptions(
     settings.timeBasedDurationOptions
   );
+
+  useEffect(() => {
+    void refetchGameSettings();
+  }, [refetchGameSettings]);
   const search = typeof window !== "undefined" ? window.location.search : "";
   const params = new URLSearchParams(search);
   const initialGameType =
@@ -217,7 +221,8 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
               Play with Friends
             </h1>
             <p className="text-white/80 text-xs sm:text-sm md:text-base font-medium px-2">
-              Pass the device and take turns — up to 3 players on one screen
+              Pass the device and take turns — up to {settings.maxPlayersPerGame}{" "}
+              players on one screen
             </p>
           </div>
         </div>

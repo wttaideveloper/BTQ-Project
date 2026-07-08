@@ -116,6 +116,7 @@ export function GameControlPanel() {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(["/api/admin/game-settings"], data);
+      queryClient.setQueryData(["/api/game/settings"], data);
       queryClient.invalidateQueries({ queryKey: ["/api/game/settings"] });
       setForm(data);
       setDurationOptionsInput(
@@ -332,7 +333,7 @@ export function GameControlPanel() {
                 className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Comma-separated choices shown in time-based setup
+                Comma-separated choices shown in time-based setup (1–30 min each)
               </p>
             </div>
 

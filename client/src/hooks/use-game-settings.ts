@@ -16,7 +16,9 @@ export function useGameSettings() {
   const query = useQuery<GameSettingsConfig>({
     queryKey: ["/api/game/settings"],
     queryFn: fetchGameSettings,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
     placeholderData: DEFAULT_GAME_SETTINGS,
   });
 

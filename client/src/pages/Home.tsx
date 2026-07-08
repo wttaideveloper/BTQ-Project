@@ -122,7 +122,7 @@ const Home: React.FC = () => {
 
   const { user, logoutMutation } = useAuth();
   const queryClient = useQueryClient();
-  const { settings } = useGameSettings();
+  const { settings, refetch: refetchGameSettings } = useGameSettings();
   const durationOptions = resolveTimeBasedDurationOptions(
     settings.timeBasedDurationOptions
   );
@@ -140,6 +140,12 @@ const Home: React.FC = () => {
   );
   const [category, setCategory] = useState("All Categories");
   const [difficulty, setDifficulty] = useState("Beginner");
+
+  useEffect(() => {
+    if (showSoloDialog) {
+      void refetchGameSettings();
+    }
+  }, [showSoloDialog, refetchGameSettings]);
 
   useEffect(() => {
     if (!durationOptions.includes(gameDuration)) {

@@ -23,7 +23,7 @@ export const GAME_SETTINGS_LIMITS = {
   timePerQuestion: { min: 5, max: 60 },
   questionsPerGame: { min: 5, max: 20 },
   maxPlayersPerGame: { min: MIN_PLAYERS_PER_GAME, max: 8 },
-  timeBasedDuration: { min: 5, max: 30 },
+  timeBasedDuration: { min: 1, max: 30 },
 } as const;
 
 function clamp(value: number, min: number, max: number): number {

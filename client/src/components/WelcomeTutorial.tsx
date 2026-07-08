@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +26,14 @@ import {
   Volume2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useGameSettings } from "@/hooks/use-game-settings";
+import {
+  formatDurationOptionsLabel,
+  formatMultiplayerPlayerRange,
+  formatQuestionBasedSummary,
+  formatTimeBasedRoundSummary,
+  getTeamBattleQuestionCount,
+} from "@/lib/game-config";
 
 interface WelcomeTutorialProps {
   isOpen: boolean;
@@ -92,8 +100,25 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
   onStartGame,
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
+  const { settings } = useGameSettings();
 
-  const tutorialSteps = [
+  const questionSummary = formatQuestionBasedSummary(settings);
+  const durationLabel = formatDurationOptionsLabel(
+    settings.timeBasedDurationOptions
+  );
+  const timeRounds = formatTimeBasedRoundSummary(
+    settings.timeBasedDurationOptions
+  );
+  const playerRange = formatMultiplayerPlayerRange(settings);
+  const teamBattleQuestions = getTeamBattleQuestionCount(
+    settings.questionsPerGame
+  );
+  const durationBadge =
+    settings.timeBasedDurationOptions.length > 0
+      ? `${settings.timeBasedDurationOptions.join(" / ")} min`
+      : "Timed rounds";
+
+  const tutorialSteps = useMemo(() => [
     {
       title: "Welcome to FaithIQ",
       subtitle: "Bible trivia hosted by Dr. HB Holmes",
@@ -126,28 +151,28 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
             accent="blue"
             icon={<Target className="h-5 w-5 text-blue-400" />}
             title="Solo Quiz"
-            description="Play alone. Pick a category, choose Question-Based or Time-Based mode, and track your score and average answer time."
+            description={`Play alone. Question-Based (${questionSummary}) or Time-Based (${timeRounds}). Track your score and average answer time.`}
             badge="Start from home → Solo Quiz"
           />
           <ModeCard
             accent="teal"
             icon={<Users className="h-5 w-5 text-teal-400" />}
             title="Play with Friends"
-            description="Pass one device, enter names, take turns, and compare scores at the end. Player limit follows your game settings."
-            badge="Same device · no account needed per player"
+            description={`Pass one device with ${playerRange}, enter names, take turns, and compare scores at the end.`}
+            badge={`Same device · ${playerRange}`}
           />
           <ModeCard
             accent="purple"
             icon={<Swords className="h-5 w-5 text-purple-400" />}
             title="Team Battle"
-            description="Two teams compete live online. Create or join a team, invite friends, mark Ready in the lobby, then battle through team questions."
+            description={`Two teams compete live online with ${teamBattleQuestions} questions (${settings.timePerQuestion} sec each). Invite friends, mark Ready, then battle.`}
             badge="Online · team lobby"
           />
           <ModeCard
             accent="gold"
             icon={<Zap className="h-5 w-5 text-accent" />}
             title="Rapid Fire"
-            description="Team mode with faster timed rounds. Same team setup as Team Battle, but shorter questions and a quicker pace."
+            description={`Team mode with ${settings.questionsPerGame} questions and ${settings.timePerQuestion} seconds each. First correct answer wins the point.`}
             badge="Online · quick match"
           />
         </div>
@@ -164,15 +189,15 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
               accent="blue"
               icon={<Target className="h-5 w-5 text-blue-400" />}
               title="Question-Based"
-              description="10 questions with 20 seconds per question. Answer before time runs out to score points."
-              badge="Fixed 10 questions"
+              description={`${settings.questionsPerGame} questions with ${settings.timePerQuestion} seconds per question. Answer before time runs out to score points.`}
+              badge={`${settings.questionsPerGame} questions`}
             />
             <ModeCard
               accent="gold"
               icon={<Clock className="h-5 w-5 text-accent" />}
               title="Time-Based"
-              description="A speed round with a 5, 10, or 15-minute timer. Answer as many questions as you can before the clock hits zero."
-              badge="5 / 10 / 15 min"
+              description={`A speed round with ${durationLabel || "a timed"} timer. Answer as many questions as you can before the clock hits zero.`}
+              badge={durationBadge}
             />
           </div>
           <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
@@ -195,7 +220,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
           <TipRow
             icon={<Clock className="h-4 w-4 text-yellow-400 mt-0.5" />}
             title="Timer & average time"
-            description="Each question gives you up to 20 seconds. Your sidebar shows correct answers, accuracy, and average time per question."
+            description={`Each question gives you up to ${settings.timePerQuestion} seconds. Your sidebar shows correct answers, accuracy, and average time per question.`}
           />
           <TipRow
             icon={<Trophy className="h-4 w-4 text-accent mt-0.5" />}
@@ -281,7 +306,16 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
         </div>
       ),
     },
-  ];
+  ], [
+    questionSummary,
+    timeRounds,
+    playerRange,
+    teamBattleQuestions,
+    settings.questionsPerGame,
+    settings.timePerQuestion,
+    durationLabel,
+    durationBadge,
+  ]);
 
   const nextStep = () => {
     if (currentStep < tutorialSteps.length - 1) {

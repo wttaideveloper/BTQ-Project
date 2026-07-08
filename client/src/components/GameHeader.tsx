@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { toggleSound, toggleVoice, isVoiceEnabled } from '@/lib/sounds';
 import { toggleBasicSound } from '@/lib/basic-sound';
 import SoundTest from './SoundTest';
+import { useGameSettings } from '@/hooks/use-game-settings';
 
 interface GameHeaderProps {
   soundEnabled: boolean;
@@ -34,6 +35,7 @@ const GameHeader: React.FC<GameHeaderProps> = ({
   originalGameTime
 }) => {
   const { toast } = useToast();
+  const { settings } = useGameSettings();
   const [voiceState, setVoiceState] = React.useState(voiceEnabled);
   const [showDebug, setShowDebug] = React.useState(debugMode);
 
@@ -69,7 +71,7 @@ const GameHeader: React.FC<GameHeaderProps> = ({
   const handleHelp = () => {
     toast({
       title: "How to Play",
-      description: "Select the correct answer from the four options. You have 20 seconds per question. Earn points for each correct answer!",
+      description: `Select the correct answer from the four options. You have ${settings.timePerQuestion} seconds per question. Earn points for each correct answer!`,
       duration: 5000,
     });
   };

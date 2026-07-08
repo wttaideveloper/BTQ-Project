@@ -9,6 +9,8 @@ export {
   PLATFORM_GAME_MODES,
   formatDurationOptionsLabel,
   formatQuestionBasedSummary,
+  formatTimeBasedRoundSummary,
+  formatMultiplayerPlayerRange,
   getQuestionCountForGame,
   getTeamBattleQuestionCount,
   normalizeDurationOptions,

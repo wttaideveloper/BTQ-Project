@@ -133,6 +133,22 @@ export function formatQuestionBasedSummary(
   return `${settings.questionsPerGame} questions, ${settings.timePerQuestion} sec per question`;
 }
 
+export function formatTimeBasedRoundSummary(options: number[]): string {
+  const label = formatDurationOptionsLabel(options);
+  if (!label) return "a timed round";
+  if (options.length === 1) return `a ${label} round`;
+  return `${label} rounds`;
+}
+
+export function formatMultiplayerPlayerRange(
+  settings: Pick<GameSettingsConfig, "minPlayersPerGame" | "maxPlayersPerGame">
+): string {
+  const min = settings.minPlayersPerGame;
+  const max = settings.maxPlayersPerGame;
+  if (min === max) return `${min} players`;
+  return `${min}–${max} players`;
+}
+
 export function timePerQuestionToMs(seconds: number): number {
   return Math.max(1, seconds) * 1000;
 }

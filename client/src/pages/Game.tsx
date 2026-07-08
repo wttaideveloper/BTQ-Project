@@ -1333,9 +1333,16 @@ const Game: React.FC = () => {
               <span className="text-white text-4xl font-bold">{score}</span>
             </div>
           </div>
-          <h2 className="text-5xl font-heading font-bold text-white mb-6">
-            GAME OVER!
+          <h2 className="text-5xl font-heading font-bold text-white mb-2">
+            {gameType === "time" ? "TIME'S UP!" : "GAME OVER!"}
           </h2>
+          {gameType === "time" ? (
+            <p className="text-white/70 text-base sm:text-lg mb-6">
+              Your round timer has finished. Here&apos;s how you did:
+            </p>
+          ) : (
+            <div className="mb-6" />
+          )}
 
           <div className="mb-8 p-6 bg-white/5 rounded-2xl border border-white/10">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

@@ -42,6 +42,22 @@ type ActivityResponse = {
 
 type ActivityFilter = "all" | ActivityType;
 
+type ActivityTimeRange = "24h" | "7d" | "30d" | "all";
+
+const TIME_RANGES: Array<{ value: ActivityTimeRange; label: string }> = [
+  { value: "24h", label: "Last 24 hours" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "all", label: "All time" },
+];
+
+const TIME_RANGE_LABELS: Record<ActivityTimeRange, string> = {
+  "24h": "24 hours",
+  "7d": "7 days",
+  "30d": "30 days",
+  all: "all time",
+};
+
 const TYPE_CONFIG: Record<
   ActivityType,
   {
@@ -297,15 +313,19 @@ function ActivityRow({ item }: { item: ActivityItem }) {
 
 export function RecentActivityFeed() {
   const [filter, setFilter] = useState<ActivityFilter>("all");
+  const [timeRange, setTimeRange] = useState<ActivityTimeRange>("7d");
 
   const { data, isLoading, isError, refetch, isFetching } =
-    useQuery<ActivityResponse>({
-      queryKey: ["/api/admin/recent-activity"],
+    useQuery<ActivityResponse & { range?: ActivityTimeRange }>({
+      queryKey: ["/api/admin/recent-activity", timeRange],
       queryFn: async () => {
-        const res = await fetch("/api/admin/recent-activity?limit=40", {
-          credentials: "include",
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/admin/recent-activity?range=${timeRange}`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
         if (!res.ok) throw new Error("Failed to fetch activity");
         return res.json();
       },
@@ -372,6 +392,24 @@ export function RecentActivityFeed() {
           </Button>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 pt-4">
+          <span className="text-xs font-medium text-gray-500 mr-1">Period</span>
+          {TIME_RANGES.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTimeRange(value)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                timeRange === value
+                  ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {!isLoading && !isError && summary && (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-4">
             {(
@@ -423,11 +461,15 @@ export function RecentActivityFeed() {
             <CheckCircle2 className="h-10 w-10 mx-auto text-gray-300 mb-3" />
             <p className="font-medium text-gray-700 mb-1">
               {filter === "all"
-                ? "No activity yet"
-                : `No ${TYPE_CONFIG[filter as ActivityType]?.summaryLabel.toLowerCase() ?? "events"} in this feed`}
+                ? timeRange === "all"
+                  ? "No activity yet"
+                  : `No activity in the last ${TIME_RANGE_LABELS[timeRange]}`
+                : timeRange === "all"
+                  ? `No ${TYPE_CONFIG[filter as ActivityType]?.summaryLabel.toLowerCase() ?? "events"} yet`
+                  : `No ${TYPE_CONFIG[filter as ActivityType]?.summaryLabel.toLowerCase() ?? "events"} in the last ${TIME_RANGE_LABELS[timeRange]}`}
             </p>
             <p className="text-sm">
-              Events appear here when users sign up or play games.
+              Try a longer period or wait for users to sign up and play games.
             </p>
           </div>
         ) : (

@@ -122,7 +122,10 @@ export interface IDatabase {
     soloGamesLast24h: number;
     leaderboardPlayers: number;
   }>;
-  getAdminRecentActivity(limit?: number): Promise<{
+  getAdminRecentActivity(options?: {
+    limit?: number;
+    since?: Date;
+  }): Promise<{
     items: Array<{
       id: string;
       type: "signup" | "solo_game" | "multi_game" | "team_battle";
@@ -1497,7 +1500,8 @@ class PostgreSQLDatabase implements IDatabase {
     }
   }
 
-  async getAdminRecentActivity(limit = 40) {
+  async getAdminRecentActivity(options: { limit?: number; since?: Date } = {}) {
+    const { limit = 40, since } = options;
     const perSource = Math.max(Math.ceil(limit / 2), 12);
     type ActivityItem = {
       id: string;
@@ -1520,21 +1524,39 @@ class PostgreSQLDatabase implements IDatabase {
       }> = [];
 
       try {
-        signups = await sql`
-          SELECT id, username, full_name, email,
-                 COALESCE(created_at, last_login_at, last_seen) AS ts
-          FROM users
-          ORDER BY COALESCE(created_at, last_login_at, last_seen) DESC NULLS LAST
-          LIMIT ${perSource}
-        `;
+        signups = since
+          ? await sql`
+              SELECT id, username, full_name, email,
+                     COALESCE(created_at, last_login_at, last_seen) AS ts
+              FROM users
+              WHERE COALESCE(created_at, last_login_at, last_seen) >= ${since}
+              ORDER BY COALESCE(created_at, last_login_at, last_seen) DESC NULLS LAST
+              LIMIT ${perSource}
+            `
+          : await sql`
+              SELECT id, username, full_name, email,
+                     COALESCE(created_at, last_login_at, last_seen) AS ts
+              FROM users
+              ORDER BY COALESCE(created_at, last_login_at, last_seen) DESC NULLS LAST
+              LIMIT ${perSource}
+            `;
       } catch {
-        signups = await sql`
-          SELECT id, username, full_name, email,
-                 COALESCE(last_login_at, last_seen) AS ts
-          FROM users
-          ORDER BY COALESCE(last_login_at, last_seen) DESC NULLS LAST
-          LIMIT ${perSource}
-        `;
+        signups = since
+          ? await sql`
+              SELECT id, username, full_name, email,
+                     COALESCE(last_login_at, last_seen) AS ts
+              FROM users
+              WHERE COALESCE(last_login_at, last_seen) >= ${since}
+              ORDER BY COALESCE(last_login_at, last_seen) DESC NULLS LAST
+              LIMIT ${perSource}
+            `
+          : await sql`
+              SELECT id, username, full_name, email,
+                     COALESCE(last_login_at, last_seen) AS ts
+              FROM users
+              ORDER BY COALESCE(last_login_at, last_seen) DESC NULLS LAST
+              LIMIT ${perSource}
+            `;
       }
 
       for (const row of signups) {
@@ -1559,13 +1581,22 @@ class PostgreSQLDatabase implements IDatabase {
     }
 
     try {
-      const soloGames = await sql`
-        SELECT id, player_name, score, correct_answers, incorrect_answers,
-               category, difficulty, game_type, total_questions, timestamp AS ts
-        FROM single_player_scores
-        ORDER BY timestamp DESC NULLS LAST
-        LIMIT ${perSource}
-      `;
+      const soloGames = since
+        ? await sql`
+            SELECT id, player_name, score, correct_answers, incorrect_answers,
+                   category, difficulty, game_type, total_questions, timestamp AS ts
+            FROM single_player_scores
+            WHERE timestamp >= ${since}
+            ORDER BY timestamp DESC NULLS LAST
+            LIMIT ${perSource}
+          `
+        : await sql`
+            SELECT id, player_name, score, correct_answers, incorrect_answers,
+                   category, difficulty, game_type, total_questions, timestamp AS ts
+            FROM single_player_scores
+            ORDER BY timestamp DESC NULLS LAST
+            LIMIT ${perSource}
+          `;
       for (const row of soloGames) {
         const correct = Number(row.correct_answers ?? 0);
         const incorrect = Number(row.incorrect_answers ?? 0);
@@ -1597,14 +1628,24 @@ class PostgreSQLDatabase implements IDatabase {
     }
 
     try {
-      const multiGames = await sql`
-        SELECT id, player_name, score, correct_answers, incorrect_answers,
-               category, difficulty, player_count, game_type, total_questions,
-               timestamp AS ts
-        FROM multiplayer_scores
-        ORDER BY timestamp DESC NULLS LAST
-        LIMIT ${perSource}
-      `;
+      const multiGames = since
+        ? await sql`
+            SELECT id, player_name, score, correct_answers, incorrect_answers,
+                   category, difficulty, player_count, game_type, total_questions,
+                   timestamp AS ts
+            FROM multiplayer_scores
+            WHERE timestamp >= ${since}
+            ORDER BY timestamp DESC NULLS LAST
+            LIMIT ${perSource}
+          `
+        : await sql`
+            SELECT id, player_name, score, correct_answers, incorrect_answers,
+                   category, difficulty, player_count, game_type, total_questions,
+                   timestamp AS ts
+            FROM multiplayer_scores
+            ORDER BY timestamp DESC NULLS LAST
+            LIMIT ${perSource}
+          `;
       for (const row of multiGames) {
         const correct = Number(row.correct_answers ?? 0);
         const incorrect = Number(row.incorrect_answers ?? 0);
@@ -1638,15 +1679,26 @@ class PostgreSQLDatabase implements IDatabase {
     }
 
     try {
-      const teamBattles = await sql`
-        SELECT id, team_a_name, team_b_name, status, category, difficulty,
-               team_a_score, team_b_score, game_type,
-               created_at, started_at, finished_at,
-               COALESCE(finished_at, started_at, created_at) AS ts
-        FROM team_battles
-        ORDER BY COALESCE(finished_at, started_at, created_at) DESC NULLS LAST
-        LIMIT ${perSource}
-      `;
+      const teamBattles = since
+        ? await sql`
+            SELECT id, team_a_name, team_b_name, status, category, difficulty,
+                   team_a_score, team_b_score, game_type,
+                   created_at, started_at, finished_at,
+                   COALESCE(finished_at, started_at, created_at) AS ts
+            FROM team_battles
+            WHERE COALESCE(finished_at, started_at, created_at) >= ${since}
+            ORDER BY COALESCE(finished_at, started_at, created_at) DESC NULLS LAST
+            LIMIT ${perSource}
+          `
+        : await sql`
+            SELECT id, team_a_name, team_b_name, status, category, difficulty,
+                   team_a_score, team_b_score, game_type,
+                   created_at, started_at, finished_at,
+                   COALESCE(finished_at, started_at, created_at) AS ts
+            FROM team_battles
+            ORDER BY COALESCE(finished_at, started_at, created_at) DESC NULLS LAST
+            LIMIT ${perSource}
+          `;
       for (const row of teamBattles) {
         const teamA = row.team_a_name;
         const teamB = row.team_b_name;

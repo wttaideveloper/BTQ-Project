@@ -98,8 +98,14 @@ export function GameStatsPanel() {
   });
 
   const { data: activityData } = useQuery<ActivityResponse>({
-    queryKey: ["/api/admin/recent-activity"],
-    queryFn: getQueryFn({ on401: "throw" }),
+    queryKey: ["/api/admin/recent-activity", "30d"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/recent-activity?range=30d", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch activity");
+      return res.json();
+    },
     refetchInterval: 30000,
   });
 

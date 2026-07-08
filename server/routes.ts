@@ -1460,11 +1460,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/admin/recent-activity", ensureAdmin, async (req, res) => {
     try {
-      const limit = req.query.limit
-        ? Math.min(parseInt(req.query.limit as string, 10) || 40, 100)
-        : 40;
-      const activity = await database.getAdminRecentActivity(limit);
-      res.json(activity);
+      const range = (req.query.range as string) || "7d";
+      const validRanges = ["24h", "7d", "30d", "all"] as const;
+      if (!validRanges.includes(range as (typeof validRanges)[number])) {
+        return res.status(400).json({ message: "Invalid range" });
+      }
+
+      const rangeLimits: Record<(typeof validRanges)[number], number> = {
+        "24h": 100,
+        "7d": 200,
+        "30d": 500,
+        all: 100,
+      };
+
+      const requestedLimit = req.query.limit
+        ? parseInt(req.query.limit as string, 10)
+        : rangeLimits[range as (typeof validRanges)[number]];
+      const limit = Math.min(requestedLimit || rangeLimits["7d"], 500);
+
+      const since =
+        range === "24h"
+          ? new Date(Date.now() - 24 * 60 * 60 * 1000)
+          : range === "7d"
+            ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+            : range === "30d"
+              ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+              : undefined;
+
+      const activity = await database.getAdminRecentActivity({ limit, since });
+      res.json({ ...activity, range });
     } catch (err) {
       console.error("Error fetching admin recent activity:", err);
       res.status(500).json({ message: "Failed to fetch recent activity" });
@@ -1662,12 +1686,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/admin/game-stats/export", ensureAdmin, async (req, res) => {
     try {
-      const limit = req.query.limit
-        ? Math.min(parseInt(req.query.limit as string, 10) || 100, 500)
-        : 100;
-
       const stats = await database.getAdminDashboardStats();
-      const activity = await database.getAdminRecentActivity(limit);
+      const activity = await database.getAdminRecentActivity({
+        limit: 100,
+        since: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      });
       const escapeCsv = (value: string | number) => {
         const str = String(value ?? "");
         return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;

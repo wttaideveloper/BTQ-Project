@@ -52,7 +52,10 @@ import {
 import {
   parseTimeBasedDurationMinutes,
   timeBasedDurationToSeconds,
+  getQuestionCountForGame,
+  resolveTimeBasedDurationOptions,
 } from "@/lib/game-config";
+import { useGameSettings } from "@/hooks/use-game-settings";
 
 interface Answer {
   id: string;
@@ -75,8 +78,13 @@ const Game: React.FC = () => {
   const [_, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { settings } = useGameSettings();
   const search = typeof window !== "undefined" ? window.location.search : "";
   const params = new URLSearchParams(search);
+
+  const durationOptions = resolveTimeBasedDurationOptions(
+    settings.timeBasedDurationOptions
+  );
 
   // Game configuration
   const gameMode = params.get("gameMode") || "single";
@@ -85,8 +93,16 @@ const Game: React.FC = () => {
   const difficulty = params.get("difficulty") || "Beginner";
   const playerCount = parseInt(params.get("playerCount") || "1");
   const gameDurationMinutes = parseTimeBasedDurationMinutes(
-    params.get("gameDuration")
+    params.get("gameDuration"),
+    durationOptions,
+    settings.defaultTimeBasedDuration
   );
+  const questionTargetCount = getQuestionCountForGame(
+    settings.questionsPerGame,
+    gameMode,
+    playerCount
+  );
+  const timeLimit = settings.timePerQuestion;
   const timeBasedDurationSeconds =
     gameType === "time" ? timeBasedDurationToSeconds(gameDurationMinutes) : 0;
 
@@ -234,8 +250,6 @@ const Game: React.FC = () => {
     savedState?.originalGameTime ?? timeBasedDurationSeconds
   );
 
-  const timeLimit = 20; // 20 seconds per question
-
   // Time-based mode: accumulate questions across batches during the session
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
   const [isLoadingMoreQuestions, setIsLoadingMoreQuestions] = useState(false);
@@ -253,7 +267,13 @@ const Game: React.FC = () => {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["/api/game/questions", category, difficulty, gameId],
+    queryKey: [
+      "/api/game/questions",
+      category,
+      difficulty,
+      gameId,
+      questionTargetCount,
+    ],
     queryFn: async () => {
       try {
         const result = await getGameQuestions(
@@ -262,12 +282,7 @@ const Game: React.FC = () => {
           gameType === "question" && gameMode === "multi" && playerCount === 2
             ? "All"
             : difficulty,
-          // Adjust question count for multiplayer fairness (e.g., 3 players → 12 questions)
-          gameType === "question"
-            ? gameMode === "multi" && playerCount === 3
-              ? 12
-              : 10
-            : TIME_MODE_BATCH_SIZE,
+          gameType === "question" ? questionTargetCount : TIME_MODE_BATCH_SIZE,
           gameId
         );
         return result;
@@ -829,8 +844,8 @@ const Game: React.FC = () => {
     else if (
       gameMode === "single" &&
       gameType === "question" &&
-      currentQuestionIndex === (activeQuestions.length || 10) - 1 &&
-      correctAnswers === (activeQuestions.length || 10) // Only award certificate for perfect score
+      currentQuestionIndex === (activeQuestions.length || questionTargetCount) - 1 &&
+      correctAnswers === (activeQuestions.length || questionTargetCount) // Only award certificate for perfect score
     ) {
       setCurrentReward("certificate");
       setShowReward(true);
@@ -856,7 +871,7 @@ const Game: React.FC = () => {
   useEffect(() => {
     if (
       (gameType === "question" &&
-        currentQuestionIndex >= (activeQuestions.length || 10)) ||
+        currentQuestionIndex >= (activeQuestions.length || questionTargetCount)) ||
       (gameType === "time" && gameTimeRemaining <= 0)
     ) {
       setGameEnded(true);
@@ -897,7 +912,7 @@ const Game: React.FC = () => {
                 category: category,
                 difficulty: difficulty,
                 gameType: gameType,
-                totalQuestions: activeQuestions.length || 10,
+                totalQuestions: activeQuestions.length || questionTargetCount,
                 timeLimit:
                   gameType === "time" ? timeBasedDurationSeconds : undefined,
               });
@@ -953,7 +968,7 @@ const Game: React.FC = () => {
                   category: category,
                   difficulty: difficulty,
                   gameType: "local-multi",
-                  totalQuestions: activeQuestions.length || 10,
+                  totalQuestions: activeQuestions.length || questionTargetCount,
                   playerCount: playerCount,
                 });
               }
@@ -978,7 +993,7 @@ const Game: React.FC = () => {
         // Perfect score check (all questions correct)
         if (
           gameType === "question" &&
-          correctAnswers === (activeQuestions.length || 10)
+          correctAnswers === (activeQuestions.length || questionTargetCount)
         ) {
           // Celebration sequence for perfect score
           playSound("fanfare");
@@ -1545,7 +1560,7 @@ const Game: React.FC = () => {
                 answers={currentQuestion.answers}
                 currentQuestion={currentQuestionIndex + 1}
                 totalQuestions={
-                  gameType === "question" ? activeQuestions.length || 10 : "∞"
+                  gameType === "question" ? activeQuestions.length || questionTargetCount : "∞"
                 }
                 category={currentQuestion.category}
                 difficultyLevel={currentQuestion.difficulty}

@@ -284,6 +284,20 @@ async function setupDatabase() {
       );
     `);
 
+    // Create game_settings table for admin-controlled game parameters
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS game_settings (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        time_per_question INTEGER NOT NULL DEFAULT 20,
+        time_based_duration_options TEXT NOT NULL DEFAULT '[5,10,15]',
+        default_time_based_duration INTEGER NOT NULL DEFAULT 5,
+        questions_per_game INTEGER NOT NULL DEFAULT 10,
+        max_players_per_game INTEGER NOT NULL DEFAULT 4,
+        min_players_per_game INTEGER NOT NULL DEFAULT 2,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     // Create voice_settings table for ElevenLabs voice cloning
     await db.execute(`
       CREATE TABLE IF NOT EXISTS voice_settings (
@@ -429,7 +443,8 @@ async function setupDatabase() {
     }
 
     // Create default voice settings
-    const { voiceSettings } = await import("@shared/schema");
+    const { voiceSettings, gameSettings } = await import("@shared/schema");
+    const { DEFAULT_GAME_SETTINGS } = await import("@shared/game-settings");
     const existingVoiceSettings = await db
       .select()
       .from(voiceSettings)
@@ -443,6 +458,25 @@ async function setupDatabase() {
         isActive: true,
       });
       console.log("Created default voice settings");
+    }
+
+    const existingGameSettings = await db
+      .select()
+      .from(gameSettings)
+      .where(eq(gameSettings.id, "default"));
+    if (existingGameSettings.length === 0) {
+      await db.insert(gameSettings).values({
+        id: "default",
+        timePerQuestion: DEFAULT_GAME_SETTINGS.timePerQuestion,
+        timeBasedDurationOptions: JSON.stringify(
+          DEFAULT_GAME_SETTINGS.timeBasedDurationOptions
+        ),
+        defaultTimeBasedDuration: DEFAULT_GAME_SETTINGS.defaultTimeBasedDuration,
+        questionsPerGame: DEFAULT_GAME_SETTINGS.questionsPerGame,
+        maxPlayersPerGame: DEFAULT_GAME_SETTINGS.maxPlayersPerGame,
+        minPlayersPerGame: DEFAULT_GAME_SETTINGS.minPlayersPerGame,
+      });
+      console.log("Created default game settings");
     }
   } catch (error) {
     console.error("Error setting up database:", error);

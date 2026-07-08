@@ -14,10 +14,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  DEFAULT_TIME_BASED_DURATION,
-  TIME_BASED_DURATION_OPTIONS,
+  formatDurationOptionsLabel,
+  formatQuestionBasedSummary,
+  parseTimeBasedDurationMinutes,
+  resolveDefaultTimeBasedDuration,
+  resolveTimeBasedDurationOptions,
   type TimeBasedDurationMinutes,
 } from "@/lib/game-config";
+import { useGameSettings } from "@/hooks/use-game-settings";
 import {
   Users,
   X,
@@ -55,15 +59,20 @@ const PLAYER_COLORS = [
 ];
 
 const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
+  const { settings } = useGameSettings();
+  const durationOptions = resolveTimeBasedDurationOptions(
+    settings.timeBasedDurationOptions
+  );
   const search = typeof window !== "undefined" ? window.location.search : "";
   const params = new URLSearchParams(search);
   const initialGameType =
     (params.get("gameType") as "question" | "time") || "question";
   const initialCategory = params.get("category") || "All Categories";
   const initialDifficulty = params.get("difficulty") || "Beginner";
-  const initialGameDuration = parseInt(
-    params.get("gameDuration") || String(DEFAULT_TIME_BASED_DURATION),
-    10
+  const initialGameDuration = parseTimeBasedDurationMinutes(
+    params.get("gameDuration"),
+    durationOptions,
+    settings.defaultTimeBasedDuration
   ) as TimeBasedDurationMinutes;
 
   const { user } = useAuth();
@@ -73,16 +82,51 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
   const [category, setCategory] = useState(initialCategory);
   const [difficulty, setDifficulty] = useState(initialDifficulty);
   const [gameDuration, setGameDuration] = useState<TimeBasedDurationMinutes>(
-    TIME_BASED_DURATION_OPTIONS.includes(initialGameDuration)
+    durationOptions.includes(initialGameDuration)
       ? initialGameDuration
-      : DEFAULT_TIME_BASED_DURATION
+      : resolveDefaultTimeBasedDuration(durationOptions, settings.defaultTimeBasedDuration)
   );
-  const [playerCount, setPlayerCount] = useState(2);
-  const [playerNames, setPlayerNames] = useState([
-    "Player 1",
-    "Player 2",
-    "Player 3",
-  ]);
+  const [playerCount, setPlayerCount] = useState(
+    Math.min(settings.maxPlayersPerGame, Math.max(settings.minPlayersPerGame, 2))
+  );
+  const [playerNames, setPlayerNames] = useState(() =>
+    Array.from({ length: settings.maxPlayersPerGame }, (_, index) => `Player ${index + 1}`)
+  );
+
+  useEffect(() => {
+    setPlayerNames((prev) => {
+      if (prev.length >= settings.maxPlayersPerGame) {
+        return prev.slice(0, settings.maxPlayersPerGame);
+      }
+      return [
+        ...prev,
+        ...Array.from(
+          { length: settings.maxPlayersPerGame - prev.length },
+          (_, index) => `Player ${prev.length + index + 1}`
+        ),
+      ];
+    });
+  }, [settings.maxPlayersPerGame]);
+
+  useEffect(() => {
+    setPlayerCount((current) =>
+      Math.min(settings.maxPlayersPerGame, Math.max(settings.minPlayersPerGame, current))
+    );
+  }, [settings.maxPlayersPerGame, settings.minPlayersPerGame]);
+
+  useEffect(() => {
+    if (!durationOptions.includes(gameDuration)) {
+      setGameDuration(resolveDefaultTimeBasedDuration(durationOptions, settings.defaultTimeBasedDuration));
+    }
+  }, [durationOptions, gameDuration, settings.defaultTimeBasedDuration]);
+
+  const playerCountOptions = Array.from(
+    { length: settings.maxPlayersPerGame - settings.minPlayersPerGame + 1 },
+    (_, index) => settings.minPlayersPerGame + index
+  );
+
+  const questionBasedSummary = formatQuestionBasedSummary(settings);
+  const timeBasedSummary = `Speed round — ${formatDurationOptionsLabel(durationOptions)}`;
 
   useEffect(() => {
     setGameType(initialGameType);
@@ -218,7 +262,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
                         Question-Based
                       </span>
                       <p className="text-xs text-white/55 mt-0.5">
-                        10 questions, 20 sec per question
+                        {questionBasedSummary}
                       </p>
                     </div>
                   </label>
@@ -242,7 +286,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
                         Time-Based
                       </span>
                       <p className="text-xs text-white/55 mt-0.5">
-                        Speed round — pick your timer
+                        {timeBasedSummary}
                       </p>
                     </div>
                   </label>
@@ -253,8 +297,8 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
                     <Label className="text-white/90 mb-2 block text-sm font-semibold">
                       Round Duration
                     </Label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {TIME_BASED_DURATION_OPTIONS.map((mins) => (
+                    <div className={`grid gap-2 ${durationOptions.length <= 3 ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3"}`}>
+                      {durationOptions.map((mins) => (
                         <button
                           key={mins}
                           type="button"
@@ -328,8 +372,11 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2">2 players</SelectItem>
-                    <SelectItem value="3">3 players</SelectItem>
+                    {playerCountOptions.map((count) => (
+                      <SelectItem key={count} value={count.toString()}>
+                        {count} players
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -370,7 +417,9 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-white/10">
             <div className="flex flex-wrap gap-2">
               <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/70 border border-white/10">
-                {gameType === "question" ? "10 questions · 20 sec each" : `${gameDuration} min timer`}
+                {gameType === "question"
+                  ? `${settings.questionsPerGame} questions · ${settings.timePerQuestion} sec each`
+                  : `${gameDuration} min timer`}
               </span>
               <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/70 border border-white/10">
                 {category}

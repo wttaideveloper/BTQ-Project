@@ -55,6 +55,7 @@ import {
   Trophy,
   Users,
   BarChart3,
+  Settings,
   Mic,
   Volume2
 } from 'lucide-react';
@@ -69,6 +70,7 @@ import {
 import { QuestionReviewPanel } from '@/components/QuestionReviewPanel';
 import { UserManagementPanel } from '@/components/admin/UserManagementPanel';
 import { GameStatsPanel } from '@/components/admin/GameStatsPanel';
+import { GameControlPanel } from '@/components/admin/GameControlPanel';
 import { AdminLeaderboardPanel } from '@/components/admin/AdminLeaderboardPanel';
 
 const categories = [
@@ -653,6 +655,18 @@ const AdminPanel: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab("settings")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                activeTab === "settings"
+                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <Settings size={20} />
+              <span className="font-medium">Game Control</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("leaderboard")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
                 activeTab === "leaderboard"
@@ -703,12 +717,14 @@ const AdminPanel: React.FC = () => {
                     {activeTab === "questions" && "Question Management"}
                     {activeTab === "users" && "User Management"}
                     {activeTab === "stats" && "Game Statistics"}
+                    {activeTab === "settings" && "Game Control"}
                     {activeTab === "leaderboard" && "Leaderboard"}
                   </h1>
                   <p className="text-sm text-gray-600">
                     {activeTab === "questions" && "Manage your Bible trivia questions and content"}
                     {activeTab === "users" && "View registered users, profiles, and activity status"}
                     {activeTab === "stats" && "Live platform metrics and game activity"}
+                    {activeTab === "settings" && "Configure game parameters and behavior"}
                     {activeTab === "leaderboard" && "View top players across solo and multiplayer games"}
                   </p>
                 </div>
@@ -964,6 +980,13 @@ const AdminPanel: React.FC = () => {
             {activeTab === "stats" && (
               <div className="p-8">
                 <GameStatsPanel />
+              </div>
+            )}
+
+            {/* Game Control Tab Content */}
+            {activeTab === "settings" && (
+              <div className="p-8">
+                <GameControlPanel />
               </div>
             )}
 

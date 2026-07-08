@@ -1,24 +1,47 @@
-export const TIME_BASED_DURATION_OPTIONS = [5, 10, 15] as const;
+import {
+  DEFAULT_GAME_SETTINGS,
+  normalizeDurationOptions,
+} from "@shared/game-settings";
 
-export type TimeBasedDurationMinutes =
-  (typeof TIME_BASED_DURATION_OPTIONS)[number];
+export {
+  DEFAULT_GAME_SETTINGS,
+  GAME_SETTINGS_LIMITS,
+  formatDurationOptionsLabel,
+  formatQuestionBasedSummary,
+  getQuestionCountForGame,
+  normalizeDurationOptions,
+  normalizeGameSettings,
+  parseTimeBasedDurationMinutes,
+  type GameSettingsConfig,
+} from "@shared/game-settings";
 
-export const DEFAULT_TIME_BASED_DURATION: TimeBasedDurationMinutes = 5;
+export type TimeBasedDurationMinutes = number;
 
-export function parseTimeBasedDurationMinutes(
-  value: string | null | undefined
-): TimeBasedDurationMinutes {
-  const parsed = parseInt(value ?? "", 10);
-  if (
-    TIME_BASED_DURATION_OPTIONS.includes(parsed as TimeBasedDurationMinutes)
-  ) {
-    return parsed as TimeBasedDurationMinutes;
-  }
-  return DEFAULT_TIME_BASED_DURATION;
+export const TIME_BASED_DURATION_OPTIONS =
+  DEFAULT_GAME_SETTINGS.timeBasedDurationOptions;
+
+export const DEFAULT_TIME_BASED_DURATION =
+  DEFAULT_GAME_SETTINGS.defaultTimeBasedDuration;
+
+export function timeBasedDurationToSeconds(minutes: number): number {
+  return minutes * 60;
 }
 
-export function timeBasedDurationToSeconds(
-  minutes: TimeBasedDurationMinutes
+export function resolveTimeBasedDurationOptions(
+  options?: number[]
+): number[] {
+  return normalizeDurationOptions(options);
+}
+
+export function resolveDefaultTimeBasedDuration(
+  options: number[],
+  preferred?: number
 ): number {
-  return minutes * 60;
+  if (preferred && options.includes(preferred)) {
+    return preferred;
+  }
+  if (options.includes(DEFAULT_TIME_BASED_DURATION)) {
+    return DEFAULT_TIME_BASED_DURATION;
+  }
+  return options[0] ?? DEFAULT_TIME_BASED_DURATION;
 }

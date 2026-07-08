@@ -416,6 +416,22 @@ export const sessions = pgTable("sessions", {
   expire: timestamp("expire").notNull(),
 });
 
+// Global game configuration (admin-controlled)
+export const gameSettings = pgTable("game_settings", {
+  id: text("id").primaryKey().default("default"),
+  timePerQuestion: integer("time_per_question").notNull().default(20),
+  timeBasedDurationOptions: text("time_based_duration_options")
+    .notNull()
+    .default("[5,10,15]"),
+  defaultTimeBasedDuration: integer("default_time_based_duration")
+    .notNull()
+    .default(5),
+  questionsPerGame: integer("questions_per_game").notNull().default(10),
+  maxPlayersPerGame: integer("max_players_per_game").notNull().default(4),
+  minPlayersPerGame: integer("min_players_per_game").notNull().default(2),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Voice settings table for ElevenLabs voice cloning
 export const voiceSettings = pgTable("voice_settings", {
   id: text("id").primaryKey().default("default"),
@@ -492,6 +508,7 @@ export const insertNotificationSchema = createInsertSchema(notifications);
 export const insertTeamSchema = createInsertSchema(teams);
 export const insertTeamInvitationSchema = createInsertSchema(teamInvitations);
 export const insertTeamBattleSchema = createInsertSchema(teamBattles);
+export const insertGameSettingsSchema = createInsertSchema(gameSettings);
 export const insertVoiceSettingsSchema = createInsertSchema(voiceSettings);
 export const insertVoiceUsageSchema = createInsertSchema(voiceUsage).omit({
   id: true,
@@ -522,6 +539,8 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type InsertTeamInvitation = z.infer<typeof insertTeamInvitationSchema>;
 export type InsertTeamBattle = z.infer<typeof insertTeamBattleSchema>;
+export type InsertGameSettings = z.infer<typeof insertGameSettingsSchema>;
+export type GameSettingsRow = typeof gameSettings.$inferSelect;
 export type InsertVoiceSettings = z.infer<typeof insertVoiceSettingsSchema>;
 export type VoiceSettings = typeof voiceSettings.$inferSelect;
 export type InsertVoiceUsage = z.infer<typeof insertVoiceUsageSchema>;

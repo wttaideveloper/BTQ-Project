@@ -1425,6 +1425,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/game/settings", async (_req, res) => {
+    try {
+      const settings = await database.getGameSettings();
+      res.set({
+        "Cache-Control": "public, max-age=60",
+      });
+      res.json(settings);
+    } catch (err) {
+      console.error("Error fetching game settings:", err);
+      res.status(500).json({ message: "Failed to fetch game settings" });
+    }
+  });
+
+  app.get("/api/admin/game-settings", ensureAdmin, async (_req, res) => {
+    try {
+      const settings = await database.getGameSettings();
+      res.json(settings);
+    } catch (err) {
+      console.error("Error fetching admin game settings:", err);
+      res.status(500).json({ message: "Failed to fetch game settings" });
+    }
+  });
+
+  app.put("/api/admin/game-settings", ensureAdmin, async (req, res) => {
+    try {
+      const settings = await database.updateGameSettings(req.body ?? {});
+      res.json(settings);
+    } catch (err) {
+      console.error("Error updating game settings:", err);
+      res.status(500).json({ message: "Failed to update game settings" });
+    }
+  });
+
   app.get("/api/admin/recent-activity", ensureAdmin, async (req, res) => {
     try {
       const limit = req.query.limit

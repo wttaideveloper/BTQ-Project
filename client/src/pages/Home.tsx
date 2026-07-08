@@ -67,10 +67,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
-  DEFAULT_TIME_BASED_DURATION,
-  TIME_BASED_DURATION_OPTIONS,
+  formatDurationOptionsLabel,
+  formatQuestionBasedSummary,
+  resolveDefaultTimeBasedDuration,
+  resolveTimeBasedDurationOptions,
   type TimeBasedDurationMinutes,
 } from "@/lib/game-config";
+import { useGameSettings } from "@/hooks/use-game-settings";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
@@ -119,6 +122,10 @@ const Home: React.FC = () => {
 
   const { user, logoutMutation } = useAuth();
   const queryClient = useQueryClient();
+  const { settings } = useGameSettings();
+  const durationOptions = resolveTimeBasedDurationOptions(
+    settings.timeBasedDurationOptions
+  );
 
   const { data: profile } = useQuery<SelectUser | null>({
     queryKey: ["/api/profile"],
@@ -129,10 +136,18 @@ const Home: React.FC = () => {
 
   const [gameType, setGameType] = useState<"question" | "time">("question");
   const [gameDuration, setGameDuration] = useState<TimeBasedDurationMinutes>(
-    DEFAULT_TIME_BASED_DURATION
+    resolveDefaultTimeBasedDuration(durationOptions, settings.defaultTimeBasedDuration)
   );
   const [category, setCategory] = useState("All Categories");
   const [difficulty, setDifficulty] = useState("Beginner");
+
+  useEffect(() => {
+    if (!durationOptions.includes(gameDuration)) {
+      setGameDuration(
+        resolveDefaultTimeBasedDuration(durationOptions, settings.defaultTimeBasedDuration)
+      );
+    }
+  }, [durationOptions, gameDuration, settings.defaultTimeBasedDuration]);
 
   const dailyVerse = useMemo(() => getDailyVerse(), []);
   const dailyChallenge = useMemo(() => getDailyChallenge(), []);
@@ -926,7 +941,7 @@ const Home: React.FC = () => {
                   />
                   <Label htmlFor="dlg-question" className="cursor-pointer flex-1">
                     <span className="font-medium">Question-Based</span>
-                    <p className="text-xs text-white/60">10 questions, 20 sec per question</p>
+                    <p className="text-xs text-white/60">{formatQuestionBasedSummary(settings)}</p>
                   </Label>
                 </div>
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-white/20 bg-white/5 cursor-pointer">
@@ -937,7 +952,9 @@ const Home: React.FC = () => {
                   />
                   <Label htmlFor="dlg-time" className="cursor-pointer flex-1">
                     <span className="font-medium">Time-Based</span>
-                    <p className="text-xs text-white/60">Speed round — 5, 10, or 15 minutes</p>
+                    <p className="text-xs text-white/60">
+                      Speed round — {formatDurationOptionsLabel(durationOptions)}
+                    </p>
                   </Label>
                 </div>
               </RadioGroup>
@@ -947,7 +964,7 @@ const Home: React.FC = () => {
               <div>
                 <Label className="text-white/90 mb-2 block">Round Duration</Label>
                 <div className="grid grid-cols-3 gap-2">
-                  {TIME_BASED_DURATION_OPTIONS.map((mins) => (
+                  {durationOptions.map((mins) => (
                     <button
                       key={mins}
                       type="button"

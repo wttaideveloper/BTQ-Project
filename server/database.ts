@@ -15,6 +15,7 @@ import {
   challengeResults,
   notifications,
   sessions,
+  gameSettings,
   voiceSettings,
   voiceUsage,
   userQuestionHistory,
@@ -41,6 +42,11 @@ import {
   type QuestionAnalytics,
   type InsertQuestionAnalytics,
 } from "@shared/schema";
+import {
+  DEFAULT_GAME_SETTINGS,
+  normalizeGameSettings,
+  type GameSettingsConfig,
+} from "@shared/game-settings";
 
 // Single PostgreSQL connection - SSL handled via URL parameters
 const connectionString = process.env.DATABASE_URL;
@@ -245,6 +251,10 @@ export interface IDatabase {
   //  - false => has_left = false
   //  - null  => no membership exists or feature not present in DB
   getTeamBattlePlayerLeftStatus(battleId: string, userId: number): Promise<boolean | null>;
+
+  // Game settings methods
+  getGameSettings(): Promise<GameSettingsConfig>;
+  updateGameSettings(updates: Partial<GameSettingsConfig>): Promise<GameSettingsConfig>;
 
   // Voice settings methods
   getVoiceCloneId(): Promise<string | null>;
@@ -3011,6 +3021,89 @@ class PostgreSQLDatabase implements IDatabase {
 
   }
 
+  // Game settings methods
+  private parseGameSettingsRow(
+    row: typeof gameSettings.$inferSelect | undefined
+  ): GameSettingsConfig {
+    if (!row) {
+      return { ...DEFAULT_GAME_SETTINGS };
+    }
+
+    let durationOptions: number[] | undefined;
+    try {
+      durationOptions = JSON.parse(row.timeBasedDurationOptions);
+    } catch {
+      durationOptions = undefined;
+    }
+
+    return normalizeGameSettings({
+      timePerQuestion: row.timePerQuestion,
+      timeBasedDurationOptions: durationOptions,
+      defaultTimeBasedDuration: row.defaultTimeBasedDuration,
+      questionsPerGame: row.questionsPerGame,
+      maxPlayersPerGame: row.maxPlayersPerGame,
+      minPlayersPerGame: row.minPlayersPerGame,
+    });
+  }
+
+  async getGameSettings(): Promise<GameSettingsConfig> {
+    try {
+      const result = await db
+        .select()
+        .from(gameSettings)
+        .where(eq(gameSettings.id, "default"));
+      return this.parseGameSettingsRow(result[0]);
+    } catch (error) {
+      console.error("Error getting game settings:", error);
+      return { ...DEFAULT_GAME_SETTINGS };
+    }
+  }
+
+  async updateGameSettings(
+    updates: Partial<GameSettingsConfig>
+  ): Promise<GameSettingsConfig> {
+    const normalized = normalizeGameSettings({
+      ...(await this.getGameSettings()),
+      ...updates,
+    });
+
+    try {
+      const existing = await db
+        .select()
+        .from(gameSettings)
+        .where(eq(gameSettings.id, "default"));
+
+      const payload = {
+        timePerQuestion: normalized.timePerQuestion,
+        timeBasedDurationOptions: JSON.stringify(
+          normalized.timeBasedDurationOptions
+        ),
+        defaultTimeBasedDuration: normalized.defaultTimeBasedDuration,
+        questionsPerGame: normalized.questionsPerGame,
+        maxPlayersPerGame: normalized.maxPlayersPerGame,
+        minPlayersPerGame: normalized.minPlayersPerGame,
+        updatedAt: new Date(),
+      };
+
+      if (existing.length > 0) {
+        await db
+          .update(gameSettings)
+          .set(payload)
+          .where(eq(gameSettings.id, "default"));
+      } else {
+        await db.insert(gameSettings).values({
+          id: "default",
+          ...payload,
+        });
+      }
+
+      return normalized;
+    } catch (error) {
+      console.error("Error updating game settings:", error);
+      throw error;
+    }
+  }
+
   // Voice settings methods
   async getVoiceCloneId(): Promise<string | null> {
     try {
@@ -3730,6 +3823,48 @@ class PostgreSQLDatabase implements IDatabase {
       } catch (tableErr) {
         console.error(
           "Error creating team_join_request table:",
+          tableErr instanceof Error ? tableErr.message : "Unknown error"
+        );
+      }
+
+      try {
+        console.log("Ensuring game_settings table exists...");
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS game_settings (
+            id TEXT PRIMARY KEY DEFAULT 'default',
+            time_per_question INTEGER NOT NULL DEFAULT 20,
+            time_based_duration_options TEXT NOT NULL DEFAULT '[5,10,15]',
+            default_time_based_duration INTEGER NOT NULL DEFAULT 5,
+            questions_per_game INTEGER NOT NULL DEFAULT 10,
+            max_players_per_game INTEGER NOT NULL DEFAULT 4,
+            min_players_per_game INTEGER NOT NULL DEFAULT 2,
+            updated_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
+
+        const existingGameSettings = await db
+          .select()
+          .from(gameSettings)
+          .where(eq(gameSettings.id, "default"));
+
+        if (existingGameSettings.length === 0) {
+          await db.insert(gameSettings).values({
+            id: "default",
+            timePerQuestion: DEFAULT_GAME_SETTINGS.timePerQuestion,
+            timeBasedDurationOptions: JSON.stringify(
+              DEFAULT_GAME_SETTINGS.timeBasedDurationOptions
+            ),
+            defaultTimeBasedDuration: DEFAULT_GAME_SETTINGS.defaultTimeBasedDuration,
+            questionsPerGame: DEFAULT_GAME_SETTINGS.questionsPerGame,
+            maxPlayersPerGame: DEFAULT_GAME_SETTINGS.maxPlayersPerGame,
+            minPlayersPerGame: DEFAULT_GAME_SETTINGS.minPlayersPerGame,
+          });
+        }
+
+        console.log("✅ game_settings table ready");
+      } catch (tableErr) {
+        console.error(
+          "Error ensuring game_settings table:",
           tableErr instanceof Error ? tableErr.message : "Unknown error"
         );
       }

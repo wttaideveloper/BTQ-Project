@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,7 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
 import { getQueryFn } from "@/lib/queryClient";
-import { RefreshCw, Search, Users } from "lucide-react";
+import { RefreshCw, Search, Users, Download } from "lucide-react";
+import { buildUsersCsv, downloadCsv } from "@/lib/csv-export";
 
 type AdminUser = {
   id: number;
@@ -63,6 +64,7 @@ function StatusBadge({
 
 export function UserManagementPanel() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   const {
     data: users = [],
@@ -95,6 +97,36 @@ export function UserManagementPanel() {
     });
   }, [users, searchQuery]);
 
+  const handleExportCsv = useCallback(async () => {
+    setIsExporting(true);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const fallbackFilename = `faithiq-users-${dateStamp}.csv`;
+
+    try {
+      const res = await fetch("/api/admin/users/export", {
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        const csv = await res.text();
+        const disposition = res.headers.get("Content-Disposition") ?? "";
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        downloadCsv(csv, match?.[1] ?? fallbackFilename);
+        return;
+      }
+
+      if (filteredUsers.length > 0) {
+        downloadCsv(buildUsersCsv(filteredUsers), fallbackFilename);
+      }
+    } catch {
+      if (filteredUsers.length > 0) {
+        downloadCsv(buildUsersCsv(filteredUsers), fallbackFilename);
+      }
+    } finally {
+      setIsExporting(false);
+    }
+  }, [filteredUsers]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
@@ -107,15 +139,26 @@ export function UserManagementPanel() {
             className="pl-9"
           />
         </div>
-        <Button
-          variant="outline"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExportCsv}
+            disabled={isExporting || (filteredUsers.length === 0 && !isLoading)}
+            className="flex items-center gap-2"
+          >
+            <Download className={`h-4 w-4 ${isExporting ? "animate-pulse" : ""}`} />
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">

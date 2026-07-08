@@ -1525,6 +1525,211 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/admin/questions/export", ensureAdmin, async (req, res) => {
+    try {
+      const category = req.query.category as string;
+      const difficulty = req.query.difficulty as string;
+      const search = req.query.search as string;
+
+      const questions = await database.getQuestions({
+        category: category && category !== "All Categories" ? category : undefined,
+        difficulty:
+          difficulty && difficulty !== "All Difficulties"
+            ? difficulty
+            : undefined,
+        search,
+      });
+
+      const escapeCsv = (value: string | number) => {
+        const str = String(value ?? "");
+        return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+
+      const header = [
+        "ID",
+        "Question",
+        "Context",
+        "Category",
+        "Difficulty",
+        "Option A",
+        "Option B",
+        "Option C",
+        "Option D",
+        "Correct Answer",
+      ].join(",");
+
+      const rows = questions.map((q) => {
+        const options = q.answers.slice(0, 4);
+        while (options.length < 4) {
+          options.push({ id: "", text: "", isCorrect: false });
+        }
+        const correctAnswer =
+          options.find((a) => a.isCorrect)?.text ?? options[0]?.text ?? "";
+
+        return [
+          q.id,
+          q.text,
+          q.context ?? "",
+          q.category,
+          q.difficulty,
+          options[0]?.text ?? "",
+          options[1]?.text ?? "",
+          options[2]?.text ?? "",
+          options[3]?.text ?? "",
+          correctAnswer,
+        ]
+          .map(escapeCsv)
+          .join(",");
+      });
+
+      const csv = [header, ...rows].join("\r\n");
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="faithiq-questions-${dateStamp}.csv"`
+      );
+      res.send(csv);
+    } catch (err) {
+      console.error("Error exporting questions CSV:", err);
+      res.status(500).json({ message: "Failed to export questions" });
+    }
+  });
+
+  app.get("/api/admin/users/export", ensureAdmin, async (_req, res) => {
+    try {
+      const allUsers = await database.getAllUsers();
+      const escapeCsv = (value: string | number | Date | null | undefined) => {
+        const str =
+          value instanceof Date ? value.toISOString() : String(value ?? "");
+        return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+
+      const header = [
+        "ID",
+        "Username",
+        "Full Name",
+        "Email",
+        "Phone",
+        "Country",
+        "Admin",
+        "Email Verified",
+        "Online",
+        "In Team Battle",
+        "Total Games",
+        "Wins",
+        "Losses",
+        "Draws",
+        "Last Seen",
+        "Last Login",
+      ].join(",");
+
+      const rows = allUsers.map((user) =>
+        [
+          user.id,
+          user.username,
+          user.fullName ?? "",
+          user.email ?? "",
+          user.phone ?? "",
+          user.country ?? "",
+          user.isAdmin ? "Yes" : "No",
+          user.isEmailVerified ? "Yes" : "No",
+          user.isOnline ? "Yes" : "No",
+          user.isInTeamBattle ? "Yes" : "No",
+          user.totalGames ?? 0,
+          user.wins ?? 0,
+          user.losses ?? 0,
+          user.draws ?? 0,
+          user.lastSeen ?? "",
+          user.lastLoginAt ?? "",
+        ]
+          .map(escapeCsv)
+          .join(",")
+      );
+
+      const csv = [header, ...rows].join("\r\n");
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="faithiq-users-${dateStamp}.csv"`
+      );
+      res.send(csv);
+    } catch (err) {
+      console.error("Error exporting users CSV:", err);
+      res.status(500).json({ message: "Failed to export users" });
+    }
+  });
+
+  app.get("/api/admin/game-stats/export", ensureAdmin, async (req, res) => {
+    try {
+      const limit = req.query.limit
+        ? Math.min(parseInt(req.query.limit as string, 10) || 100, 500)
+        : 100;
+
+      const stats = await database.getAdminDashboardStats();
+      const activity = await database.getAdminRecentActivity(limit);
+      const escapeCsv = (value: string | number) => {
+        const str = String(value ?? "");
+        return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+
+      const overviewHeader = ["Metric", "Value"].join(",");
+      const overviewRows = [
+        ["Registered Users", stats.totalUsers],
+        ["Leaderboard Players", stats.leaderboardPlayers],
+        ["Questions in Bank", stats.totalQuestions],
+        ["Solo Games Played", stats.soloGames],
+        ["Multiplayer Games Played", stats.multiGames],
+        ["Total Quiz Games", stats.soloGames + stats.multiGames],
+        ["Average Solo Score", stats.avgSoloScore],
+        ["Solo Games (Last 24h)", stats.soloGamesLast24h],
+        ["Team Battles Total", stats.teamBattlesTotal],
+        ["Team Battles Finished", stats.teamBattlesFinished],
+        ["Team Battles Active", stats.teamBattlesActive],
+      ].map((row) => row.map(escapeCsv).join(","));
+
+      const activityHeader = [
+        "Type",
+        "Title",
+        "Subtitle",
+        "Timestamp",
+        "Details",
+      ].join(",");
+
+      const activityRows = activity.items.map((item) =>
+        [
+          item.type,
+          item.title,
+          item.subtitle,
+          item.timestamp,
+          JSON.stringify(item.meta),
+        ]
+          .map(escapeCsv)
+          .join(",")
+      );
+
+      const csv = [
+        overviewHeader,
+        ...overviewRows,
+        "",
+        activityHeader,
+        ...activityRows,
+      ].join("\r\n");
+
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="faithiq-game-stats-${dateStamp}.csv"`
+      );
+      res.send(csv);
+    } catch (err) {
+      console.error("Error exporting game stats CSV:", err);
+      res.status(500).json({ message: "Failed to export game statistics" });
+    }
+  });
+
   // Submit game results (for multiplayer games)
   app.post("/api/game/results", async (req, res) => {
     try {

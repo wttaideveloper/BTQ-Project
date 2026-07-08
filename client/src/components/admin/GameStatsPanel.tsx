@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Card,
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   BarChart3,
   CheckCircle,
+  Download,
   FileText,
   RefreshCw,
   Swords,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { getQueryFn } from "@/lib/queryClient";
 import { RecentActivityFeed } from "@/components/admin/RecentActivityFeed";
+import { buildGameStatsCsv, downloadCsv } from "@/lib/csv-export";
 
 type DashboardStats = {
   totalUsers: number;
@@ -70,7 +72,19 @@ function StatCard({
   );
 }
 
+type ActivityResponse = {
+  items: Array<{
+    type: string;
+    title: string;
+    subtitle: string;
+    timestamp: string;
+    meta: Record<string, string | number | null>;
+  }>;
+};
+
 export function GameStatsPanel() {
+  const [isExporting, setIsExporting] = useState(false);
+
   const {
     data: stats,
     isLoading,
@@ -83,7 +97,43 @@ export function GameStatsPanel() {
     refetchInterval: 30000,
   });
 
+  const { data: activityData } = useQuery<ActivityResponse>({
+    queryKey: ["/api/admin/recent-activity"],
+    queryFn: getQueryFn({ on401: "throw" }),
+    refetchInterval: 30000,
+  });
+
   const totalQuizGames = (stats?.soloGames ?? 0) + (stats?.multiGames ?? 0);
+
+  const handleExportCsv = useCallback(async () => {
+    if (!stats) return;
+
+    setIsExporting(true);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const fallbackFilename = `faithiq-game-stats-${dateStamp}.csv`;
+
+    try {
+      const res = await fetch("/api/admin/game-stats/export?limit=100", {
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        const csv = await res.text();
+        const disposition = res.headers.get("Content-Disposition") ?? "";
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        downloadCsv(csv, match?.[1] ?? fallbackFilename);
+        return;
+      }
+
+      const activityItems = activityData?.items ?? [];
+      downloadCsv(buildGameStatsCsv(stats, activityItems), fallbackFilename);
+    } catch {
+      const activityItems = activityData?.items ?? [];
+      downloadCsv(buildGameStatsCsv(stats, activityItems), fallbackFilename);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [stats, activityData?.items]);
 
   return (
     <div className="space-y-6">
@@ -96,15 +146,26 @@ export function GameStatsPanel() {
             Live counts from users, questions, and game activity
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExportCsv}
+            disabled={isExporting || isLoading || !stats}
+            className="flex items-center gap-2"
+          >
+            <Download className={`h-4 w-4 ${isExporting ? "animate-pulse" : ""}`} />
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -72,6 +72,7 @@ import { UserManagementPanel } from '@/components/admin/UserManagementPanel';
 import { GameStatsPanel } from '@/components/admin/GameStatsPanel';
 import { GameControlPanel } from '@/components/admin/GameControlPanel';
 import { AdminLeaderboardPanel } from '@/components/admin/AdminLeaderboardPanel';
+import { buildQuestionsCsv, downloadCsv } from '@/lib/csv-export';
 
 const categories = [
   "All Categories",
@@ -117,6 +118,7 @@ const AdminPanel: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>("All Categories");
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>("All Difficulties");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isExportingQuestions, setIsExportingQuestions] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState<boolean>(false);
   const [showEditDialog, setShowEditDialog] = useState<boolean>(false);
   const [showGenerateDialog, setShowGenerateDialog] = useState<boolean>(false);
@@ -244,6 +246,41 @@ const AdminPanel: React.FC = () => {
     setSelectedDifficulty("All Difficulties");
     setSearchQuery("");
   };
+
+  const handleExportQuestionsCsv = useCallback(async () => {
+    setIsExportingQuestions(true);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const fallbackFilename = `faithiq-questions-${dateStamp}.csv`;
+    const params = new URLSearchParams({
+      category: selectedCategory,
+      difficulty: selectedDifficulty,
+      search: searchQuery,
+    });
+
+    try {
+      const res = await fetch(`/api/admin/questions/export?${params}`, {
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        const csv = await res.text();
+        const disposition = res.headers.get("Content-Disposition") ?? "";
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        downloadCsv(csv, match?.[1] ?? fallbackFilename);
+        return;
+      }
+
+      if (questions?.length) {
+        downloadCsv(buildQuestionsCsv(questions), fallbackFilename);
+      }
+    } catch {
+      if (questions?.length) {
+        downloadCsv(buildQuestionsCsv(questions), fallbackFilename);
+      }
+    } finally {
+      setIsExportingQuestions(false);
+    }
+  }, [questions, searchQuery, selectedCategory, selectedDifficulty]);
 
   // Fetch voice status
   const { 
@@ -847,8 +884,22 @@ const AdminPanel: React.FC = () => {
                     }}
                     variant="outline" 
                     className="flex items-center gap-2 hover:bg-green-50 hover:border-green-500"
+                    disabled={!questions?.length}
                   >
-                    <Download size={18} /> Export Questions
+                    <Download size={18} /> Export JSON
+                  </Button>
+
+                  <Button
+                    onClick={handleExportQuestionsCsv}
+                    variant="outline"
+                    className="flex items-center gap-2 hover:bg-green-50 hover:border-green-500"
+                    disabled={isExportingQuestions || !questions?.length}
+                  >
+                    <Download
+                      size={18}
+                      className={isExportingQuestions ? "animate-pulse" : ""}
+                    />
+                    Export CSV
                   </Button>
 
                   {reviewQuestions.length > 0 && (

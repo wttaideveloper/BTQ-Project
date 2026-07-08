@@ -42,6 +42,11 @@ import {
   Sparkles,
   Info,
 } from "lucide-react";
+import { useGameSettings } from "@/hooks/use-game-settings";
+import {
+  formatQuestionBasedSummary,
+  getTeamBattleQuestionCount,
+} from "@/lib/game-config";
 
 const SETUP_PROGRESS_STEPS = [
   { id: 1, label: "Create Team", shortLabel: "Create", icon: Crown },
@@ -149,6 +154,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   const { user } = useAuth();
   const { toast } = useToast();
+  const { settings } = useGameSettings();
+  const battleRulesSummary = isRapidFire
+    ? formatQuestionBasedSummary(settings)
+    : `${getTeamBattleQuestionCount(settings.questionsPerGame)} questions, ${settings.timePerQuestion} sec each`;
   const queryClient = useQueryClient();
   const [readyStatus, setReadyStatus] = useState<{
     teamAReady: boolean;
@@ -3332,8 +3341,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </p>
                 <p className={`text-xs sm:text-sm ${isRapidFire ? "text-[#856910]/80" : "text-blue-700/80"}`}>
                   {isRapidFire
-                    ? "Fast-paced solo rounds where speed matters."
-                    : "Two teams face off with the settings below"}
+                    ? "Fast-paced rounds — first correct answer wins."
+                    : "Two teams alternate questions using admin game rules."}
+                </p>
+                <p className={`text-xs mt-1 ${isRapidFire ? "text-[#856910]/70" : "text-blue-600/80"}`}>
+                  {battleRulesSummary}
                 </p>
               </div>
             </div>
@@ -3348,6 +3360,24 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 </h3>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
+                <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
+                  <Label className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
+                    Questions
+                  </Label>
+                  <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm`}>
+                    {isRapidFire
+                      ? settings.questionsPerGame
+                      : getTeamBattleQuestionCount(settings.questionsPerGame)}
+                  </p>
+                </div>
+                <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
+                  <Label className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
+                    Time / Question
+                  </Label>
+                  <p className={`font-semibold ${isRapidFire ? "text-[#856910]" : "text-purple-900"} mt-0.5 text-xs sm:text-sm`}>
+                    {settings.timePerQuestion}s
+                  </p>
+                </div>
                 <div className="bg-white/60 rounded-lg p-1.5 sm:p-2">
                   <Label className={`${isRapidFire ? "text-[#856910]" : "text-purple-600"} text-xs font-medium`}>
                     Type

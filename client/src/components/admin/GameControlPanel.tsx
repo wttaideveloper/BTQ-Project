@@ -14,13 +14,15 @@ import { getQueryFn, apiRequest } from "@/lib/queryClient";
 import {
   DEFAULT_GAME_SETTINGS,
   GAME_SETTINGS_LIMITS,
+  PLATFORM_GAME_MODES,
   formatDurationOptionsLabel,
   formatQuestionBasedSummary,
+  getTeamBattleQuestionCount,
   normalizeDurationOptions,
   normalizeGameSettings,
   type GameSettingsConfig,
 } from "@shared/game-settings";
-import { RefreshCw, Save, Eye } from "lucide-react";
+import { RefreshCw, Save, Eye, CheckCircle2 } from "lucide-react";
 
 function durationOptionsToInput(options: number[]): string {
   return options.join(", ");
@@ -59,6 +61,7 @@ export function GameControlPanel() {
 
     return {
       questionBased: formatQuestionBasedSummary(normalized),
+      teamBattle: `${getTeamBattleQuestionCount(normalized.questionsPerGame)} questions, ${normalized.timePerQuestion} sec each`,
       timeBased: formatDurationOptionsLabel(normalized.timeBasedDurationOptions),
       multiplayer: `${normalized.minPlayersPerGame}–${normalized.maxPlayersPerGame} players per game`,
       defaultDuration: `${normalized.defaultTimeBasedDuration} min default timer`,
@@ -182,7 +185,10 @@ export function GameControlPanel() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-blue-900">
           <p>
-            <span className="font-medium">Question mode:</span> {preview.questionBased}
+            <span className="font-medium">Solo / Multiplayer:</span> {preview.questionBased}
+          </p>
+          <p>
+            <span className="font-medium">Team Battle / Rapid Fire:</span> {preview.teamBattle}
           </p>
           <p>
             <span className="font-medium">Time mode:</span> {preview.timeBased}
@@ -193,6 +199,33 @@ export function GameControlPanel() {
           <p>
             <span className="font-medium">Default timer:</span> {preview.defaultDuration}
           </p>
+        </CardContent>
+      </Card>
+
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Applies to all game modes</CardTitle>
+          <CardDescription>
+            One platform-wide ruleset shared across every mode below
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-2">
+            {PLATFORM_GAME_MODES.map((mode) => (
+              <li
+                key={mode.id}
+                className="flex items-start gap-2 text-sm text-gray-700"
+              >
+                <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                <span>
+                  <span className="font-medium">{mode.label}</span>
+                  {"note" in mode && mode.note ? (
+                    <span className="text-gray-500"> — {mode.note}</span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
 

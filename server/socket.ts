@@ -11,6 +11,33 @@ import {
   Question,
   Notification,
 } from "@shared/schema";
+import {
+  DEFAULT_GAME_SETTINGS,
+  getTeamBattleQuestionCount,
+  timePerQuestionToMs,
+  type GameSettingsConfig,
+} from "@shared/game-settings";
+
+type SessionWithPlatformSettings = GameSession & {
+  platformSettings?: GameSettingsConfig;
+};
+
+async function ensureSessionPlatformSettings(
+  gameSession: GameSession
+): Promise<GameSettingsConfig> {
+  const session = gameSession as SessionWithPlatformSettings;
+  if (!session.platformSettings) {
+    session.platformSettings = await database.getGameSettings();
+  }
+  return session.platformSettings;
+}
+
+function getSessionTimeLimitMs(gameSession: GameSession): number {
+  const settings =
+    (gameSession as SessionWithPlatformSettings).platformSettings ??
+    DEFAULT_GAME_SETTINGS;
+  return timePerQuestionToMs(settings.timePerQuestion);
+}
 
 /**
  * Helper function to extract user IDs from teammates array.
@@ -1775,7 +1802,7 @@ async function handleAuthenticate(clientId: string, event: GameEvent) {
                     questionNumber: questionNumber,
                     totalQuestions: activeBattleSession.questions.length,
                     teamId: userTeam.id,
-                    timeLimit: 15000,
+                    timeLimit: getSessionTimeLimitMs(activeBattleSession),
                     isYourTurn: isYourTurn || false,
                     answeringTeamName: answeringTeam?.name,
                   });
@@ -2213,11 +2240,11 @@ async function createAsyncGameSession(
 ) {
   try {
     // Create a game session in storage with random questions for the challenge
-    // Use history-aware selection to exclude ALL previously answered questions
+    const platformSettings = await database.getGameSettings();
     const questions = await database.getRandomQuestionsWithHistory({
       category: category !== "All" ? category : undefined,
       difficulty: difficulty !== "All" ? difficulty : undefined,
-      count: 10, // Standard 10 questions for challenges
+      count: platformSettings.questionsPerGame,
       userId: creatorId || undefined,
       // Don't pass excludeRecentHours - will exclude ALL answered questions automatically
       // If all questions are answered, they'll be reused with word shuffling
@@ -6009,6 +6036,10 @@ async function startTeamBattleQuestions(gameId: string) {
   if (!gameSession) return;
 
   try {
+    const platformSettings = await ensureSessionPlatformSettings(gameSession);
+    const targetQuestionCount = getTeamBattleQuestionCount(
+      platformSettings.questionsPerGame
+    );
 
     // Collect all user IDs from all team members to exclude their recent questions
     const allUserIds: number[] = [];
@@ -6106,9 +6137,9 @@ async function startTeamBattleQuestions(gameId: string) {
 
     // Get questions for the battle using history-aware selection
     // Exclude questions seen by ANY team member in the last 48 hours
-    // Total 10 questions: Team A gets 5 (odd: 1,3,5,7,9), Team B gets 5 (even: 2,4,6,8,10)
+    // Total questions from admin settings (even count for alternating teams)
     const questions = await database.getRandomQuestionsWithHistory({
-      count: 10,
+      count: targetQuestionCount,
       category: gameSession.category && gameSession.category !== "All Categories" ? gameSession.category : undefined,
       difficulty: gameSession.difficulty || undefined,
       userId: primaryUserId,
@@ -6181,12 +6212,12 @@ async function startTeamBattleQuestions(gameId: string) {
     finalQuestions = uniqueFiltered;
 
     // If we don't have enough unique questions, try to get more from database
-    if (finalQuestions.length < 10) {
-      console.warn(`[TeamBattle] Only ${finalQuestions.length} unique questions available (requested 10) for gameId: ${gameId}. Attempting to fetch more...`);
+    if (finalQuestions.length < targetQuestionCount) {
+      console.warn(`[TeamBattle] Only ${finalQuestions.length} unique questions available (requested ${targetQuestionCount}) for gameId: ${gameId}. Attempting to fetch more...`);
 
       try {
         // Try to get additional questions, excluding the ones we already have
-        const additionalNeeded = 10 - finalQuestions.length;
+        const additionalNeeded = targetQuestionCount - finalQuestions.length;
         const additionalQuestions = await database.getRandomQuestionsWithHistory({
           count: additionalNeeded * 2, // Get more than needed to account for duplicates
           userId: primaryUserId,
@@ -6195,7 +6226,7 @@ async function startTeamBattleQuestions(gameId: string) {
 
         // Add unique questions from additional fetch
         for (const q of additionalQuestions) {
-          if (q && q.id && !usedQuestionIds.has(q.id) && finalQuestions.length < 10) {
+          if (q && q.id && !usedQuestionIds.has(q.id) && finalQuestions.length < targetQuestionCount) {
             // Validate question has required fields
             if (q.text && q.answers && Array.isArray(q.answers) && q.answers.length > 0) {
               finalQuestions.push(q);
@@ -6211,10 +6242,10 @@ async function startTeamBattleQuestions(gameId: string) {
 
     // If we still don't have 10 unique questions, we'll use what we have
     // (This should rarely happen if database has enough questions)
-    if (finalQuestions.length < 10) {
+    if (finalQuestions.length < targetQuestionCount) {
       console.warn(`[TeamBattle] Only ${finalQuestions.length} unique questions available after all attempts. Using available questions.`);
-    } else if (finalQuestions.length > 10) {
-      // If we have more than 10, take only 10 unique ones and shuffle them
+    } else if (finalQuestions.length > targetQuestionCount) {
+      // If we have more than needed, take only targetQuestionCount unique ones and shuffle them
       // Shuffle using gameId as seed for consistent randomization per game
       let seed = 0;
       for (let i = 0; i < gameId.length; i++) {
@@ -6224,9 +6255,9 @@ async function startTeamBattleQuestions(gameId: string) {
         const j = Math.floor((seed + i) % (i + 1));
         [finalQuestions[i], finalQuestions[j]] = [finalQuestions[j], finalQuestions[i]];
       }
-      finalQuestions = finalQuestions.slice(0, 10);
+      finalQuestions = finalQuestions.slice(0, targetQuestionCount);
     } else {
-      // Exactly 10 unique questions - just shuffle them for variety
+      // Exactly targetQuestionCount unique questions - just shuffle them for variety
       let seed = 0;
       for (let i = 0; i < gameId.length; i++) {
         seed += gameId.charCodeAt(i);
@@ -6442,6 +6473,8 @@ function sendTeamBattleQuestion(gameId: string) {
     gameSession.questionTimeout = undefined;
   }
 
+  const timeLimitMs = getSessionTimeLimitMs(gameSession);
+
   // Determine which team should answer this question
   // Question numbers: 1,2,3,4,5,6,7,8,9,10
   // Team A answers odd questions (1,3,5,7,9)
@@ -6487,7 +6520,7 @@ function sendTeamBattleQuestion(gameId: string) {
             questionNumber: questionNumber,
             totalQuestions: gameSession.questions.length,
             teamId: player.teamId,
-            timeLimit: 10000,
+            timeLimit: timeLimitMs,
             isYourTurn: true,
           });
         } else {
@@ -6498,7 +6531,7 @@ function sendTeamBattleQuestion(gameId: string) {
             questionNumber: questionNumber,
             totalQuestions: gameSession.questions.length,
             teamId: player.teamId,
-            timeLimit: 15000,
+            timeLimit: timeLimitMs,
             isYourTurn: true,
           });
         }
@@ -6546,7 +6579,7 @@ function sendTeamBattleQuestion(gameId: string) {
         question: currentQuestion,
         questionNumber: questionNumber,
         totalQuestions: gameSession.questions.length,
-        timeLimit: 15000,
+        timeLimit: timeLimitMs,
         isYourTurn: false,
         answeringTeamName: answeringTeam.name,
       });
@@ -6562,7 +6595,7 @@ function sendTeamBattleQuestion(gameId: string) {
         questionNumber: questionNumber,
         totalQuestions: gameSession.questions.length,
         teamId: player.teamId,
-        timeLimit: 15000,
+        timeLimit: timeLimitMs,
         isYourTurn: true,
         answeringTeamName: answeringTeam.name,
       });
@@ -6575,7 +6608,7 @@ function sendTeamBattleQuestion(gameId: string) {
         questionNumber: questionNumber,
         totalQuestions: gameSession.questions.length,
         teamId: player.teamId,
-        timeLimit: 15000,
+        timeLimit: timeLimitMs,
         isYourTurn: false,
         answeringTeamName: answeringTeam.name,
         opposingTeamName: opposingTeam.name,
@@ -6590,7 +6623,7 @@ function sendTeamBattleQuestion(gameId: string) {
         questionNumber: questionNumber,
         totalQuestions: gameSession.questions.length,
         teamId: player.teamId,
-        timeLimit: 15000,
+        timeLimit: timeLimitMs,
         isYourTurn: false,
         answeringTeamName: answeringTeam.name,
       });
@@ -6600,7 +6633,7 @@ function sendTeamBattleQuestion(gameId: string) {
 
   gameSession.questionTimeout = setTimeout(() => {
     processTeamBattleAnswers(gameId);
-  }, 15000);
+  }, timeLimitMs);
 }
 
 async function processTeamBattleAnswers(gameId: string) {
@@ -7078,6 +7111,9 @@ async function startRapidFireQuestions(gameId: string) {
   if (!gameSession) return;
 
   try {
+    const platformSettings = await ensureSessionPlatformSettings(gameSession);
+    const targetQuestionCount = platformSettings.questionsPerGame;
+
     // Mark mode and phase for this session
     (gameSession as any).mode = "rapid_fire";
     (gameSession as any).phase = "rapid_fire";
@@ -7086,9 +7122,9 @@ async function startRapidFireQuestions(gameId: string) {
     const allUserIds = (gameSession.players || []).map((p: any) => p.userId).filter(Boolean);
     const primaryUserId = allUserIds.length > 0 ? allUserIds[0] : undefined;
 
-    // Load questions (history-aware) - 10 by default
+    // Load questions (history-aware) from admin settings
     const questions = await database.getRandomQuestionsWithHistory({
-      count: 10,
+      count: targetQuestionCount,
       userId: primaryUserId,
       excludeRecentHours: 0,
     });
@@ -7140,7 +7176,8 @@ function sendRapidFireQuestion(gameId: string) {
   // Broadcast rapid-fire question to all clients in the game
   const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
   // Uses existing currentIndex variable from line 6953
-  const totalQuestions = gameSession.questions?.length || 5;
+  const totalQuestions = gameSession.questions?.length || 0;
+  const timeLimitMs = getSessionTimeLimitMs(gameSession);
 
   for (const client of gameClients) {
     sendToClient(client.id, {
@@ -7149,7 +7186,7 @@ function sendRapidFireQuestion(gameId: string) {
       question,
       questionNumber: currentIndex + 1,
       totalQuestions: totalQuestions,
-      timeLimit: 20000,
+      timeLimit: timeLimitMs,
       message: "Rapid-fire: first correct answer wins the point!",
     });
   }
@@ -7162,7 +7199,7 @@ function sendRapidFireQuestion(gameId: string) {
     processRapidFireResult(gameId, question.id).catch((err) => {
       console.error(`[RapidFire] Error processing rapid-fire timeout for gameId ${gameId}:`, err);
     });
-  }, 20000);
+  }, timeLimitMs);
 }
 
 function isSoloTeam(team: any): boolean {
@@ -7233,7 +7270,7 @@ function buildRapidFireQuestionReconnectEvent(
     questionNumber,
     totalQuestions,
     teamId: userTeamId,
-    timeLimit: 20000,
+    timeLimit: getSessionTimeLimitMs(gameSession),
     restoredSuggestions: restore.suggestions,
     restoredFinalAnswer: restore.finalAnswer,
     message: "Rapid-fire: first correct answer wins the point!",
@@ -8522,7 +8559,7 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
                   questionNumber: questionNumber,
                   totalQuestions: retrySession.questions.length,
                   teamId: userTeam.id,
-                  timeLimit: 15000,
+                  timeLimit: getSessionTimeLimitMs(retrySession),
                   isYourTurn: isYourTurn || false,
                   answeringTeamName: answeringTeam?.name,
                   opposingTeamName: opposingTeam?.name,
@@ -8599,7 +8636,7 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
               questionNumber: questionNumber,
               totalQuestions: battleSession.questions.length,
               teamId: userTeam.id,
-              timeLimit: 15000,
+              timeLimit: getSessionTimeLimitMs(battleSession),
               isYourTurn: isYourTurn || false,
               answeringTeamName: answeringTeam?.name,
               opposingTeamName: opposingTeam?.name,

@@ -6,12 +6,15 @@ import {
 export {
   DEFAULT_GAME_SETTINGS,
   GAME_SETTINGS_LIMITS,
+  PLATFORM_GAME_MODES,
   formatDurationOptionsLabel,
   formatQuestionBasedSummary,
   getQuestionCountForGame,
+  getTeamBattleQuestionCount,
   normalizeDurationOptions,
   normalizeGameSettings,
   parseTimeBasedDurationMinutes,
+  timePerQuestionToMs,
   type GameSettingsConfig,
 } from "@shared/game-settings";
 

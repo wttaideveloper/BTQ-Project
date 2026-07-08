@@ -135,3 +135,52 @@ export function formatQuestionBasedSummary(
 ): string {
   return `${settings.questionsPerGame} questions, ${settings.timePerQuestion} sec per question`;
 }
+
+export function timePerQuestionToMs(seconds: number): number {
+  return Math.max(1, seconds) * 1000;
+}
+
+/** Team battle alternates 2 teams — round up to an even question count. */
+export function getTeamBattleQuestionCount(questionsPerGame: number): number {
+  const count = clamp(
+    questionsPerGame,
+    GAME_SETTINGS_LIMITS.questionsPerGame.min,
+    GAME_SETTINGS_LIMITS.questionsPerGame.max
+  );
+  return count % 2 === 0 ? count : count + 1;
+}
+
+export const PLATFORM_GAME_MODES = [
+  {
+    id: "solo",
+    label: "Solo Quiz",
+    usesQuestionsPerGame: true,
+    usesTimePerQuestion: true,
+  },
+  {
+    id: "multiplayer",
+    label: "Local Multiplayer",
+    usesQuestionsPerGame: true,
+    usesTimePerQuestion: true,
+  },
+  {
+    id: "teamBattle",
+    label: "Team Battle",
+    usesQuestionsPerGame: true,
+    usesTimePerQuestion: true,
+    note: "Question count rounds up to an even number for fair team turns",
+  },
+  {
+    id: "rapidFire",
+    label: "Rapid Fire",
+    usesQuestionsPerGame: true,
+    usesTimePerQuestion: true,
+  },
+  {
+    id: "timeBased",
+    label: "Time-Based Quiz",
+    usesQuestionsPerGame: false,
+    usesTimePerQuestion: true,
+    note: "Uses duration options instead of a fixed question count",
+  },
+] as const;

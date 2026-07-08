@@ -538,7 +538,7 @@ class PostgreSQLDatabase implements IDatabase {
     try {
 
       let excludeQuestionIds: string[] = [];
-      let shouldApplyWordShuffling = false;
+      let reuseAnsweredQuestions = false;
 
       // Step 1: Check if user has answered all available questions
       if (filters.userId) {
@@ -549,8 +549,8 @@ class PostgreSQLDatabase implements IDatabase {
         );
 
         if (allAnswered) {
-          // User has answered all questions - use all questions but apply word shuffling
-          shouldApplyWordShuffling = true;
+          // User has answered all questions - reuse the full pool
+          reuseAnsweredQuestions = true;
           // Don't exclude any questions - we'll use all of them
         } else {
           // Get ALL answered questions (not just recent ones) to exclude them
@@ -577,8 +577,8 @@ class PostgreSQLDatabase implements IDatabase {
       }
 
       // If every question in the requested pool was already answered, reuse them
-      // with word shuffling instead of returning an empty selection.
-      if (filters.userId && excludeQuestionIds.length > 0 && !shouldApplyWordShuffling) {
+      // instead of returning an empty selection.
+      if (filters.userId && excludeQuestionIds.length > 0 && !reuseAnsweredQuestions) {
         const targetPool = await this.getQuestions({
           category: filters.category,
           difficulty: filters.difficulty,
@@ -587,7 +587,7 @@ class PostgreSQLDatabase implements IDatabase {
           targetPool.length > 0 &&
           targetPool.every((q) => excludeQuestionIds.includes(q.id))
         ) {
-          shouldApplyWordShuffling = true;
+          reuseAnsweredQuestions = true;
           excludeQuestionIds = [];
         }
       }
@@ -605,12 +605,9 @@ class PostgreSQLDatabase implements IDatabase {
           ...filters,
           category: undefined,
           difficulty: undefined,
-          excludeQuestionIds: shouldApplyWordShuffling ? [] : excludeQuestionIds,
+          excludeQuestionIds: reuseAnsweredQuestions ? [] : excludeQuestionIds,
           userSeed: filters.userId || 0,
         });
-        if (selectedQuestions.length > 0 && filters.userId) {
-          shouldApplyWordShuffling = true;
-        }
       }
 
       // Step 3: Validate selected questions before shuffling
@@ -629,17 +626,9 @@ class PostgreSQLDatabase implements IDatabase {
         throw new Error("No valid questions available");
       }
 
-      // Step 4: Apply word shuffling if all questions were answered
-      let questionsToProcess = validSelectedQuestions;
-      if (shouldApplyWordShuffling) {
-        questionsToProcess = validSelectedQuestions.map((q, index) =>
-          this.applyWordShuffling(q, (filters.userId || 0) + index * 1000)
-        );
-      }
-
-      // Step 5: Shuffle questions and answers with user-specific entropy
+      // Step 4: Shuffle questions and answers with user-specific entropy
       const shuffledQuestions = this.shuffleQuestionsAndAnswers(
-        questionsToProcess,
+        validSelectedQuestions,
         filters.userId
       );
 
@@ -648,7 +637,7 @@ class PostgreSQLDatabase implements IDatabase {
         throw new Error("Failed to shuffle questions");
       }
 
-      // Step 6: Additional randomization pass to ensure uniqueness
+      // Step 5: Additional randomization pass to ensure uniqueness
       // Use timestamp in seed to ensure different questions each time
       const timestampSeed = Date.now();
       const finalQuestions = this.cryptoSecureShuffle(
@@ -3402,7 +3391,7 @@ class PostgreSQLDatabase implements IDatabase {
   }): Promise<number> {
     try {
       let excludeQuestionIds: string[] = [];
-      let shouldApplyWordShuffling = false;
+      let reuseAnsweredQuestions = false;
 
       if (filters.userId) {
         const allAnswered = await this.hasAnsweredAllQuestions(
@@ -3412,7 +3401,7 @@ class PostgreSQLDatabase implements IDatabase {
         );
 
         if (allAnswered) {
-          shouldApplyWordShuffling = true;
+          reuseAnsweredQuestions = true;
         } else {
           const allAnsweredHistory = await this.getUserQuestionHistory(
             filters.userId
@@ -3432,7 +3421,7 @@ class PostgreSQLDatabase implements IDatabase {
       if (
         filters.userId &&
         excludeQuestionIds.length > 0 &&
-        !shouldApplyWordShuffling
+        !reuseAnsweredQuestions
       ) {
         const targetPool = await this.getQuestions({
           category: filters.category,
@@ -3442,7 +3431,7 @@ class PostgreSQLDatabase implements IDatabase {
           targetPool.length > 0 &&
           targetPool.every((q) => excludeQuestionIds.includes(q.id))
         ) {
-          shouldApplyWordShuffling = true;
+          reuseAnsweredQuestions = true;
           excludeQuestionIds = filters.excludeIds ?? [];
         }
       }
@@ -3458,11 +3447,11 @@ class PostgreSQLDatabase implements IDatabase {
       );
 
       let availableQuestions = validQuestions;
-      if (!shouldApplyWordShuffling && excludeQuestionIds.length > 0) {
+      if (!reuseAnsweredQuestions && excludeQuestionIds.length > 0) {
         availableQuestions = validQuestions.filter(
           (q) => !excludeQuestionIds.includes(q.id)
         );
-      } else if (shouldApplyWordShuffling && filters.excludeIds?.length) {
+      } else if (reuseAnsweredQuestions && filters.excludeIds?.length) {
         availableQuestions = validQuestions.filter(
           (q) => !filters.excludeIds!.includes(q.id)
         );
@@ -3484,58 +3473,6 @@ class PostgreSQLDatabase implements IDatabase {
     } catch (error) {
       console.error("Error counting available questions:", error);
       return 0;
-    }
-  }
-
-  /**
-   * Shuffle words within a text string while preserving punctuation
-   */
-  private shuffleWordsInText(text: string, seed?: number): string {
-    if (!text || text.trim().length === 0) {
-      return text;
-    }
-
-    // Split text into words (using space as delimiter, preserving punctuation with words)
-    const words = text.split(/\s+/).filter(word => word.length > 0);
-
-    if (words.length <= 1) {
-      return text; // Don't shuffle if 1 or fewer words
-    }
-
-    // Use seeded shuffle for words
-    const shuffledWords = this.seededShuffle([...words], seed || 0);
-
-    // Join words back with spaces
-    return shuffledWords.join(" ");
-  }
-
-  /**
-   * Apply word shuffling to question text and answer text
-   */
-  private applyWordShuffling(question: Question, seed?: number): Question {
-    try {
-      const questionSeed = seed || (question.id.charCodeAt(0) || 0);
-
-      // Shuffle words in question text
-      const shuffledText = this.shuffleWordsInText(question.text, questionSeed);
-
-      // Shuffle words in each answer text
-      const shuffledAnswers = question.answers.map((answer, index) => ({
-        ...answer,
-        text: this.shuffleWordsInText(
-          answer.text,
-          questionSeed + (index + 1) * 1000
-        ),
-      }));
-
-      return {
-        ...question,
-        text: shuffledText,
-        answers: shuffledAnswers,
-      };
-    } catch (error) {
-      console.error(`Error applying word shuffling to question ${question.id}:`, error);
-      return question; // Return original if shuffling fails
     }
   }
 

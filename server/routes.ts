@@ -1275,7 +1275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Use enhanced question selection with user history
       // Now excludes ALL previously answered questions (not just recent ones)
-      // If user has answered all questions, they will see all questions again with word shuffling
+      // If user has answered all questions, they will see all questions again
       const questions = await database.getRandomQuestionsWithHistory({
         category: category !== "All Categories" ? category : undefined,
         difficulty,
@@ -1283,12 +1283,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: userId || undefined,
         excludeIds,
         // Don't pass excludeRecentHours - this will make it exclude ALL answered questions
-        // and apply word shuffling when all questions are answered
+        // and reuse the full pool when all questions are answered
       });
 
       // History tracking is automatically done by getRandomQuestionsWithHistory when userId is provided
       // Additional tracking happens when user answers via /api/question-analytics/track
-      // Note: Questions with word shuffling are not tracked again (already answered)
 
       res.json(questions);
     } catch (err) {

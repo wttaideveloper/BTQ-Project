@@ -2247,7 +2247,7 @@ async function createAsyncGameSession(
       count: platformSettings.questionsPerGame,
       userId: creatorId || undefined,
       // Don't pass excludeRecentHours - will exclude ALL answered questions automatically
-      // If all questions are answered, they'll be reused with word shuffling
+      // If all questions are answered, they'll be reused from the full pool
     });
 
     const now = new Date();

@@ -56,7 +56,7 @@ const faqData: FAQSectionData[] = [
       {
         question: "How does same-device multiplayer work?",
         answer:
-          'Tap "Play with Friends" on the home screen. Add 2–3 player names, choose your settings, and start. Everyone plays on one phone or tablet — pass the device when it\'s the next player\'s turn.',
+          'Tap "Play with Friends" on the home screen. Add player names (from 2 up to the max set by the admin), choose your settings, and start. Everyone plays on one phone or tablet — pass the device when it\'s the next player\'s turn.',
       },
       {
         question: "How does turn-taking work?",

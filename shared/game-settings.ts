@@ -7,19 +7,22 @@ export interface GameSettingsConfig {
   minPlayersPerGame: number;
 }
 
+/** Fixed for local multiplayer — not admin-configurable. */
+export const MIN_PLAYERS_PER_GAME = 2;
+
 export const DEFAULT_GAME_SETTINGS: GameSettingsConfig = {
   timePerQuestion: 20,
   timeBasedDurationOptions: [5, 10, 15],
   defaultTimeBasedDuration: 5,
   questionsPerGame: 10,
   maxPlayersPerGame: 4,
-  minPlayersPerGame: 2,
+  minPlayersPerGame: MIN_PLAYERS_PER_GAME,
 };
 
 export const GAME_SETTINGS_LIMITS = {
   timePerQuestion: { min: 5, max: 60 },
   questionsPerGame: { min: 5, max: 20 },
-  maxPlayersPerGame: { min: 2, max: 8 },
+  maxPlayersPerGame: { min: MIN_PLAYERS_PER_GAME, max: 8 },
   timeBasedDuration: { min: 5, max: 30 },
 } as const;
 
@@ -69,15 +72,9 @@ export function normalizeGameSettings(
     ? defaultDuration
     : durationOptions[0];
 
-  const minPlayers = clamp(
-    Number(input?.minPlayersPerGame ?? DEFAULT_GAME_SETTINGS.minPlayersPerGame),
-    GAME_SETTINGS_LIMITS.maxPlayersPerGame.min,
-    GAME_SETTINGS_LIMITS.maxPlayersPerGame.max
-  );
-
   const maxPlayers = clamp(
     Number(input?.maxPlayersPerGame ?? DEFAULT_GAME_SETTINGS.maxPlayersPerGame),
-    minPlayers,
+    MIN_PLAYERS_PER_GAME,
     GAME_SETTINGS_LIMITS.maxPlayersPerGame.max
   );
 
@@ -95,7 +92,7 @@ export function normalizeGameSettings(
       GAME_SETTINGS_LIMITS.questionsPerGame.max
     ),
     maxPlayersPerGame: maxPlayers,
-    minPlayersPerGame: minPlayers,
+    minPlayersPerGame: MIN_PLAYERS_PER_GAME,
   };
 }
 

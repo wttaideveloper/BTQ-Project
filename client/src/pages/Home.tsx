@@ -649,7 +649,7 @@ const Home: React.FC = () => {
             />
             <HomeActionCard
               title="Play with Friends"
-              description="Up to 3 players on one device. Pass the phone and take turns — great for game night."
+              description={`Up to ${settings.maxPlayersPerGame} players on one device. Pass the phone and take turns — great for game night.`}
               icon={Users}
               onClick={handleMultiplayerStart}
               accent="teal"

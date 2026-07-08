@@ -133,7 +133,7 @@ const WelcomeTutorial: React.FC<WelcomeTutorialProps> = ({
             accent="teal"
             icon={<Users className="h-5 w-5 text-teal-400" />}
             title="Play with Friends"
-            description="Up to 3 players on one device. Enter names, pass the phone when it's the next player's turn, and compare scores at the end."
+            description="Pass one device, enter names, take turns, and compare scores at the end. Player limit follows your game settings."
             badge="Same device · no account needed per player"
           />
           <ModeCard

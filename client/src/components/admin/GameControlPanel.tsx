@@ -22,10 +22,33 @@ import {
   normalizeGameSettings,
   type GameSettingsConfig,
 } from "@shared/game-settings";
-import { RefreshCw, Save, Eye, CheckCircle2 } from "lucide-react";
+import { RefreshCw, Save, Eye, CheckCircle2, RotateCcw } from "lucide-react";
 
 function durationOptionsToInput(options: number[]): string {
   return options.join(", ");
+}
+
+function buildDraftSettings(
+  form: GameSettingsConfig,
+  durationOptionsInput: string
+): GameSettingsConfig {
+  return normalizeGameSettings({
+    ...form,
+    timeBasedDurationOptions: normalizeDurationOptions(
+      durationOptionsInput.split(",").map((part) => parseInt(part.trim(), 10))
+    ),
+  });
+}
+
+function settingsEqual(a: GameSettingsConfig, b: GameSettingsConfig): boolean {
+  return (
+    a.timePerQuestion === b.timePerQuestion &&
+    a.defaultTimeBasedDuration === b.defaultTimeBasedDuration &&
+    a.questionsPerGame === b.questionsPerGame &&
+    a.maxPlayersPerGame === b.maxPlayersPerGame &&
+    a.minPlayersPerGame === b.minPlayersPerGame &&
+    a.timeBasedDurationOptions.join(",") === b.timeBasedDurationOptions.join(",")
+  );
 }
 
 export function GameControlPanel() {
@@ -51,22 +74,40 @@ export function GameControlPanel() {
     );
   }, [savedSettings]);
 
+  const savedBaseline = useMemo(
+    () => (savedSettings ? normalizeGameSettings(savedSettings) : null),
+    [savedSettings]
+  );
+
+  const draftSettings = useMemo(
+    () => buildDraftSettings(form, durationOptionsInput),
+    [form, durationOptionsInput]
+  );
+
+  const isDirty = useMemo(() => {
+    if (!savedBaseline) return false;
+    return !settingsEqual(draftSettings, savedBaseline);
+  }, [draftSettings, savedBaseline]);
+
   const preview = useMemo(() => {
-    const normalized = normalizeGameSettings({
-      ...form,
-      timeBasedDurationOptions: normalizeDurationOptions(
-        durationOptionsInput.split(",").map((part) => parseInt(part.trim(), 10))
-      ),
-    });
+    const normalized = draftSettings;
 
     return {
       questionBased: formatQuestionBasedSummary(normalized),
       teamBattle: `${getTeamBattleQuestionCount(normalized.questionsPerGame)} questions, ${normalized.timePerQuestion} sec each`,
       timeBased: formatDurationOptionsLabel(normalized.timeBasedDurationOptions),
-      multiplayer: `${normalized.minPlayersPerGame}–${normalized.maxPlayersPerGame} players per game`,
+      multiplayer: `2–${normalized.maxPlayersPerGame} players per game`,
       defaultDuration: `${normalized.defaultTimeBasedDuration} min default timer`,
     };
-  }, [form, durationOptionsInput]);
+  }, [draftSettings]);
+
+  const handleReset = () => {
+    if (!savedSettings) return;
+    setForm(savedSettings);
+    setDurationOptionsInput(
+      durationOptionsToInput(savedSettings.timeBasedDurationOptions)
+    );
+  };
 
   const saveMutation = useMutation({
     mutationFn: async (payload: GameSettingsConfig) => {
@@ -109,12 +150,7 @@ export function GameControlPanel() {
       return;
     }
 
-    const payload = normalizeGameSettings({
-      ...form,
-      timeBasedDurationOptions: durationOptions,
-    });
-
-    saveMutation.mutate(payload);
+    saveMutation.mutate(draftSettings);
   };
 
   const updateNumber = (
@@ -325,62 +361,56 @@ export function GameControlPanel() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Min Players per Game
-              </label>
-              <Input
-                type="number"
-                value={form.minPlayersPerGame}
-                min={GAME_SETTINGS_LIMITS.maxPlayersPerGame.min}
-                max={form.maxPlayersPerGame}
-                onChange={(e) =>
-                  updateNumber(
-                    "minPlayersPerGame",
-                    e.target.value,
-                    {
-                      min: GAME_SETTINGS_LIMITS.maxPlayersPerGame.min,
-                      max: form.maxPlayersPerGame,
-                    }
-                  )
-                }
-                className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
                 Max Players per Game
               </label>
               <Input
                 type="number"
                 value={form.maxPlayersPerGame}
-                min={form.minPlayersPerGame}
+                min={GAME_SETTINGS_LIMITS.maxPlayersPerGame.min}
                 max={GAME_SETTINGS_LIMITS.maxPlayersPerGame.max}
                 onChange={(e) =>
                   updateNumber(
                     "maxPlayersPerGame",
                     e.target.value,
-                    {
-                      min: form.minPlayersPerGame,
-                      max: GAME_SETTINGS_LIMITS.maxPlayersPerGame.max,
-                    }
+                    GAME_SETTINGS_LIMITS.maxPlayersPerGame
                   )
                 }
                 className="border-gray-200 focus:border-blue-500 focus:ring-blue-500"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Controls the player count selector in Play with Friends
+                Play with Friends starts at 2 players; this sets the maximum
               </p>
             </div>
           </div>
 
-          <Button
-            onClick={handleSave}
-            disabled={saveMutation.isPending}
-            className="bg-blue-600 hover:bg-blue-700 shadow-sm flex items-center gap-2"
-          >
-            <Save className="h-4 w-4" />
-            {saveMutation.isPending ? "Saving…" : "Save Settings"}
-          </Button>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2 border-t border-gray-100">
+            {isDirty && (
+              <p className="text-sm text-amber-700 sm:mr-auto">
+                You have unsaved changes
+              </p>
+            )}
+            <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleReset}
+                disabled={!isDirty || saveMutation.isPending}
+                className="flex items-center gap-2"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reset
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSave}
+                disabled={!isDirty || saveMutation.isPending}
+                className="bg-blue-600 hover:bg-blue-700 shadow-sm flex items-center gap-2 disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                {saveMutation.isPending ? "Saving…" : "Save Settings"}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

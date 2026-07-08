@@ -56,6 +56,11 @@ const PLAYER_COLORS = [
   "bg-blue-500",
   "bg-emerald-500",
   "bg-orange-500",
+  "bg-violet-500",
+  "bg-rose-500",
+  "bg-cyan-500",
+  "bg-amber-500",
+  "bg-lime-500",
 ];
 
 const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
@@ -387,7 +392,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, onClose }) => {
                     <div
                       className={cn(
                         "h-9 w-9 rounded-full text-xs font-bold flex items-center justify-center shrink-0",
-                        PLAYER_COLORS[index]
+                        PLAYER_COLORS[index % PLAYER_COLORS.length]
                       )}
                     >
                       {index + 1}

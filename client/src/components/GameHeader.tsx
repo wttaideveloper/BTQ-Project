@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import BrandLogo from '@/components/BrandLogo';
 import { Volume2, VolumeX, HelpCircle, Mic, MicOff, Bug, Pause, Play, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { toggleSound, toggleVoice, isVoiceEnabled } from '@/lib/sounds';
@@ -114,12 +115,7 @@ const GameHeader: React.FC<GameHeaderProps> = ({
   return (
     <div className="w-full min-w-0 overflow-x-hidden">
       <header className="relative flex flex-wrap justify-between items-center mb-2 z-10 gap-2 min-w-0 w-full">
-        <div className="flex items-center min-w-0 flex-shrink">
-          <h1 className="game-title text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-primary whitespace-nowrap">
-            Faith<span className="text-accent">IQ</span>
-          </h1>
-          <span className="ml-1 sm:ml-2 bg-accent text-primary px-1 sm:px-2 py-1 rounded-md text-xs sm:text-sm font-semibold whitespace-nowrap flex-shrink-0">Bible Trivia</span>
-        </div>
+        <BrandLogo className="min-w-0 flex-shrink" />
         
         <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0 flex-wrap">
           {/* Timer for time-based games */}

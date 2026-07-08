@@ -8258,8 +8258,8 @@ async function declareTeamBattleWinner(
         isWinner: isWinner,
         reason: reason,
         message: isWinner
-          ? `🎉 Victory! Opponent team disconnected - ${winningTeam.name} wins!`
-          : `❌ Defeat! Opponent team disconnected - ${winningTeam.name} wins!`,
+          ? `🎉 Victory! Opponent team disconnected — ${winningTeam.name} takes the win!`
+          : `💪 Great effort! The battle ended early — congratulations to ${winningTeam.name}!`,
         finalScores: finalScores,
         timestamp: new Date(),
       });

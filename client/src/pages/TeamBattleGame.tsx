@@ -46,6 +46,7 @@ import {
   toggleVoice,
 } from "@/lib/sounds";
 import { toggleBasicSound, initBasicSounds } from "@/lib/basic-sound";
+import BrandLogo from "@/components/BrandLogo";
 
 interface TeamMember {
   userId: number;
@@ -767,7 +768,6 @@ export default function TeamBattleGame() {
                 title: "Rapid Fire Result",
                 description: `${teamName} answered correctly! +${data.points} points.`,
                 duration: 2000,
-                variant: isMyTeam ? "default" : "destructive", // Green for us, Red for them (destructive usually red)
               });
             }
             break;
@@ -984,8 +984,9 @@ export default function TeamBattleGame() {
             // Show round results
             toast({
               title: "Round Complete",
-              description: `Your team ${data.yourTeamCorrect ? "got it right" : "got it wrong"
-                }!`,
+              description: data.yourTeamCorrect
+                ? "Your team answered well — keep the momentum going!"
+                : "Good try! Every question sharpens your knowledge.",
             });
             break;
 
@@ -1014,8 +1015,8 @@ export default function TeamBattleGame() {
             toast({
               title: "Battle Finished!",
               description: data.winner
-                ? `${data.winner.name} wins!`
-                : "It's a draw!",
+                ? `Strong finish by ${data.winner.name}!`
+                : "What a close battle — it's a draw!",
             });
             break;
 
@@ -1071,10 +1072,12 @@ export default function TeamBattleGame() {
             }));
             setShowRoundFeedback(false);
             toast({
-              title: data.isWinner ? "🎉 Victory!" : "❌ Defeat",
+              title: data.isWinner ? "🎉 Victory!" : "💪 Great Effort!",
               description:
-                data.message || "Battle ended due to opponent disconnect",
-              variant: data.isWinner ? "default" : "destructive",
+                data.message || (data.isWinner
+                  ? "Battle ended — your team prevailed!"
+                  : "Battle ended — thanks for playing with heart!"),
+              variant: "default",
             });
             break;
 
@@ -1808,7 +1811,7 @@ export default function TeamBattleGame() {
                 {lastRoundCorrect !== null && (
                   <p className={`text-sm mt-2 ${lastRoundCorrect ? "text-green-400" : "text-red-400"
                     }`}>
-                    {lastRoundCorrect ? "✓ Correct! +100 points" : "✗ Incorrect"}
+                    {lastRoundCorrect ? "✓ Correct! +100 points" : "Keep going — wisdom grows with every question!"}
                   </p>
                 )}
               </div>
@@ -1903,27 +1906,27 @@ export default function TeamBattleGame() {
       ? "IT'S A DRAW!"
       : isYourTeamWinner
         ? "VICTORY!"
-        : "DEFEAT!";
+        : "GREAT EFFORT!";
 
     const outcomeSubtitle = isDraw
       ? "Both teams performed equally well!"
       : isYourTeamWinner
         ? "Your team wins!"
-        : `${opponentLabel} wins!`;
+        : `Congratulations to ${opponentLabel}!`;
 
     const outcomeDetail = isDraw
       ? "Great battle — every point counted."
       : gameState.disconnectWinner
         ? isYourTeamWinner
           ? gameState.disconnectWinner.reason ||
-            "The opponent team disconnected. You win by default."
+            "The opponent team disconnected. Your team stays in the fight!"
           : gameState.disconnectWinner.reason ||
-            "Your team was eliminated. Better luck next time!"
+            "Your team stepped away. Hope to see you back in the arena soon!"
         : isYourTeamWinner
           ? yourScore > opponentScore
             ? `You outscored ${opponentLabel} ${yourScore}–${opponentScore}.`
             : "Your team claimed victory!"
-          : `${opponentLabel} outscored you ${opponentScore}–${yourScore}. Great effort — try again!`;
+          : `${opponentLabel} finished ahead ${opponentScore}–${yourScore}. Every round grows your wisdom — come back stronger!`;
 
     return (
       <div className="max-w-2xl mx-auto p-3 sm:p-4 md:p-6">
@@ -1937,7 +1940,7 @@ export default function TeamBattleGame() {
                     ? "bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600 border-yellow-300"
                     : isYourTeamWinner
                       ? "bg-gradient-to-br from-accent via-accent-dark to-accent-light border-accent-light"
-                      : "bg-gradient-to-br from-red-600 via-red-700 to-red-900 border-red-400/60"
+                      : "bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700 border-sky-300/60"
                 }`}
               >
                 <Crown
@@ -1953,7 +1956,7 @@ export default function TeamBattleGame() {
                   ? "bg-gradient-to-r from-yellow-400 to-yellow-600"
                   : isYourTeamWinner
                     ? "bg-gradient-to-r from-accent to-accent-light"
-                    : "bg-gradient-to-r from-red-400 to-red-600"
+                    : "bg-gradient-to-r from-sky-300 to-blue-400"
               }`}
             >
               {outcomeHeadline}
@@ -2036,19 +2039,19 @@ export default function TeamBattleGame() {
                   <>
                     <div className="h-px bg-white/10" />
                     <div className={`rounded-lg sm:rounded-xl p-3 sm:p-4 ${!isYourTeamWinner && !isDraw
-                      ? 'bg-gradient-to-r from-red-500/15 to-red-700/15 border-2 border-red-400/40'
+                      ? 'bg-gradient-to-r from-blue-500/15 to-indigo-600/15 border-2 border-sky-400/40'
                       : 'bg-black/20 border border-white/10'
                       }`}>
                       <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
                         <div className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                           {!isYourTeamWinner && !isDraw && (
-                            <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-red-400 flex-shrink-0" />
+                            <Crown className="h-4 w-4 sm:h-5 sm:w-5 text-sky-300 flex-shrink-0" />
                           )}
                           <span className="truncate">Opponent · {opponentLabel}</span>
                         </div>
                         {!isYourTeamWinner && !isDraw && (
-                          <span className="text-xs sm:text-sm bg-red-500 text-white px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-semibold flex-shrink-0 whitespace-nowrap">
-                            WINNER
+                          <span className="text-xs sm:text-sm bg-sky-500 text-white px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-semibold flex-shrink-0 whitespace-nowrap">
+                            CHAMPION
                           </span>
                         )}
                       </div>
@@ -2216,14 +2219,7 @@ export default function TeamBattleGame() {
           {/* First Row: Logo and Exit Game Button */}
           <div className="flex items-center justify-between gap-2 sm:gap-4 mb-2 sm:mb-0">
             {/* Logo Section */}
-            <div className="flex items-center flex-shrink-0 min-w-0">
-              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-heading font-bold text-primary truncate">
-                Faith<span className="text-accent">IQ</span>
-              </h1>
-              <span className="ml-1 sm:ml-2 bg-accent text-primary px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md text-xs sm:text-sm font-semibold whitespace-nowrap flex-shrink-0">
-                Bible Trivia
-              </span>
-            </div>
+            <BrandLogo className="flex-shrink-0 min-w-0" />
 
             {/* Exit Game Button - Always visible */}
             <Button

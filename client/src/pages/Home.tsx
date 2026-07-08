@@ -75,6 +75,7 @@ import {
 } from "@/lib/game-config";
 import { useGameSettings } from "@/hooks/use-game-settings";
 import { useAuth } from "@/hooks/use-auth";
+import BrandLogo from "@/components/BrandLogo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { User as SelectUser } from "@shared/schema";
@@ -401,19 +402,7 @@ const Home: React.FC = () => {
       {/* Header — fixed (sticky breaks when root has overflow-x:hidden) */}
       <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-lg bg-[#121628]/90 border-b border-white/10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={handleLogoClick}
-            className="flex items-center gap-2.5 hover:opacity-90 transition-opacity cursor-pointer"
-            aria-label="Go to dashboard"
-          >
-            <div className="w-9 h-9 bg-accent rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-primary font-bold text-lg">F</span>
-            </div>
-            <span className="text-xl font-bold text-white">
-              Faith<span className="text-accent">IQ</span>
-            </span>
-          </button>
+          <BrandLogo onClick={handleLogoClick} />
 
           <div className="flex items-center gap-2">
             {user ? (

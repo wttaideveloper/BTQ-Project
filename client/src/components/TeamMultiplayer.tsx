@@ -384,10 +384,6 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
             break;
 
           case "team_battle_started":
-            toast({
-              title: "Battle Started!",
-              description: "Redirecting to your individual game interface...",
-            });
             // Show loader and redirect to individual team battle game interface
             setShowRedirectLoader(true);
             setTimeout(() => {
@@ -397,10 +393,6 @@ export const TeamMultiplayer: React.FC<TeamMultiplayerProps> = ({
             break;
 
           case "both_teams_ready":
-            toast({
-              title: "Both Teams Ready",
-              description: data.message,
-            });
             break;
 
           case "error":

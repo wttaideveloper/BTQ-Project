@@ -383,13 +383,6 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
 
       // Verify the session matches before navigating
       if (targetSessionId && (targetSessionId === gameSessionId || !gameSessionId)) {
-        toast({
-          title: "Battle Started!",
-          description: "Redirecting to game...",
-          duration: 2000,
-        });
-        // CRITICAL FIX #5: Standardize URL parameter to use 'session'
-        // Navigate to game when WebSocket confirms battle started
         navigateToTeamBattleGame(setLocation, targetSessionId);
       } else {
       }

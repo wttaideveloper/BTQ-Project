@@ -582,14 +582,6 @@ export default function TeamBattleGame() {
               setRapidRulesCountdown(5);
               hasShownRapidRules.current = true;
             }
-
-            toast({
-              title: "Battle Started!",
-              description:
-                "Loading questions... Get ready!",
-              duration: 3000,
-            });
-            // Show loading state while questions are being loaded
             break;
 
           case "team_battle_toss":
@@ -1190,12 +1182,6 @@ export default function TeamBattleGame() {
   // leave), request authoritative state from server and show a friendly toast.
   useEffect(() => {
     if (gameState.phase === "playing" && !gameState.playerTeam) {
-      toast({
-        title: "Refreshing game state",
-        description: "Team information missing — retrieving authoritative state...",
-        variant: "destructive",
-      });
-
       if (gameSessionId) {
         sendGameEvent({
           type: "get_game_state",

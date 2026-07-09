@@ -1029,11 +1029,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
               setHasNavigatedToGame(true);
               // Clear countdown to prevent countdown-based navigation
               setCountdown(null);
-              toast({
-                title: "Battle Started!",
-                description: "Redirecting to game...",
-                duration: 2000,
-              });
               onClose();
               // CRITICAL FIX #5: Standardize URL parameter to use 'session'
               navigateToTeamBattleGame(setLocation, targetSessionId);
@@ -1451,27 +1446,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       // Clear loading state
       setIsReadyLoading(false);
 
-      // Show appropriate toast based on opponent status
-      if (opponentTeamReady) {
-        toast({
-          title: "🎮 Both Teams Ready!",
-          description: "Game starting soon...",
-        });
-      } else {
+      if (!opponentTeamReady) {
         toast({
           title: "✅ Team Ready!",
           description: "Your team is ready to play. Waiting for opponent...",
-        });
-      }
-    }
-
-    // Also handle when opponent becomes ready (and we were already ready)
-    if (prevStatus && !isReadyLoading) {
-      const wasOpponentReady = userTeam.teamSide === "A" ? prevStatus.teamBReady : prevStatus.teamAReady;
-      if (!wasOpponentReady && opponentTeamReady && userTeamReady) {
-        toast({
-          title: "🎮 Both Teams Ready!",
-          description: "Game starting soon...",
         });
       }
     }

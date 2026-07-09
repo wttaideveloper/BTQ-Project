@@ -6831,7 +6831,7 @@ async function processTeamBattleAnswers(gameId: string) {
     (gameSession as any).isProcessingAnswers = false; // Reset flag before sending next question
     setTimeout(() => {
       sendTeamBattleQuestion(gameId);
-    }, 2000); // 2 seconds to show results before next question (reduced from 3)
+    }, 3000); // 3 seconds to show results before next question
   }
 }
 
@@ -7343,7 +7343,7 @@ async function tryAwardRapidFireCorrectAnswer(
   gameSession.currentQuestionIndex = (gameSession.currentQuestionIndex || 0) + 1;
   setTimeout(() => {
     sendRapidFireQuestion(gameSession.id);
-  }, 1200);
+  }, 1500);
 
   return true;
 }
@@ -7440,7 +7440,7 @@ async function processRapidFireResult(gameId: string, questionId: string) {
     const nextQuestion = gameSession.questions ? gameSession.questions[gameSession.currentQuestionIndex] : null;
     if (nextQuestion) {
       // Small delay to show result
-      setTimeout(() => sendRapidFireQuestion(gameId), 1000);
+      setTimeout(() => sendRapidFireQuestion(gameId), 1500);
     } else {
       // No more questions - end or mark finished (reuse endTeamBattle behavior)
       // For now, end the team battle gracefully using existing endTeamBattle

@@ -21,6 +21,10 @@ import { voiceService } from "./lib/voice-service";
 import { stopSpeaking } from "./lib/sounds";
 import NavigationGuardProvider from "@/components/NavigationGuardProvider";
 import { Loader2 } from "lucide-react";
+import WatchMatch from "@/pages/WatchMatch";
+import Championship from "@/pages/Championship";
+import ChampionshipTeam from "@/pages/ChampionshipTeam";
+import MyChampionship from "@/pages/MyChampionship";
 
 function AuthLoadingScreen() {
   return (
@@ -58,6 +62,11 @@ function AdminRootRedirect() {
 function Router() {
   const [location] = useLocation();
   const { user, isLoading } = useAuth();
+
+  if (location.startsWith("/watch/")) return <Switch><Route path="/watch/:matchId"><WatchMatch /></Route></Switch>;
+  if (location.startsWith("/overlay/")) return <Switch><Route path="/overlay/:matchId"><WatchMatch overlay /></Route></Switch>;
+  if (location.startsWith("/championships/")) return <Switch><Route path="/championships/:id" component={Championship} /></Switch>;
+  if (location.startsWith("/championship-teams/")) return <Switch><Route path="/championship-teams/:id" component={ChampionshipTeam} /></Switch>;
 
   // Stop voice narration when route changes (except when entering game)
   useEffect(() => {
@@ -127,6 +136,7 @@ function Router() {
       <Route path="/game-history" component={GameHistory} />
       <Route path="/contact" component={Contact} />
       <Route path="/profile" component={ProfilePage} />
+      <Route path="/my-championship" component={MyChampionship} />
       <Route component={NotFound} />
     </Switch>
   );

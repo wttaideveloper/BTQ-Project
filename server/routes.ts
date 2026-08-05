@@ -5,7 +5,7 @@ import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBa
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
-import { setupAuth } from "./auth";
+import { hashPassword, setupAuth } from "./auth";
 import { sendTeamInvitationEmail } from "./email";
 import { QuestionValidationService } from "./question-validation";
 import postgres from "postgres";
@@ -13,6 +13,7 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import { log } from "./logger";
+import { registerChampionshipRoutes } from "./championship-routes";
 
 /**
  * Helper function to extract user IDs from teammates array.
@@ -127,6 +128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupWebSocketServer(httpServer);
 
   // API Routes
+  registerChampionshipRoutes(app, ensureAdmin);
   // Debug endpoint to clear game state - Admin only
   app.post("/api/debug/clear-game-state", ensureAdmin, async (req, res) => {
     try {
@@ -2039,6 +2041,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all users for issuing challenges
+  app.post("/api/admin/users", ensureAdmin, async (req, res) => {
+    try {
+      const input = z.object({
+        fullName: z.string().trim().min(2).max(100),
+        username: z.string().trim().min(3).max(40).regex(/^[a-zA-Z0-9_.-]+$/),
+        email: z.string().trim().email(),
+        password: z.string().min(8).max(128),
+      }).parse(req.body);
+      if (await database.getUserByUsername(input.username)) return res.status(409).json({ message: "Username already exists" });
+      if (await database.getUserByEmail(input.email)) return res.status(409).json({ message: "Email already exists" });
+      const created = await database.createUser({ ...input, password: await hashPassword(input.password), isAdmin: false });
+      const { password: _password, ...safeUser } = created;
+      res.status(201).json(safeUser);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message ?? "Invalid player details" });
+      console.error("Failed to create player:", error);
+      res.status(500).json({ message: "Failed to create player" });
+    }
+  });
+
   app.get("/api/users", ensureAuthenticated, async (req, res) => {
     try {
       if (!req.user) {

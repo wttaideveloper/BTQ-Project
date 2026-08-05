@@ -10,7 +10,9 @@ import {
   ChallengeAnswer,
   Question,
   Notification,
+  championshipMatches,
 } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import {
   DEFAULT_GAME_SETTINGS,
   getTeamBattleQuestionCount,
@@ -18,12 +20,12 @@ import {
   type GameSettingsConfig,
 } from "@shared/game-settings";
 
-type SessionWithPlatformSettings = GameSession & {
+type SessionWithPlatformSettings = (GameSession | ActiveGameSession) & {
   platformSettings?: GameSettingsConfig;
 };
 
 async function ensureSessionPlatformSettings(
-  gameSession: GameSession
+  gameSession: GameSession | ActiveGameSession
 ): Promise<GameSettingsConfig> {
   const session = gameSession as SessionWithPlatformSettings;
   if (!session.platformSettings) {
@@ -32,7 +34,7 @@ async function ensureSessionPlatformSettings(
   return session.platformSettings;
 }
 
-function getSessionTimeLimitMs(gameSession: GameSession): number {
+function getSessionTimeLimitMs(gameSession: GameSession | ActiveGameSession): number {
   const settings =
     (gameSession as SessionWithPlatformSettings).platformSettings ??
     DEFAULT_GAME_SETTINGS;
@@ -171,10 +173,50 @@ interface GameEvent {
   updatedAt?: Date | number | string | null;
   serverTime?: number;
   shouldRefetch?: boolean;
+  matchId?: string;
+  emoticon?: string;
+  reactionCounts?: Record<string, number>;
+  currentQuestion?: any;
+  removedMemberId?: number;
+  disconnectedUserId?: number;
+  inviteeId?: number;
+  invitationType?: string;
 }
 
 // Store active WebSocket clients
 const clients: Map<string, Client> = new Map();
+const matchReactionCounts = new Map<string, Map<string, number>>();
+const reactionWindows = new Map<string, { startedAt: number; count: number }>();
+const liveQuestionState = new Map<string, { questionId: string; questionNumber?: number }>();
+
+export function broadcastChampionshipEvent(event: Record<string, unknown>) {
+  const matchId = (event.matchId as string | undefined) ?? (event.match as { id?: string } | undefined)?.id;
+  if (matchId && event.type === "question_started") liveQuestionState.set(matchId, { questionId: String(event.questionId), questionNumber: event.questionNumber as number | undefined });
+  if (matchId && (event.type === "question_ended" || event.type === "match_ended")) liveQuestionState.delete(matchId);
+  for (const client of clients.values()) {
+    if (client.ws.readyState === WebSocket.OPEN && (!matchId || client.gameId === matchId)) {
+      client.ws.send(JSON.stringify(event));
+    }
+  }
+}
+
+async function broadcastChampionshipQuestion(gameSession: ActiveGameSession, questionId: string, questionNumber: number) {
+  const sessionId = gameSession.teams?.[0]?.gameSessionId;
+  if (!sessionId) return;
+  const [match] = await database.db.select().from(championshipMatches).where(eq(championshipMatches.gameSessionId, sessionId));
+  if (match?.status === "live") broadcastChampionshipEvent({ type: "question_started", matchId: match.id, questionId, questionNumber });
+}
+
+async function broadcastChampionshipScore(gameSession: ActiveGameSession) {
+  const sessionId = gameSession.teams?.[0]?.gameSessionId;
+  if (!sessionId) return;
+  const [match] = await database.db.select().from(championshipMatches).where(eq(championshipMatches.gameSessionId, sessionId));
+  if (!match || match.status !== "live") return;
+  const teamA = gameSession.teams?.find((team: any) => team.teamSide === "A") ?? gameSession.teams?.[0];
+  const teamB = gameSession.teams?.find((team: any) => team.teamSide === "B") ?? gameSession.teams?.[1];
+  const [updated] = await database.db.update(championshipMatches).set({ teamAScore: teamA?.score ?? 0, teamBScore: teamB?.score ?? 0, updatedAt: new Date() }).where(eq(championshipMatches.id, match.id)).returning();
+  broadcastChampionshipEvent({ type: "match_updated", match: updated });
+}
 
 // Store active game sessions
 interface ActiveGameSession {
@@ -1443,6 +1485,38 @@ function handleGameEvent(clientId: string, event: GameEvent) {
       updateConnectionLastSeen(clientId);
       sendToClient(clientId, { type: "pong", serverTime: Date.now() });
       break;
+    case "watch_match":
+      client.gameId = event.matchId;
+      if (event.matchId) {
+        sendToClient(clientId, {
+          type: "match_state_restored", matchId: event.matchId,
+          reactionCounts: Object.fromEntries(matchReactionCounts.get(event.matchId) ?? []),
+          currentQuestion: liveQuestionState.get(event.matchId) ?? null,
+        });
+      }
+      break;
+    case "team_reaction": {
+      if (!event.matchId || !event.teamId || !event.emoticon) break;
+      const now = Date.now();
+      const window = reactionWindows.get(clientId);
+      if (!window || now - window.startedAt >= 1000) {
+        reactionWindows.set(clientId, { startedAt: now, count: 1 });
+      } else if (window.count >= 8) {
+        sendToClient(clientId, { type: "reaction_throttled" });
+        break;
+      } else {
+        window.count++;
+      }
+      const counts = matchReactionCounts.get(event.matchId) ?? new Map<string, number>();
+      const count = (counts.get(event.teamId) ?? 0) + 1;
+      counts.set(event.teamId, count);
+      matchReactionCounts.set(event.matchId, counts);
+      broadcastChampionshipEvent({
+        type: "team_reaction", matchId: event.matchId, teamId: event.teamId,
+        emoticon: event.emoticon, count,
+      });
+      break;
+    }
 
     // Real-time multiplayer events
     case "authenticate":
@@ -6480,6 +6554,7 @@ function sendTeamBattleQuestion(gameId: string) {
   // Team A answers odd questions (1,3,5,7,9)
   // Team B answers even questions (2,4,6,8,10)
   const questionNumber = currentIndex + 1;
+  void broadcastChampionshipQuestion(gameSession, currentQuestion.id, questionNumber);
   const isTeamATurn = questionNumber % 2 === 1; // Odd numbers = Team A
 
   // Find the team that should answer (Team A or Team B)
@@ -6759,6 +6834,7 @@ async function processTeamBattleAnswers(gameId: string) {
       }
     }
   }
+  void broadcastChampionshipScore(gameSession);
 
   // CRITICAL FIX: Send results to all players (both teams see the results)
   // Filter by gameId AND verify they're in the players list
@@ -7620,6 +7696,20 @@ async function endTeamBattle(gameId: string, reason?: string) {
     const winner = sortedTeams[0];
     const isDraw =
       sortedTeams.length > 1 && sortedTeams[0].score === sortedTeams[1].score;
+
+    const championshipSessionId = gameSession.teams[0]?.gameSessionId;
+    if (championshipSessionId) {
+      const [championshipMatch] = await database.db.select().from(championshipMatches).where(eq(championshipMatches.gameSessionId, championshipSessionId));
+      if (championshipMatch && championshipMatch.status === "live") {
+        const teamA = gameSession.teams.find((team: any) => team.teamSide === "A") ?? gameSession.teams[0];
+        const teamB = gameSession.teams.find((team: any) => team.teamSide === "B") ?? gameSession.teams[1];
+        const teamAScore = teamA?.score ?? 0;
+        const teamBScore = teamB?.score ?? 0;
+        const winnerTeamId = teamAScore === teamBScore ? null : teamAScore > teamBScore ? championshipMatch.teamAId : championshipMatch.teamBId;
+        const [completedMatch] = await database.db.update(championshipMatches).set({ status: "completed", teamAScore, teamBScore, winnerTeamId, completedAt: new Date(), updatedAt: new Date() }).where(eq(championshipMatches.id, championshipMatch.id)).returning();
+        broadcastChampionshipEvent({ type: "match_ended", match: completedMatch });
+      }
+    }
 
     // Get game session data for history
     const sessionData = await database.getGameSession(gameId);

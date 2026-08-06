@@ -73,7 +73,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
 
   const support = (team: any) => sendGameEvent({ type: "team_reaction", matchId, teamId: team.id, emoticon: team.emoticon });
   const status = data?.match?.status ?? "upcoming";
-  if (!data) return <div className="min-h-screen bg-slate-950 text-white grid place-items-center">Loading match…</div>;
+  if (!data) return <div className="home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] text-white grid place-items-center font-heading">Loading match…</div>;
 
   if (overlay) return (
     <main className="min-h-screen bg-transparent text-white p-8 flex items-end">
@@ -86,10 +86,10 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   );
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
+    <main className="home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] text-white font-heading">
       <div className="max-w-6xl mx-auto px-4 py-8">
         <header className="mb-6 flex justify-between items-center">
-          <div><p className="text-cyan-400 uppercase tracking-widest text-xs font-bold">FaithIQ Live</p><h1 className="text-3xl font-black">{data.teamA.name} vs {data.teamB.name}</h1></div>
+          <div><p className="text-amber-400 uppercase tracking-widest text-xs font-bold">FaithIQ Live</p><h1 className="text-3xl font-black">{data.teamA.name} vs {data.teamB.name}</h1></div>
           <span className={`px-4 py-2 rounded-full font-bold uppercase text-xs ${status === "live" ? "bg-red-500 animate-pulse" : "bg-white/10"}`}>{status}</span>
         </header>
         <section className="relative aspect-video rounded-3xl overflow-hidden bg-black border border-white/10 shadow-2xl">
@@ -103,7 +103,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
           {reactions.map(r => <span key={r.id} className={`absolute bottom-8 text-4xl animate-bounce ${r.side === "left" ? "left-[15%]" : "right-[15%]"}`}>{r.emoji}</span>)}
           {streamError && <div className="absolute inset-x-4 bottom-4 rounded-xl bg-red-950/90 border border-red-400/30 p-3 text-center text-sm text-red-100">{streamError}</div>}
         </section>
-        <section className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-4 bg-white/5 rounded-3xl p-6 border border-white/10">
+        <section className="home-glass-card mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-3xl p-6">
           {[data.teamA, data.teamB].map((team, i) => <div key={team.id} className={i ? "text-right" : ""}>
             <h2 className="text-xl font-bold">{team.name}</h2><p className="text-sm text-slate-400">{counts[team.id] ?? 0} supporters</p>
             {status === "live" && <button onClick={() => support(team)} className="mt-3 text-4xl bg-white/10 hover:bg-white/20 active:scale-90 transition rounded-2xl p-3">{team.emoticon}</button>}

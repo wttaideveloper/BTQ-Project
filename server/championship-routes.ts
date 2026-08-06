@@ -207,6 +207,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
   app.post("/api/championship-matches/:id/start", ensureAdmin, async (req, res) => {
     const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
     if (!match) return res.status(404).json({ message: "Match not found" });
+    if (match.status === "live" && match.gameSessionId) return res.json(match);
     const [championship] = await db.select().from(championships).where(eq(championships.id, match.championshipId));
     if (championship?.status !== "active") return res.status(409).json({ message: "Only active championships can play matches" });
     const otherLive = await db.select().from(championshipMatches).where(and(
@@ -239,7 +240,18 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     const teams = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, match.championshipId));
     const team = teams.find(item => (item.id === match.teamAId || item.id === match.teamBId) && (item.memberIds ?? []).includes(req.user!.id));
     if (!team) return res.status(403).json({ message: "You are not a member of either participating team" });
-    res.json({ matchId: match.id, gameSessionId: match.gameSessionId, teamId: team.id, isCaptain: team.captainId === req.user.id });
+    const battles = await database.getTeamBattlesByGameSession(match.gameSessionId);
+    const battle = battles[0];
+    if (!battle) return res.status(409).json({ message: "The Team Battle session is not ready" });
+    const shouldStartEngine = battle.status === "forming" && battle.teamACaptainId === req.user.id;
+    res.json({
+      matchId: match.id,
+      gameSessionId: match.gameSessionId,
+      teamId: team.id,
+      isCaptain: team.captainId === req.user.id,
+      shouldStartEngine,
+      engine: "team_battle",
+    });
   });
   app.post("/api/championship-matches/:id/end", ensureAdmin, async (req, res) => {
     const scores = z.object({ teamAScore: z.coerce.number().int().min(0), teamBScore: z.coerce.number().int().min(0), winnerTeamId: z.string().nullish() }).parse(req.body);

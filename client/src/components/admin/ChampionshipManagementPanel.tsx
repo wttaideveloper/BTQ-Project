@@ -12,6 +12,20 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 type ChampionshipForm = { name: string; description: string; startDate: string; endDate: string };
 const emptyForm: ChampionshipForm = { name: "", description: "", startDate: "", endDate: "" };
 
+const localDateTimeToUtc = (value: string) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+const utcToLocalDateTime = (value: string | null | undefined) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localTime.toISOString().slice(0, 16);
+};
+
 export function ChampionshipManagementPanel() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -26,12 +40,9 @@ export function ChampionshipManagementPanel() {
   const [teamBId, setTeamBId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [streamUrl, setStreamUrl] = useState("");
-  const [scores, setScores] = useState<Record<string, { a: number; b: number }>>({});
-  const [questionNumber, setQuestionNumber] = useState<Record<string, number>>({});
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [editingTeam, setEditingTeam] = useState<any>(null);
   const [editingMatch, setEditingMatch] = useState<any>(null);
-  const [winnerOverrides, setWinnerOverrides] = useState<Record<string, string>>({});
   const [showCreatePlayer, setShowCreatePlayer] = useState(false);
   const [playerForm, setPlayerForm] = useState({ fullName: "", username: "", email: "", password: "" });
   const [creatingPlayer, setCreatingPlayer] = useState(false);
@@ -48,7 +59,6 @@ export function ChampionshipManagementPanel() {
     if (!detail?.championship) return;
     const value = detail.championship;
     setEditForm({ name: value.name, description: value.description ?? "", startDate: value.startDate?.slice(0, 10) ?? "", endDate: value.endDate?.slice(0, 10) ?? "" });
-    setScores(Object.fromEntries(detail.matches.map((match: any) => [match.id, { a: match.teamAScore, b: match.teamBScore }])));
   }, [detail]);
 
   const refresh = async () => {
@@ -60,7 +70,12 @@ export function ChampionshipManagementPanel() {
       const response = await apiRequest(method, url, body); return { data: response.status === 204 ? null : await response.json(), success };
     },
     onSuccess: async ({ success }) => { await refresh(); toast({ title: success ?? "Saved successfully" }); },
-    onError: (error: Error) => toast({ title: "Operation failed", description: error.message, variant: "destructive" }),
+    onError: (error: Error) => {
+      if (error.message.toLowerCase().includes("session has expired")) {
+        qc.invalidateQueries({ queryKey: ["/api/user"] });
+      }
+      toast({ title: "Operation failed", description: error.message, variant: "destructive" });
+    },
   });
   const createChampionship = useMutation({
     mutationFn: async () => {
@@ -109,7 +124,7 @@ export function ChampionshipManagementPanel() {
   };
   const handleScheduleMatch = async () => {
     try {
-      await apiRequest("POST", "/api/championship-matches", { championshipId: selected, teamAId, teamBId, scheduledAt: scheduledAt || null, streamUrl: streamUrl.trim() || null });
+      await apiRequest("POST", "/api/championship-matches", { championshipId: selected, teamAId, teamBId, scheduledAt: localDateTimeToUtc(scheduledAt), streamUrl: streamUrl.trim() || null });
       setTeamAId(""); setTeamBId(""); setScheduledAt(""); setStreamUrl("");
       await refresh();
       toast({ title: "Match scheduled", description: "The fixture is ready in Upcoming matches." });
@@ -137,11 +152,11 @@ export function ChampionshipManagementPanel() {
   };
 
   return <div className="space-y-6 p-1">
-    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 text-white p-7 shadow-xl">
-      <div className="absolute -right-12 -top-16 h-56 w-56 rounded-full bg-cyan-400/20 blur-3xl" /><div className="absolute left-1/3 -bottom-24 h-56 w-56 rounded-full bg-fuchsia-500/20 blur-3xl" />
-      <div className="relative"><p className="text-cyan-300 text-xs font-bold uppercase tracking-[.25em] flex items-center gap-2"><Sparkles size={14} /> Live event control center</p><h2 className="text-3xl font-black mt-2">Championship Operations</h2><p className="text-indigo-200 mt-2 max-w-2xl">Create leagues, organize teams, schedule matches, control live scores, and monitor broadcasts from one place.</p>
+    <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white p-7 shadow-lg">
+      <div className="absolute -right-12 -top-16 h-56 w-56 rounded-full bg-white/10 blur-3xl" /><div className="absolute left-1/3 -bottom-24 h-56 w-56 rounded-full bg-blue-300/20 blur-3xl" />
+      <div className="relative"><p className="text-blue-100 text-xs font-bold uppercase tracking-[.25em] flex items-center gap-2"><Sparkles size={14} /> Live event control center</p><h2 className="text-3xl font-bold mt-2">Championship Operations</h2><p className="text-blue-100 mt-2 max-w-2xl">Create leagues, organize teams, schedule matches, control live scores, and monitor broadcasts from one place.</p>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
-          {[{ label: "Total", value: counts.total, icon: Trophy, color: "text-amber-300" }, { label: "Active", value: counts.active, icon: Radio, color: "text-emerald-300" }, { label: "Draft", value: counts.draft, icon: Clock3, color: "text-sky-300" }, { label: "Completed", value: counts.completed, icon: CheckCircle2, color: "text-violet-300" }].map(stat => <div key={stat.label} className="rounded-2xl bg-white/10 border border-white/10 p-4 backdrop-blur"><stat.icon className={stat.color} size={20} /><div className="text-2xl font-black mt-2">{stat.value}</div><div className="text-xs text-indigo-200 uppercase tracking-wider">{stat.label}</div></div>)}
+          {[{ label: "Total", value: counts.total, icon: Trophy, color: "text-amber-300" }, { label: "Active", value: counts.active, icon: Radio, color: "text-emerald-300" }, { label: "Draft", value: counts.draft, icon: Clock3, color: "text-sky-200" }, { label: "Completed", value: counts.completed, icon: CheckCircle2, color: "text-violet-200" }].map(stat => <div key={stat.label} className="rounded-xl bg-white/15 border border-white/20 p-4 backdrop-blur"><stat.icon className={stat.color} size={20} /><div className="text-2xl font-bold mt-2">{stat.value}</div><div className="text-xs text-blue-100 uppercase tracking-wider">{stat.label}</div></div>)}
         </div>
       </div>
     </section>
@@ -189,7 +204,7 @@ export function ChampionshipManagementPanel() {
         <section className="bg-white border rounded-2xl shadow-sm overflow-hidden"><div className="bg-gradient-to-r from-violet-50 to-fuchsia-50 border-b p-5"><h3 className="font-bold text-xl flex items-center gap-2"><CalendarDays className="text-violet-600" /> Match scheduling</h3><p className="text-sm text-slate-500 mt-1">Pair two different teams and choose when the match should appear.</p></div><div className="p-5 space-y-5">
           {detail.teams.length < 2 ? <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-5 text-center"><Users className="mx-auto text-amber-600"/><p className="font-semibold text-amber-900 mt-2">Create at least two teams</p><p className="text-sm text-amber-700">A match needs two different championship teams.</p></div> : <>
             <div><label className="text-sm font-semibold block mb-2">Competing teams</label><div className="grid sm:grid-cols-[1fr_auto_1fr] items-center gap-3"><select className="w-full h-12 border rounded-lg px-3 bg-white" value={teamAId} onChange={event => handleTeamAChange(event.target.value)}><option value="">Select Team A</option>{detail.teams.map((team: any) => <option key={team.id} value={team.id}>{team.emoticon} {team.name}</option>)}</select><span className="w-10 h-10 rounded-full bg-slate-900 text-white text-xs font-black grid place-items-center mx-auto">VS</span><select className="w-full h-12 border rounded-lg px-3 bg-white" value={teamBId} onChange={event => setTeamBId(event.target.value)} disabled={!teamAId}><option value="">Select Team B</option>{detail.teams.filter((team:any) => team.id !== teamAId).map((team: any) => <option key={team.id} value={team.id}>{team.emoticon} {team.name}</option>)}</select></div>{!teamAId && <p className="text-xs text-slate-500 mt-2">Choose Team A first; it will be excluded from Team B automatically.</p>}</div>
-            <div><label className="text-sm font-semibold block mb-2">Match date and time <span className="font-normal text-slate-400">(optional)</span></label><Input className="h-11" type="datetime-local" value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} /><p className="text-xs text-slate-500 mt-1">Scheduling is informational. The match starts only when an admin clicks Start match.</p></div>
+            <div><label className="text-sm font-semibold block mb-2">Match date and time <span className="font-normal text-slate-400">(optional)</span></label><Input className="h-11" type="datetime-local" value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} /><p className="text-xs text-slate-500 mt-1">Enter your local time. It is converted safely for the server and shown in each viewer's local timezone. The match starts only when an admin clicks Start match.</p></div>
             <div><label className="text-sm font-semibold block mb-2">Live stream URL <span className="font-normal text-slate-400">(optional)</span></label><Input className="h-11" placeholder="https://stream.example.com/live.m3u8" value={streamUrl} onChange={event => setStreamUrl(event.target.value)} /><p className="text-xs text-slate-500 mt-1">Paste an HLS .m3u8 URL for the spectator page. You can add or edit it later.</p></div>
             <div className="border-t pt-4 flex items-center justify-between"><p className="text-xs text-slate-500">{teamAId && teamBId ? "Two different teams selected" : "Select both teams to continue"}</p><Button className="min-w-40" disabled={!teamAId || !teamBId || teamAId === teamBId} onClick={handleScheduleMatch}><CalendarDays size={17} className="mr-2"/>Schedule match</Button></div>
           </>}
@@ -198,14 +213,10 @@ export function ChampionshipManagementPanel() {
       </div>
 
       <section className="bg-white border rounded-2xl p-5 shadow-sm"><h3 className="font-bold text-xl flex items-center gap-2 mb-4"><Radio className="text-red-500" /> Match monitoring and live control</h3>
-        {detail.matches.length === 0 ? <p className="text-gray-500">No matches scheduled.</p> : detail.matches.map((match: any) => { const teamA = detail.teams.find((team: any) => team.id === match.teamAId); const teamB = detail.teams.find((team: any) => team.id === match.teamBId); const score = scores[match.id] ?? { a: match.teamAScore, b: match.teamBScore }; return <div key={match.id} className="border-t py-4 space-y-3">
+        {detail.matches.length === 0 ? <p className="text-gray-500">No matches scheduled.</p> : detail.matches.map((match: any) => { const teamA = detail.teams.find((team: any) => team.id === match.teamAId); const teamB = detail.teams.find((team: any) => team.id === match.teamBId); return <div key={match.id} className="border-t py-4 space-y-3">
           <div className="flex flex-wrap gap-3 items-center"><div className="mr-auto"><b>{teamA?.name} vs {teamB?.name}</b><p className="text-xs text-gray-500 uppercase">{match.status} {match.scheduledAt && `· ${new Date(match.scheduledAt).toLocaleString()}`}</p></div><a className="text-blue-600" target="_blank" href={`/watch/${match.id}`}>Watch</a><a className="text-blue-600" target="_blank" href={`/overlay/${match.id}`}>Overlay</a></div>
-          {match.status === "upcoming" && <div className="space-y-2">{editingMatch?.id === match.id ? <div className="grid md:grid-cols-2 gap-2"><Input type="datetime-local" value={editingMatch.scheduledAt ?? ""} onChange={event => setEditingMatch({ ...editingMatch, scheduledAt: event.target.value })}/><Input placeholder="HLS stream URL" value={editingMatch.streamUrl ?? ""} onChange={event => setEditingMatch({ ...editingMatch, streamUrl: event.target.value })}/><select className="border rounded-md p-2" value={editingMatch.teamAId} onChange={event => setEditingMatch({ ...editingMatch, teamAId: event.target.value })}>{detail.teams.map((team:any)=><option key={team.id} value={team.id}>{team.name}</option>)}</select><select className="border rounded-md p-2" value={editingMatch.teamBId} onChange={event => setEditingMatch({ ...editingMatch, teamBId: event.target.value })}>{detail.teams.map((team:any)=><option key={team.id} value={team.id}>{team.name}</option>)}</select><div className="flex gap-2"><Button size="sm" onClick={() => { action.mutate({ method: "PATCH", url: `/api/championship-matches/${match.id}`, body: { teamAId: editingMatch.teamAId, teamBId: editingMatch.teamBId, scheduledAt: editingMatch.scheduledAt || null, streamUrl: editingMatch.streamUrl || null }, success: "Match updated" }); setEditingMatch(null); }}>Save match</Button><Button size="sm" variant="outline" onClick={() => setEditingMatch(null)}>Cancel</Button></div></div> : <div className="flex gap-2"><Button disabled={detail.championship.status !== "active"} onClick={() => action.mutate({ url: `/api/championship-matches/${match.id}/start`, body: {}, success: "Match is live" })}>Start match</Button><Button variant="outline" onClick={() => setEditingMatch({ ...match, scheduledAt: match.scheduledAt ? new Date(match.scheduledAt).toISOString().slice(0,16) : "" })}><Edit3 size={15} className="mr-2"/>Edit match</Button></div>}</div>}
-          {match.status === "live" && <div className="flex flex-wrap gap-2 items-end"><label className="text-sm">{teamA?.name}<Input className="w-24" type="number" min="0" value={score.a} onChange={event => setScores(current => ({ ...current, [match.id]: { ...score, a: Number(event.target.value) } }))} /></label><label className="text-sm">{teamB?.name}<Input className="w-24" type="number" min="0" value={score.b} onChange={event => setScores(current => ({ ...current, [match.id]: { ...score, b: Number(event.target.value) } }))} /></label>
-            <Button variant="outline" onClick={() => action.mutate({ method: "PATCH", url: `/api/championship-matches/${match.id}`, body: { teamAScore: score.a, teamBScore: score.b }, success: "Live score broadcast" })}>Update score</Button>
-            <label className="text-sm">Question<Input className="w-24" type="number" min="1" value={questionNumber[match.id] ?? 1} onChange={event => setQuestionNumber(current => ({ ...current, [match.id]: Number(event.target.value) }))} /></label>
-            <Button variant="outline" onClick={() => action.mutate({ url: `/api/championship-matches/${match.id}/question`, body: { questionId: `question-${questionNumber[match.id] ?? 1}`, questionNumber: questionNumber[match.id] ?? 1, phase: "started" }, success: "Question started event broadcast" })}>Start question</Button>
-            <select className="border rounded-md p-2 text-black" value={winnerOverrides[match.id] ?? ""} onChange={event => setWinnerOverrides(current => ({ ...current, [match.id]: event.target.value }))}><option value="">Auto winner</option><option value={match.teamAId}>{teamA?.name}</option><option value={match.teamBId}>{teamB?.name}</option></select><Button variant="destructive" onClick={() => action.mutate({ url: `/api/championship-matches/${match.id}/end`, body: { teamAScore: score.a, teamBScore: score.b, winnerTeamId: winnerOverrides[match.id] || null }, success: "Match completed" })}>End match</Button></div>}
+          {match.status === "upcoming" && <div className="space-y-2">{editingMatch?.id === match.id ? <div className="grid md:grid-cols-2 gap-2"><Input type="datetime-local" value={editingMatch.scheduledAt ?? ""} onChange={event => setEditingMatch({ ...editingMatch, scheduledAt: event.target.value })}/><Input placeholder="HLS stream URL" value={editingMatch.streamUrl ?? ""} onChange={event => setEditingMatch({ ...editingMatch, streamUrl: event.target.value })}/><select className="border rounded-md p-2" value={editingMatch.teamAId} onChange={event => setEditingMatch({ ...editingMatch, teamAId: event.target.value })}>{detail.teams.map((team:any)=><option key={team.id} value={team.id}>{team.name}</option>)}</select><select className="border rounded-md p-2" value={editingMatch.teamBId} onChange={event => setEditingMatch({ ...editingMatch, teamBId: event.target.value })}>{detail.teams.map((team:any)=><option key={team.id} value={team.id}>{team.name}</option>)}</select><div className="flex gap-2"><Button size="sm" onClick={() => { action.mutate({ method: "PATCH", url: `/api/championship-matches/${match.id}`, body: { teamAId: editingMatch.teamAId, teamBId: editingMatch.teamBId, scheduledAt: localDateTimeToUtc(editingMatch.scheduledAt), streamUrl: editingMatch.streamUrl || null }, success: "Match updated" }); setEditingMatch(null); }}>Save match</Button><Button size="sm" variant="outline" onClick={() => setEditingMatch(null)}>Cancel</Button></div></div> : <div className="flex gap-2"><Button disabled={detail.championship.status !== "active"} onClick={() => action.mutate({ url: `/api/championship-matches/${match.id}/start`, body: {}, success: "Match is live" })}>Start match</Button><Button variant="outline" onClick={() => setEditingMatch({ ...match, scheduledAt: utcToLocalDateTime(match.scheduledAt) })}><Edit3 size={15} className="mr-2"/>Edit match</Button></div>}</div>}
+          {match.status === "live" && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold text-blue-950">Team Battle is controlling this match</p><p className="text-sm text-blue-700 mt-1">Questions, timers, scoring, and match completion are synchronized automatically from the existing Team Battle engine.</p></div><div className="rounded-lg bg-white border border-blue-200 px-4 py-2 text-center"><p className="text-xs text-blue-600 uppercase font-bold">Live score</p><p className="text-xl font-black text-blue-950">{match.teamAScore} : {match.teamBScore}</p></div></div></div>}
         </div>})}
       </section>
 

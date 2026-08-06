@@ -5,7 +5,7 @@ import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBa
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
-import { hashPassword, setupAuth } from "./auth";
+import { hashPassword, requireAdmin, setupAuth } from "./auth";
 import { sendTeamInvitationEmail } from "./email";
 import { QuestionValidationService } from "./question-validation";
 import postgres from "postgres";
@@ -82,15 +82,8 @@ function ensureAuthenticated(req: Request, res: Response, next: NextFunction) {
     .json({ message: "You must be logged in to access this resource" });
 }
 
-// Middleware to ensure user is an admin
-function ensureAdmin(req: Request, res: Response, next: NextFunction) {
-  if (req.isAuthenticated() && req.user && req.user.isAdmin) {
-    return next();
-  }
-  res
-    .status(403)
-    .json({ message: "You do not have permission to access this resource" });
-}
+// Backward-compatible local name; all admin routes use the shared policy.
+const ensureAdmin = requireAdmin;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -128,7 +121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupWebSocketServer(httpServer);
 
   // API Routes
-  registerChampionshipRoutes(app, ensureAdmin);
+  registerChampionshipRoutes(app, requireAdmin);
   // Debug endpoint to clear game state - Admin only
   app.post("/api/debug/clear-game-state", ensureAdmin, async (req, res) => {
     try {

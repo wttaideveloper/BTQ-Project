@@ -1,6 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Express, Request } from "express";
+import { Express, Request, type RequestHandler } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -30,6 +30,21 @@ interface RegisterRequest extends Request {
 
 const scryptAsync = promisify(scrypt);
 const PostgresStore = connectPgSimple(session);
+
+/**
+ * Shared authorization policy for every administrator endpoint.
+ * Authentication failures and authorization failures intentionally use
+ * different status codes so the client can handle expired sessions correctly.
+ */
+export const requireAdmin: RequestHandler = (req, res, next) => {
+  if (!req.isAuthenticated() || !req.user) {
+    return res.status(401).json({ message: "Your admin session has expired. Please log in again." });
+  }
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ message: "Administrator access is required for this action." });
+  }
+  return next();
+};
 
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -65,9 +80,9 @@ export function setupAuth(app: Express) {
       maxAge: 1000 * 60 * 60 * 24, // 24 hours
       httpOnly: true,
       sameSite: "lax",
-      // "auto" keeps cookies usable on HTTP-only staging/IP deployments while
-      // still adding Secure when the request arrives through an HTTPS proxy.
-      secure: process.env.COOKIE_SECURE === "true" ? true : "auto",
+      // Follow the actual request protocol. This keeps sessions usable on an
+      // HTTP/IP deployment and automatically adds Secure behind an HTTPS proxy.
+      secure: "auto",
     }
   };
 
@@ -316,12 +331,7 @@ export function setupAuth(app: Express) {
   );
 
   // Get all users (admin only)
-  app.get("/api/users", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
-
-    const user = req.user as SelectUser;
-    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
-
+  app.get("/api/users", requireAdmin, async (_req, res) => {
     try {
       const users = await database.getAllUsers();
       res.json(users.map((u: User) => sanitizeUserForAdmin(u)));
@@ -331,12 +341,7 @@ export function setupAuth(app: Express) {
   });
 
   // Update user (admin only)
-  app.put("/api/users/:id", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
-
-    const user = req.user as SelectUser;
-    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
-
+  app.put("/api/users/:id", requireAdmin, async (req, res) => {
     try {
       const userId = parseInt(req.params.id);
       const updates = { ...req.body };
@@ -366,6 +371,9 @@ async function createInitialAdmin() {
         profileImage: resolveDefaultAvatarPath("default-4"),
         isAdmin: true,
       });
+    } else if (!adminUser.isAdmin) {
+      await database.updateUser(adminUser.id, { isAdmin: true });
+      console.warn("[Auth] Restored the admin role for the initial admin account.");
     }
   } catch (err) {
     console.error("Failed to create initial admin user:", err);

@@ -24,6 +24,8 @@ export interface GameEvent {
   teamBattleId?: string;
   teamSide?: "A" | "B";
   teamName?: string;
+  matchId?: string;
+  emoticon?: string;
   username?: string;
   finalAnswer?: {
     questionId: string;

@@ -786,6 +786,9 @@ const Home: React.FC = () => {
 
         {/* Footer links */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pt-2">
+          <button type="button" onClick={() => setLocation("/my-championship")} className="home-action-card home-action-card--gold group flex items-center gap-4 p-4 sm:p-5 rounded-2xl text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]">
+            <div className="home-icon-gold w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md"><Swords className="h-6 w-6" /></div><div className="flex-1"><h3 className="font-bold text-white text-base sm:text-lg">My Championship</h3><p className="text-sm text-white/60 mt-0.5">Team, schedule, live matches</p></div><ChevronRight className="h-5 w-5 text-white/30" />
+          </button>
           <button
             type="button"
             onClick={() => setLocation("/leaderboard")}

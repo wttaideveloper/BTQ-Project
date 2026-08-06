@@ -351,6 +351,46 @@ export const teams = pgTable("teams", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const championships = pgTable("championships", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const championshipTeams = pgTable("championship_teams", {
+  id: text("id").primaryKey(),
+  championshipId: text("championship_id").notNull(),
+  name: text("name").notNull(),
+  captainId: integer("captain_id").notNull(),
+  memberIds: json("member_ids").notNull().default([]).$type<number[]>(),
+  emoticon: text("emoticon").notNull().default("👏"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const championshipMatches = pgTable("championship_matches", {
+  id: text("id").primaryKey(),
+  championshipId: text("championship_id").notNull(),
+  teamAId: text("team_a_id").notNull(),
+  teamBId: text("team_b_id").notNull(),
+  scheduledAt: timestamp("scheduled_at"),
+  status: text("status").notNull().default("upcoming"),
+  streamUrl: text("stream_url"),
+  teamAScore: integer("team_a_score").notNull().default(0),
+  teamBScore: integer("team_b_score").notNull().default(0),
+  winnerTeamId: text("winner_team_id"),
+  gameSessionId: text("game_session_id"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Team Join Requests
 export const teamJoinRequest = pgTable("team_join_request", {
   id: text("id").primaryKey(),
@@ -506,6 +546,9 @@ export const insertChallengeSchema = createInsertSchema(challenges);
 export const insertChallengeResultSchema = createInsertSchema(challengeResults);
 export const insertNotificationSchema = createInsertSchema(notifications);
 export const insertTeamSchema = createInsertSchema(teams);
+export const insertChampionshipSchema = createInsertSchema(championships);
+export const insertChampionshipTeamSchema = createInsertSchema(championshipTeams);
+export const insertChampionshipMatchSchema = createInsertSchema(championshipMatches);
 export const insertTeamInvitationSchema = createInsertSchema(teamInvitations);
 export const insertTeamBattleSchema = createInsertSchema(teamBattles);
 export const insertGameSettingsSchema = createInsertSchema(gameSettings);
@@ -537,6 +580,9 @@ export type InsertChallenge = z.infer<typeof insertChallengeSchema>;
 export type InsertChallengeResult = z.infer<typeof insertChallengeResultSchema>;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type Championship = typeof championships.$inferSelect;
+export type ChampionshipTeam = typeof championshipTeams.$inferSelect;
+export type ChampionshipMatch = typeof championshipMatches.$inferSelect;
 export type InsertTeamInvitation = z.infer<typeof insertTeamInvitationSchema>;
 export type InsertTeamBattle = z.infer<typeof insertTeamBattleSchema>;
 export type InsertGameSettings = z.infer<typeof insertGameSettingsSchema>;

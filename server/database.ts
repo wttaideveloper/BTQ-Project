@@ -3939,46 +3939,6 @@ class PostgreSQLDatabase implements IDatabase {
         console.log("Created initial admin user: admin / admin123");
       }
 
-      // Create some sample users for testing
-      const sampleUsers = [
-        {
-          username: "john_doe",
-          password: "password123",
-          email: "john@example.com",
-        },
-        {
-          username: "jane_smith",
-          password: "password123",
-          email: "jane@example.com",
-        },
-        {
-          username: "bob_wilson",
-          password: "password123",
-          email: "bob@example.com",
-        },
-        {
-          username: "alice_brown",
-          password: "password123",
-          email: "alice@example.com",
-        },
-      ];
-
-      for (const sampleUser of sampleUsers) {
-        const existingUser = await this.getUserByUsername(sampleUser.username);
-        if (!existingUser) {
-          const { hashPassword } = await import("./auth");
-          await this.createUser({
-            username: sampleUser.username,
-            password: await hashPassword(sampleUser.password),
-            email: sampleUser.email,
-            isAdmin: false,
-          });
-          console.log(
-            `Created sample user: ${sampleUser.username} / ${sampleUser.password}`
-          );
-        }
-      }
-
       // Create user_question_history table
       try {
         console.log("Creating user_question_history table if it doesn't exist...");

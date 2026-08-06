@@ -59,6 +59,7 @@ import {
   Mic,
   Volume2
 } from 'lucide-react';
+import { ChampionshipManagementPanel } from '@/components/admin/ChampionshipManagementPanel';
 import { apiRequest } from '@/lib/queryClient';
 import { 
   fetchQuestions, 
@@ -704,6 +705,13 @@ const AdminPanel: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab("championships")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${activeTab === "championships" ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}
+            >
+              <Trophy size={20} /><span className="font-medium">Championships</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("leaderboard")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
                 activeTab === "leaderboard"
@@ -756,6 +764,7 @@ const AdminPanel: React.FC = () => {
                     {activeTab === "stats" && "Game Statistics"}
                     {activeTab === "settings" && "Game Control"}
                     {activeTab === "leaderboard" && "Leaderboard"}
+                    {activeTab === "championships" && "Championship Management"}
                   </h1>
                   <p className="text-sm text-gray-600">
                     {activeTab === "questions" && "Manage your Bible trivia questions and content"}
@@ -763,6 +772,7 @@ const AdminPanel: React.FC = () => {
                     {activeTab === "stats" && "Live platform metrics and game activity"}
                     {activeTab === "settings" && "Configure game parameters and behavior"}
                     {activeTab === "leaderboard" && "View top players across solo and multiplayer games"}
+                    {activeTab === "championships" && "Manage teams, matches, streaming, and live operations"}
                   </p>
                 </div>
               </div>
@@ -1046,6 +1056,7 @@ const AdminPanel: React.FC = () => {
                 <AdminLeaderboardPanel />
               </div>
             )}
+            {activeTab === "championships" && <ChampionshipManagementPanel />}
 
             {/* Voices Tab Content */}
             {activeTab === "voices" && (

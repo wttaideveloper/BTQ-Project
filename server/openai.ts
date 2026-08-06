@@ -9,9 +9,9 @@ import { QuestionValidationService } from "./question-validation";
 if (!process.env.OPENAI_API_KEY) {
   console.warn("⚠️  OPENAI_API_KEY not found in environment variables. OpenAI features will not work.");
 }
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY 
-});
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 // Check if a question already exists in the database
 async function questionExists(text: string): Promise<boolean> {
@@ -32,6 +32,9 @@ export async function generateQuestions(
   difficulty: string,
   count: number
 ): Promise<Question[]> {
+  if (!openai) {
+    throw new Error("AI question generation is unavailable: OPENAI_API_KEY is not configured");
+  }
   try {
     
     const prompt = `

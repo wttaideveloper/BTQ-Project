@@ -53,7 +53,6 @@ async function recordLogin(userId: number) {
 }
 
 export function setupAuth(app: Express) {
-  const isProduction = process.env.NODE_ENV === "production";
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "bible-trivia-secret-key",
     resave: false,
@@ -66,7 +65,9 @@ export function setupAuth(app: Express) {
       maxAge: 1000 * 60 * 60 * 24, // 24 hours
       httpOnly: true,
       sameSite: "lax",
-      secure: isProduction,
+      // "auto" keeps cookies usable on HTTP-only staging/IP deployments while
+      // still adding Secure when the request arrives through an HTTPS proxy.
+      secure: process.env.COOKIE_SECURE === "true" ? true : "auto",
     }
   };
 
@@ -177,7 +178,10 @@ export function setupAuth(app: Express) {
         if (err) return next(err);
         await recordLogin(user.id);
         const freshUser = await database.getUser(user.id);
-        res.status(200).json(sanitizeUser(freshUser ?? user));
+        req.session.save((saveError) => {
+          if (saveError) return next(saveError);
+          res.status(200).json(sanitizeUser(freshUser ?? user));
+        });
       });
     })(req, res, next);
   });

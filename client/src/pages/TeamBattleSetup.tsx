@@ -107,6 +107,9 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
   const [_, setLocation] = useLocation();
   const { toast } = useToast();
   const [gameSessionId, setGameSessionId] = useState<string>("");
+  const championshipMatchId = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("championshipMatch")
+    : null;
   const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const updateGameSessionId = useCallback((sessionId: string) => {
@@ -184,6 +187,11 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
   // Generate or restore a game session ID - force new ID only when none exists
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const requestedSessionId = new URLSearchParams(window.location.search).get("session");
+      if (requestedSessionId) {
+        updateGameSessionId(requestedSessionId);
+        return;
+      }
       const storedSessionId = sessionStorage.getItem("teamBattleSessionId");
       if (storedSessionId) {
         setGameSessionId(storedSessionId);
@@ -192,7 +200,7 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
     }
 
     generateNewSessionId();
-  }, [generateNewSessionId]);
+  }, [generateNewSessionId, updateGameSessionId]);
 
   // WebSocket connection for real-time updates (commented out for now)
   // useEffect(() => {
@@ -951,6 +959,15 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
   // Check if user is a captain
   const isTeamCaptain = userTeam?.captainId === user?.id;
 
+  useEffect(() => {
+    const focusInvitePlayers = typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("focus") === "invite-players";
+    if (!focusInvitePlayers || !isTeamCaptain || !userTeam) return;
+    window.setTimeout(() => {
+      document.getElementById("invite-players")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+  }, [isTeamCaptain, userTeam]);
+
   // Check battle readiness - supports 1v1, 1v2, 1v3, 2v2, 2v3, 3v3, etc.
   // Both teams need at least 1 member (captain) to start
   const bothTeamsReady =
@@ -1024,18 +1041,20 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
           <div className="flex items-center gap-4">
             <Button
               variant="outline"
-              onClick={() => setLocation("/")}
+              onClick={() => setLocation(championshipMatchId ? "/my-championship?stay=1" : "/")}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back to Home
+              {championshipMatchId ? "Back to Championship" : "Back to Home"}
             </Button>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
-                Team Battle Setup
+                {championshipMatchId ? "Championship Team Battle" : "Team Battle Setup"}
               </h1>
               <p className="text-gray-600">
-                Form teams and prepare for epic Bible trivia battles
+                {championshipMatchId
+                  ? "Your administrator-assigned teams and players are preloaded below"
+                  : "Form teams and prepare for epic Bible trivia battles"}
               </p>
             </div>
           </div>
@@ -1885,6 +1904,35 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
                         </div>
                       );
                     })}
+                </CardContent>
+              </Card>
+            )}
+
+            {userTeam && isTeamCaptain && championshipMatchId && (
+              <Card id="invite-players" className="scroll-mt-6 border-blue-300">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-blue-500" />
+                    Invite Players · {userTeam.name}
+                  </CardTitle>
+                  <p className="text-sm text-gray-600">This team and roster were configured by the Championship administrator.</p>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {userTeam.members.map((member: TeamMember) => (
+                      <div key={member.userId} className="flex items-center justify-between rounded-lg border bg-gray-50 px-3 py-2">
+                        <span className="font-medium">{member.username}</span>
+                        <Badge variant={member.role === "captain" ? "default" : "secondary"}>
+                          {member.role === "captain" ? "Captain" : "Member"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-sm text-gray-600">
+                    {userTeam.members.length < 3
+                      ? `${3 - userTeam.members.length} player slot(s) remain. Available players can be invited below.`
+                      : "The administrator-assigned team is complete and ready for Team Battle."}
+                  </p>
                 </CardContent>
               </Card>
             )}

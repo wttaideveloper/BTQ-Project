@@ -28,6 +28,19 @@ export function navigateToTeamBattleGame(
   setLocation(`/team-battle-game?session=${gameSessionId}`);
 }
 
+export function navigateToTeamBattleSetup(
+  setLocation: (path: string) => void,
+  gameSessionId: string,
+  championshipMatchId?: string,
+  focusInvitePlayers = false
+): void {
+  sessionStorage.setItem("teamBattleSessionId", gameSessionId);
+  const query = new URLSearchParams({ session: gameSessionId });
+  if (championshipMatchId) query.set("championshipMatch", championshipMatchId);
+  if (focusInvitePlayers) query.set("focus", "invite-players");
+  setLocation(`/team-battle-setup?${query.toString()}${focusInvitePlayers ? "#invite-players" : ""}`);
+}
+
 /** Mark that Home should open the Team Battle setup modal (not the legacy /team-battle page). */
 export function markOpenTeamBattleSetup(options?: { isRapidFire?: boolean }): void {
   sessionStorage.setItem(OPEN_TEAM_BATTLE_SETUP_KEY, "1");

@@ -12,6 +12,7 @@ import AdminLoginPage from "@/pages/AdminLoginPage";
 import AuthPage from "@/pages/AuthPage";
 import Leaderboard from "@/pages/Leaderboard";
 import TeamBattleGame from "@/pages/TeamBattleGame";
+import TeamBattleSetup from "@/pages/TeamBattleSetup";
 import GameHistory from "@/pages/GameHistory";
 import Contact from "@/pages/Contact";
 import ProfilePage from "@/pages/ProfilePage";
@@ -131,6 +132,7 @@ function Router() {
       <Route path="/play" component={Game} />
       <Route path="/game" component={Game} />
       <Route path="/team-battle" component={TeamBattleSetupRedirect} />
+      <Route path="/team-battle-setup"><TeamBattleSetup /></Route>
       <Route path="/team-battle-game" component={TeamBattleGame} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/game-history" component={GameHistory} />

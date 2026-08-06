@@ -243,15 +243,34 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     const battles = await database.getTeamBattlesByGameSession(match.gameSessionId);
     const battle = battles[0];
     if (!battle) return res.status(409).json({ message: "The Team Battle session is not ready" });
-    const shouldStartEngine = battle.status === "forming" && battle.teamACaptainId === req.user.id;
     res.json({
       matchId: match.id,
       gameSessionId: match.gameSessionId,
       teamId: team.id,
       isCaptain: team.captainId === req.user.id,
-      shouldStartEngine,
       engine: "team_battle",
     });
+  });
+  app.post("/api/championship-matches/:id/cancel-live", ensureAdmin, async (req, res) => {
+    const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
+    if (!match) return res.status(404).json({ message: "Match not found" });
+    if (match.status !== "live") return res.status(409).json({ message: "Only a live match can be returned to Upcoming" });
+    const battles = match.gameSessionId ? await database.getTeamBattlesByGameSession(match.gameSessionId) : [];
+    if (battles.some(battle => battle.status === "playing")) {
+      return res.status(409).json({ message: "This Team Battle is already playing and must finish normally" });
+    }
+    for (const battle of battles) await database.deleteTeamBattle(battle.id);
+    const [row] = await db.update(championshipMatches).set({
+      status: "upcoming",
+      startedAt: null,
+      gameSessionId: null,
+      teamAScore: 0,
+      teamBScore: 0,
+      winnerTeamId: null,
+      updatedAt: new Date(),
+    }).where(eq(championshipMatches.id, match.id)).returning();
+    broadcastChampionshipEvent({ type: "match_updated", match: row });
+    res.json(row);
   });
   app.post("/api/championship-matches/:id/end", ensureAdmin, async (req, res) => {
     const scores = z.object({ teamAScore: z.coerce.number().int().min(0), teamBScore: z.coerce.number().int().min(0), winnerTeamId: z.string().nullish() }).parse(req.body);

@@ -1,0 +1,8 @@
+⚠️  OPENAI_API_KEY not found in environment variables. OpenAI features will not work.
+(node:22796) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Browserslist: browsers data (caniuse-lite) is 22 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+(node:22796) TimeoutNegativeWarning: -4713.680185810925 is a negative number.
+Timeout duration was set to 1.

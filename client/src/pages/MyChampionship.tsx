@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { ArrowLeft, Calendar, Crown, Eye, Play, Shield, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { navigateToTeamBattleGame } from "@/lib/team-battle-navigation";
-import { sendGameEvent, setupGameSocket } from "@/lib/socket";
+import { navigateToTeamBattleSetup } from "@/lib/team-battle-navigation";
+import { setupGameSocket } from "@/lib/socket";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -17,11 +17,16 @@ export default function MyChampionship() {
   const qc = useQueryClient();
   const [teamName, setTeamName] = useState("");
   const [newMemberId, setNewMemberId] = useState("");
+  const enteringMatchRef = useRef<string | null>(null);
   const goBack = () => {
     if (window.history.length > 1) window.history.back();
     else setLocation("/");
   };
-  const { data, isLoading } = useQuery<any>({ queryKey: ["/api/championships/me/dashboard"] });
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/championships/me/dashboard"],
+    refetchOnMount: "always",
+    refetchInterval: 5000,
+  });
   const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
   const refresh = () => qc.invalidateQueries({ queryKey: ["/api/championships/me/dashboard"] });
   const createTeam = async () => { try { await apiRequest("POST", "/api/championship-teams", { championshipId: data.championship.id, name: teamName, captainId: user?.id, memberIds: [], emoticon: "👏" }); setTeamName(""); await refresh(); toast({ title: "Team created" }); } catch (error) { toast({ title: "Could not create team", description: error instanceof Error ? error.message : "Please try again", variant: "destructive" }); } };
@@ -30,11 +35,22 @@ export default function MyChampionship() {
     try {
       const response = await apiRequest("POST", `/api/championship-matches/${match.id}/join`, {});
       const access = await response.json();
-      setupGameSocket();
-      if (access.shouldStartEngine) sendGameEvent({ type: "start_team_battle", gameSessionId: access.gameSessionId });
-      window.setTimeout(() => navigateToTeamBattleGame(setLocation, access.gameSessionId), access.shouldStartEngine ? 900 : 100);
-    } catch (error) { toast({ title: "Unable to join match", description: error instanceof Error ? error.message : "Please try again", variant: "destructive" }); }
+      setupGameSocket(user?.id);
+      navigateToTeamBattleSetup(setLocation, access.gameSessionId, match.id, access.isCaptain);
+    } catch (error) { enteringMatchRef.current = null; toast({ title: "Unable to join match", description: error instanceof Error ? error.message : "Please try again", variant: "destructive" }); }
   };
+  useEffect(() => {
+    if (!data?.team || !user?.id) return;
+    const stayOnDashboard = new URLSearchParams(window.location.search).get("stay") === "1";
+    if (stayOnDashboard) return;
+    const liveMatch = data.matches?.find((match: any) =>
+      match.status === "live" &&
+      (match.teamAId === data.team.id || match.teamBId === data.team.id)
+    );
+    if (!liveMatch || enteringMatchRef.current === liveMatch.id) return;
+    enteringMatchRef.current = liveMatch.id;
+    void join(liveMatch);
+  }, [data, user?.id]);
   if (isLoading) return <main className="home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] text-white grid place-items-center font-heading">Loading championship...</main>;
   if (!data?.championship) return <main className="home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] text-white grid place-items-center p-6 text-center font-heading"><div className="home-glass-card rounded-3xl p-8 max-w-lg"><Trophy className="mx-auto text-amber-400" size={54} /><h1 className="text-3xl font-black mt-4">No active championship</h1><p className="text-white/60 mt-2">Check back when the next championship is activated.</p><Button className="mt-6 bg-accent text-primary hover:bg-accent/90" onClick={() => setLocation("/")}>Return home</Button></div></main>;
   return <main className="home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] text-white p-5 font-heading"><div className="max-w-5xl mx-auto">

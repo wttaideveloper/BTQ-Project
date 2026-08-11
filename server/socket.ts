@@ -11,8 +11,11 @@ import {
   Question,
   Notification,
   championshipMatches,
+  championshipTeams,
+  teamBattles,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { getSessionMiddleware } from "./auth";
 import {
   DEFAULT_GAME_SETTINGS,
   getTeamBattleQuestionCount,
@@ -65,6 +68,51 @@ interface Client {
   gameSessionId?: string;
   playerName?: string;
   userId?: number; // Added userId for authenticated clients
+  /**
+   * Championship match this socket is SPECTATING, kept separate from `gameId`.
+   *
+   * `gameId` means "the gameSessions key this socket is playing in" and drives
+   * player fan-out and, critically, disconnect handling. `watch_match` used to
+   * overwrite it with a championship match id, which is never a gameSessions
+   * key. A player who opened a watch page - or simply sent watch_match from the
+   * console - therefore detached themselves from their own battle: on close,
+   * `gameSessions.get(client.gameId)` missed, so
+   * handleTeamBattlePlayerDisconnect() never ran and their opponents were never
+   * told they had gone.
+   *
+   * Spectating is now tracked here, so a spectator subscription can never
+   * change a player's game membership.
+   */
+  watchMatchId?: string;
+  /**
+   * Server-verified user id, resolved from the express-session cookie presented
+   * during the WebSocket handshake. `null` means a genuinely anonymous socket
+   * (public spectator / overlay), which is a supported state.
+   *
+   * This is the ONLY source `client.userId` may be set from. The `authenticate`
+   * event used to take `event.userId` straight from the client, so any socket
+   * could claim any account by sending a number.
+   */
+  verifiedUserId?: number | null;
+  /** Resolves once the handshake session lookup has finished. */
+  identityResolved?: Promise<void>;
+  /**
+   * Validated Tap-to-Support targets for the championship match this client is
+   * watching. Resolved once on `watch_match` and refreshed lazily.
+   *
+   * Held per client, deliberately: the previous handler trusted whatever
+   * matchId/teamId a socket sent, so both `matchReactionCounts` and its inner
+   * map were keyed by attacker-controlled strings that were never cleaned up.
+   * Storing the allow-list on the client bounds it by connection count and lets
+   * it be freed automatically when the socket closes.
+   */
+  supportTargets?: {
+    matchId: string;
+    /** teamId -> that team's emoticon; contains exactly Team A and Team B. */
+    teams: Map<string, string>;
+    status: string;
+    loadedAt: number;
+  };
 }
 
 interface GameEvent {
@@ -193,11 +241,134 @@ export function broadcastChampionshipEvent(event: Record<string, unknown>) {
   const matchId = (event.matchId as string | undefined) ?? (event.match as { id?: string } | undefined)?.id;
   if (matchId && event.type === "question_started") liveQuestionState.set(matchId, { questionId: String(event.questionId), questionNumber: event.questionNumber as number | undefined });
   if (matchId && (event.type === "question_ended" || event.type === "match_ended")) liveQuestionState.delete(matchId);
+
+  // Spectators are anonymous, so the internal Team Battle session key must not
+  // ride along on the match payload. Holding it lets a socket call
+  // `get_game_state`, which does not verify membership and replies with the
+  // live question including its correct answer. Stripped here, at the single
+  // choke point every championship broadcast goes through, so match_started /
+  // match_updated / match_ended are all covered. Participants still receive the
+  // session key from the membership-checked POST /:id/join.
+  const payload = event.match
+    ? { ...event, match: (({ gameSessionId: _internal, ...rest }) => rest)(event.match as Record<string, unknown>) }
+    : event;
+
   for (const client of clients.values()) {
-    if (client.ws.readyState === WebSocket.OPEN && (!matchId || client.gameId === matchId)) {
-      client.ws.send(JSON.stringify(event));
+    // Targeted by the spectator subscription, not by player game membership.
+    if (client.ws.readyState === WebSocket.OPEN && (!matchId || client.watchMatchId === matchId)) {
+      client.ws.send(JSON.stringify(payload));
     }
   }
+}
+
+/** How long a client's cached support targets are trusted before a re-read. */
+const SUPPORT_TARGETS_TTL_MS = 10_000;
+
+/**
+ * Resolve the Tap-to-Support allow-list for a championship match: the two
+ * participating teams and their emoticons, plus the match status.
+ *
+ * Returns null when the match id does not exist, which is how a reaction for a
+ * fabricated match is rejected without ever allocating state for it.
+ */
+async function loadSupportTargets(matchId: string): Promise<Client["supportTargets"] | null> {
+  const [match] = await database.db.select().from(championshipMatches)
+    .where(eq(championshipMatches.id, matchId));
+  if (!match) return null;
+  const teams = await database.db.select().from(championshipTeams)
+    .where(eq(championshipTeams.championshipId, match.championshipId));
+  const allowed = new Map<string, string>();
+  for (const team of teams) {
+    // Exactly Team A and Team B of THIS match. Every other team in the
+    // championship - and every team of every other championship - is excluded,
+    // so support can never be attributed to an unrelated team.
+    if (team.id === match.teamAId || team.id === match.teamBId) {
+      allowed.set(team.id, team.emoticon);
+    }
+  }
+  return { matchId, teams: allowed, status: match.status, loadedAt: Date.now() };
+}
+
+/** Spectator subscribes to a match: bind the socket and restore public state. */
+async function handleWatchMatch(clientId: string, event: GameEvent) {
+  const client = clients.get(clientId);
+  if (!client || !event.matchId) return;
+  const matchId = event.matchId;
+  // Spectator subscription only. `gameId` is deliberately left untouched so a
+  // player who also opens a watch page keeps their Team Battle membership and
+  // their disconnect handling.
+  client.watchMatchId = matchId;
+  // Resolve the support allow-list before replying, so the state the spectator
+  // renders and the taps they can make are consistent from the first frame.
+  client.supportTargets = (await loadSupportTargets(matchId)) ?? undefined;
+  sendToClient(clientId, {
+    type: "match_state_restored", matchId,
+    reactionCounts: Object.fromEntries(matchReactionCounts.get(matchId) ?? []),
+    currentQuestion: liveQuestionState.get(matchId) ?? null,
+  });
+}
+
+/**
+ * Tap-to-Support / live reaction from an anonymous spectator.
+ *
+ * Audience engagement only: this touches no game session, no question, no
+ * answer and no team_battles row. It increments an in-memory counter and
+ * re-broadcasts to the spectators of the same match.
+ *
+ * Everything the client sends is treated as untrusted:
+ *   - matchId must be the match this socket subscribed to via watch_match
+ *   - teamId must be Team A or Team B of that match
+ *   - the emoticon is NOT taken from the client at all; it is read from the
+ *     target team's stored emoticon, so an arbitrary or oversized string can no
+ *     longer be amplified to every spectator
+ *   - support is accepted only while the match is live, matching the spectator
+ *     UI, which renders the support button only for a live match
+ */
+async function handleTeamReaction(clientId: string, event: GameEvent) {
+  const client = clients.get(clientId);
+  if (!client || !event.matchId || !event.teamId) return;
+
+  // Throttle first, so a flood cannot drive repeated target look-ups.
+  const now = Date.now();
+  const window = reactionWindows.get(clientId);
+  if (!window || now - window.startedAt >= 1000) {
+    reactionWindows.set(clientId, { startedAt: now, count: 1 });
+  } else if (window.count >= 8) {
+    sendToClient(clientId, { type: "reaction_throttled" });
+    return;
+  } else {
+    window.count++;
+  }
+
+  // Only the match this socket is actually watching.
+  let targets = client.supportTargets;
+  if (!targets || targets.matchId !== event.matchId) {
+    if (client.watchMatchId !== event.matchId) return;
+    targets = (await loadSupportTargets(event.matchId)) ?? undefined;
+    client.supportTargets = targets;
+  } else if (now - targets.loadedAt > SUPPORT_TARGETS_TTL_MS) {
+    // Refresh so a match that went live (or ended) is picked up. Bounded to one
+    // read per client per TTL regardless of how fast the client taps.
+    targets = (await loadSupportTargets(event.matchId)) ?? undefined;
+    client.supportTargets = targets;
+  }
+  if (!targets) return;
+  if (targets.status !== "live") return;
+
+  const emoticon = targets.teams.get(event.teamId);
+  if (!emoticon) return;
+
+  // Read-modify-write is safe: no await between the read and the write, so two
+  // concurrent handlers cannot interleave and lose an increment.
+  const counts = matchReactionCounts.get(targets.matchId) ?? new Map<string, number>();
+  const count = (counts.get(event.teamId) ?? 0) + 1;
+  counts.set(event.teamId, count);
+  matchReactionCounts.set(targets.matchId, counts);
+
+  broadcastChampionshipEvent({
+    type: "team_reaction", matchId: targets.matchId, teamId: event.teamId,
+    emoticon, count,
+  });
 }
 
 async function broadcastChampionshipQuestion(gameSession: ActiveGameSession, questionId: string, questionNumber: number) {
@@ -1091,14 +1262,77 @@ function present<T>(v: T | undefined | null): v is T {
   return v !== undefined && v !== null;
 }
 
+/**
+ * Resolve the authenticated user for a WebSocket handshake.
+ *
+ * Browsers send cookies with the WebSocket upgrade request, so the existing
+ * express-session cookie is already present on `req`. Running the project's own
+ * session middleware over it reuses the same Postgres session store, the same
+ * signing secret and the same passport serialisation (`serializeUser` stores
+ * `user.id`), so the identity it yields is exactly the identity an authenticated
+ * HTTP request would get. No new token, no new table, no new auth mechanism.
+ *
+ * Returns null for anonymous sockets - public spectators and OBS overlay sources
+ * legitimately have no session, and must keep working.
+ *
+ * Never throws and never blocks the connection: any failure degrades to
+ * anonymous. Nothing here logs the cookie, the session id or the session body.
+ */
+function resolveHandshakeUserId(req: unknown): Promise<number | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: number | null) => {
+      if (!settled) { settled = true; resolve(value); }
+    };
+    try {
+      const sessionMiddleware = getSessionMiddleware();
+      if (!sessionMiddleware || !req) return finish(null);
+
+      // Guard against a session store that never calls back.
+      const timer = setTimeout(() => finish(null), 5000);
+
+      // express-session only reads on this path: we never call res.end(), and
+      // saveUninitialized is false, so no session row is created for anonymous
+      // sockets. The stub satisfies the response methods it wraps.
+      const res: any = {
+        writeHead() { return res; },
+        setHeader() { return res; },
+        getHeader() { return undefined; },
+        removeHeader() { return res; },
+        end() { return res; },
+        on() { return res; },
+        once() { return res; },
+        emit() { return false; },
+        removeListener() { return res; },
+      };
+
+      sessionMiddleware(req as any, res, () => {
+        clearTimeout(timer);
+        const userId = (req as any)?.session?.passport?.user;
+        finish(typeof userId === "number" ? userId : null);
+      });
+    } catch {
+      finish(null);
+    }
+  });
+}
+
 export function setupWebSocketServer(server: Server) {
   const wss = new WebSocketServer({ server, path: "/ws" });
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, req) => {
     const clientId = uuidv4();
 
     // Store client in map
-    clients.set(clientId, { id: clientId, ws });
+    const connectingClient: Client = { id: clientId, ws };
+    clients.set(clientId, connectingClient);
+
+    // Bind the server-verified identity to this socket. Anonymous sockets keep
+    // verifiedUserId === null and remain fully functional as spectators.
+    connectingClient.identityResolved = resolveHandshakeUserId(req).then((userId) => {
+      const current = clients.get(clientId);
+      if (current) current.verifiedUserId = userId;
+    });
 
     // CRITICAL: Initialize connectionLastSeen immediately when client connects
     // This prevents new connections from being incorrectly marked as stale
@@ -1453,6 +1687,11 @@ export function setupWebSocketServer(server: Server) {
 
       // Clean up connectionLastSeen
       connectionLastSeen.delete(clientId);
+
+      // Clean up the per-socket reaction throttle window. It was keyed by
+      // clientId and never removed, so every connection that ever sent a
+      // reaction left an entry behind for the lifetime of the process.
+      reactionWindows.delete(clientId);
     });
 
     // Send initial connection confirmation
@@ -1486,37 +1725,11 @@ function handleGameEvent(clientId: string, event: GameEvent) {
       sendToClient(clientId, { type: "pong", serverTime: Date.now() });
       break;
     case "watch_match":
-      client.gameId = event.matchId;
-      if (event.matchId) {
-        sendToClient(clientId, {
-          type: "match_state_restored", matchId: event.matchId,
-          reactionCounts: Object.fromEntries(matchReactionCounts.get(event.matchId) ?? []),
-          currentQuestion: liveQuestionState.get(event.matchId) ?? null,
-        });
-      }
+      void handleWatchMatch(clientId, event);
       break;
-    case "team_reaction": {
-      if (!event.matchId || !event.teamId || !event.emoticon) break;
-      const now = Date.now();
-      const window = reactionWindows.get(clientId);
-      if (!window || now - window.startedAt >= 1000) {
-        reactionWindows.set(clientId, { startedAt: now, count: 1 });
-      } else if (window.count >= 8) {
-        sendToClient(clientId, { type: "reaction_throttled" });
-        break;
-      } else {
-        window.count++;
-      }
-      const counts = matchReactionCounts.get(event.matchId) ?? new Map<string, number>();
-      const count = (counts.get(event.teamId) ?? 0) + 1;
-      counts.set(event.teamId, count);
-      matchReactionCounts.set(event.matchId, counts);
-      broadcastChampionshipEvent({
-        type: "team_reaction", matchId: event.matchId, teamId: event.teamId,
-        emoticon: event.emoticon, count,
-      });
+    case "team_reaction":
+      void handleTeamReaction(clientId, event);
       break;
-    }
 
     // Real-time multiplayer events
     case "authenticate":
@@ -1663,11 +1876,45 @@ function handleGameEvent(clientId: string, event: GameEvent) {
 
 // Authentication handler to associate userId with socket connection
 async function handleAuthenticate(clientId: string, event: GameEvent) {
-  const { userId, playerName } = event;
-  if (!userId) return;
+  const { playerName } = event;
 
-  const client = clients.get(clientId);
+  let client = clients.get(clientId);
   if (!client) return;
+
+  // ==========================================================================
+  // IDENTITY IS SERVER-DETERMINED.
+  //
+  // `event.userId` is deliberately NOT read. It used to be assigned straight to
+  // client.userId, so any socket - including an anonymous one - could claim any
+  // account simply by sending a number, and user ids are sequential integers.
+  // Identity now comes only from the express-session cookie verified during the
+  // handshake, so the client cannot choose or enumerate it.
+  //
+  // Repeat `authenticate` calls are safe by construction: they always resolve to
+  // the same verified value, so identity cannot be switched mid-connection. A
+  // real re-login closes the socket client-side (use-auth clears it when the
+  // user changes), and the replacement connection performs a fresh handshake.
+  // ==========================================================================
+  if (client.identityResolved) {
+    try {
+      await client.identityResolved;
+    } catch {
+      // Treated as anonymous below.
+    }
+  }
+  client = clients.get(clientId);
+  if (!client) return;
+
+  const userId = client.verifiedUserId ?? null;
+  if (!userId) {
+    // Existing socket error convention. Reveals nothing about which users or
+    // games exist.
+    sendToClient(clientId, {
+      type: "error",
+      message: "Authentication required",
+    });
+    return;
+  }
 
   try {
     // Check if user was already connected and clean up old connections
@@ -5810,6 +6057,47 @@ async function handleAcceptTeamInvitation(clientId: string, event: GameEvent) {
   }
 }
 
+/**
+ * Attach a client to an ALREADY running team battle session instead of starting
+ * a second one.
+ *
+ * Used by the double-start guards in handleStartTeamBattle: both Championship
+ * captains send `start_team_battle` for the same match, so the second one must
+ * be a no-op that still lands the captain in the live game rather than an error
+ * or a duplicate session.
+ *
+ * Returns true when a live in-memory session was found and the client was
+ * re-attached to it.
+ */
+function attachClientToRunningBattle(
+  clientId: string,
+  battleId: string,
+  gameSessionId: string,
+  gameType?: string
+): boolean {
+  const client = clients.get(clientId);
+  if (!client) return false;
+
+  const liveSession = Array.from(gameSessions.values()).find(
+    (session) =>
+      session.gameType === "team_battle" &&
+      session.teams?.some((team: any) => team.teamBattleId === battleId)
+  );
+  if (!liveSession) return false;
+
+  client.gameId = liveSession.id;
+  client.gameSessionId = gameSessionId;
+  sendToClient(clientId, {
+    type: "team_battle_started",
+    gameId: liveSession.id,
+    gameSessionId,
+    teams: liveSession.teams ?? [],
+    gameType,
+    message: "Team battle already in progress — reconnecting you.",
+  });
+  return true;
+}
+
 async function handleStartTeamBattle(clientId: string, event: GameEvent) {
   const client = clients.get(clientId);
   if (!client || !client.userId || !event.gameSessionId) {
@@ -5829,10 +6117,35 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       return;
     }
 
-    // Get the most recent forming battle
-    const battle = battles.find(b => b.status === 'forming') || battles[0];
+    // Pick a battle that is actually startable.
+    //
+    // "ready" MUST stay startable: the normal Team Battle flow reaches this
+    // handler with status "ready" because handleTeamBattleReady sets "ready"
+    // before the countdown and then calls handleStartTeamBattle.
+    //
+    // The previous `|| battles[0]` fallback accepted ANY battle regardless of
+    // status, including one already "playing". Both Championship captains send
+    // start_team_battle (MyChampionship.join sets isCaptain for each side), so
+    // the second captain re-entered on a "playing" battle and created a second
+    // in-memory game session with its own question pipeline for the same match.
+    const battle =
+      battles.find((b) => b.status === "forming") ||
+      battles.find((b) => b.status === "ready");
 
     if (!battle) {
+      // No startable battle. If one is already playing, this is the duplicate
+      // start (second captain / double click): re-attach rather than error.
+      const alreadyPlaying = battles.find((b) => b.status === "playing");
+      if (alreadyPlaying) {
+        attachClientToRunningBattle(
+          clientId,
+          alreadyPlaying.id,
+          event.gameSessionId,
+          (alreadyPlaying as any).gameType
+        );
+        return;
+      }
+
       sendToClient(clientId, {
         type: "error",
         message: "No active battle found. Please create teams first.",
@@ -5985,17 +6298,47 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
 
     // CRITICAL: Only update battle status to "playing" (IN_GAME phase) AFTER all validations pass
     // This ensures teams are complete before phase advancement
+    //
+    // This UPDATE is also the concurrency guard. It is conditional on the row
+    // still being "forming"/"ready", so when two captains send
+    // start_team_battle at nearly the same time both may pass the read-only
+    // validations above, but only ONE UPDATE matches a row and returns it. The
+    // loser falls into the !claimedBattle branch and never reaches the
+    // gameSessions.set() below, so exactly one game session exists per battle.
+    let claimedBattle: typeof teamBattles.$inferSelect | undefined;
     try {
-      await database.updateTeamBattle(battle.id, {
-        status: "playing", // IN_GAME phase
-        startedAt: new Date(),
-      });
+      [claimedBattle] = await database.db
+        .update(teamBattles)
+        .set({
+          status: "playing", // IN_GAME phase
+          startedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(teamBattles.id, battle.id),
+            inArray(teamBattles.status, ["forming", "ready"])
+          )
+        )
+        .returning();
     } catch (error) {
       console.error(`[handleStartTeamBattle] ❌ Failed to update battle status:`, error);
       sendToClient(clientId, {
         type: "error",
         message: "Failed to start battle. Please try again.",
       });
+      return;
+    }
+
+    if (!claimedBattle) {
+      // Another start_team_battle won the race and already moved this battle to
+      // "playing". Re-attach this client to that session instead of creating a
+      // duplicate one.
+      attachClientToRunningBattle(
+        clientId,
+        battle.id,
+        event.gameSessionId,
+        (battle as any).gameType
+      );
       return;
     }
 
@@ -8537,11 +8880,36 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
       return;
     }
 
-    // Derive the user's team from this session (fallback to first team if not found)
-    const userTeam =
-      sessionTeams.find((team) =>
-        team.members.some((member: any) => member.userId === client.userId)
-      ) || sessionTeams[0];
+    // AUTHORIZATION: the requester must actually belong to this game session.
+    //
+    // This previously fell back to `|| sessionTeams[0]`, which silently treated
+    // any caller as a member of Team A. Everything below streams private game
+    // state - the current question object including answers[].isCorrect, both
+    // team rosters and the full game phase - so anyone who knew a gameSessionId
+    // could read the live correct answer. client.userId is self-asserted via the
+    // unauthenticated `authenticate` event, so it was not a barrier either.
+    //
+    // Removing the fallback is safe for legitimate callers:
+    // getTeamsForTeamBattleSession() always includes both captains, and includes
+    // every teammate whose user row resolves, so a real participant is always
+    // found. The fallback could only ever fire for a non-participant.
+    //
+    // The refusal reuses the existing `no_active_game` response, byte-identical
+    // to the "session has no teams" branch above, so an unauthorized caller
+    // cannot distinguish "session does not exist" from "you are not in it".
+    // broadcastOnlineStatusUpdate() is deliberately NOT called here, so a
+    // rejected caller cannot use this path to trigger repeated fan-out.
+    const userTeam = sessionTeams.find((team) =>
+      team.members.some((member: any) => member.userId === client.userId)
+    );
+
+    if (!userTeam) {
+      sendToClient(clientId, {
+        type: "no_active_game",
+        message: "No active team or game found",
+      });
+      return;
+    }
 
     const opposingTeam = sessionTeams.find((team) => team.id !== userTeam.id);
 

@@ -2061,24 +2061,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/users", ensureAuthenticated, async (req, res) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Authentication required" });
-      }
-
-      // Get all users from database
-      const allUsers = await database.getAllUsers();
-
-      // Filter out current user
-      const users = allUsers.filter((user) => user.id !== req.user?.id);
-
-      res.json(users);
-    } catch (err) {
-      console.error("Failed to fetch users:", err);
-      res.status(500).json({ message: "Failed to fetch users" });
-    }
-  });
+  // NOTE: GET /api/users is registered in server/auth.ts via setupAuth(), which
+  // runs before this function body. A duplicate definition previously lived
+  // here; it was unreachable (shadowed) and returned raw user rows including
+  // password hashes. It has been removed — auth.ts is now the single handler
+  // and serves both the admin payload and the non-admin directory.
 
   // Get user's notifications
   app.get("/api/notifications", ensureAuthenticated, async (req, res) => {

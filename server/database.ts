@@ -4006,6 +4006,102 @@ class PostgreSQLDatabase implements IDatabase {
         );
       }
 
+      // ----------------------------------------------------------------------
+      // Championship tables + Championship <-> Team Battle session indexes.
+      //
+      // Why this lives here: no automated path previously created the
+      // championship tables. server/db-setup.ts did not include them and this
+      // startup routine did not either, so migrations/add_championships.sql had
+      // to be applied by hand. A deployment that skipped that step started
+      // successfully but every /api/championship* route failed at runtime.
+      //
+      // Every statement is idempotent (IF NOT EXISTS), so this is a no-op on a
+      // database that already has these objects. Definitions are kept identical
+      // to migrations/add_championships.sql and
+      // migrations/add_championship_session_indexes.sql.
+      //
+      // championship_teams.captain_id references users(id), so on a completely
+      // empty database this block fails until `npm run db:setup` has created
+      // users. That is why it is non-fatal, matching the blocks above.
+      // ----------------------------------------------------------------------
+      try {
+        console.log("Creating championship tables if they don't exist...");
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS championships (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            start_date TIMESTAMP,
+            end_date TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','completed')),
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
+
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS championship_teams (
+            id TEXT PRIMARY KEY,
+            championship_id TEXT NOT NULL REFERENCES championships(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            captain_id INTEGER NOT NULL REFERENCES users(id),
+            member_ids JSON NOT NULL DEFAULT '[]',
+            emoticon TEXT NOT NULL DEFAULT '👏',
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE (championship_id, name)
+          );
+        `);
+
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS championship_matches (
+            id TEXT PRIMARY KEY,
+            championship_id TEXT NOT NULL REFERENCES championships(id) ON DELETE CASCADE,
+            team_a_id TEXT NOT NULL REFERENCES championship_teams(id),
+            team_b_id TEXT NOT NULL REFERENCES championship_teams(id),
+            scheduled_at TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming','live','completed')),
+            stream_url TEXT,
+            team_a_score INTEGER NOT NULL DEFAULT 0,
+            team_b_score INTEGER NOT NULL DEFAULT 0,
+            winner_team_id TEXT REFERENCES championship_teams(id),
+            game_session_id TEXT,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            CHECK (team_a_id <> team_b_id)
+          );
+        `);
+
+        await db.execute(`
+          CREATE INDEX IF NOT EXISTS championship_matches_championship_idx
+          ON championship_matches(championship_id, status);
+        `);
+
+        // One Championship match : one Team Battle session. UNIQUE also serves
+        // the game_session_id equality lookups on the question/score hot path.
+        // Repeated NULLs are allowed, which upcoming (unstarted) matches need.
+        await db.execute(`
+          CREATE UNIQUE INDEX IF NOT EXISTS championship_matches_game_session_id_key
+          ON championship_matches(game_session_id);
+        `);
+
+        // NOT unique: existing data has game_session_id values with more than
+        // one team_battles row, so a unique index here would fail.
+        await db.execute(`
+          CREATE INDEX IF NOT EXISTS idx_team_battles_game_session_id
+          ON team_battles(game_session_id);
+        `);
+
+        console.log("✅ Championship tables and indexes ready");
+      } catch (championshipErr) {
+        console.error(
+          "Error creating championship tables (non-fatal):",
+          championshipErr instanceof Error ? championshipErr.message : "Unknown error"
+        );
+      }
+
       // Set up cleanup job for old question history (run once during initialization)
       try {
         console.log("Cleaning up old question history...");

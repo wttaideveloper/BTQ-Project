@@ -63,12 +63,14 @@ function Router() {
   const [location] = useLocation();
   const { user, isLoading } = useAuth();
 
-  if (location.startsWith("/watch/")) return <Switch><Route path="/watch/:matchId"><WatchMatch /></Route></Switch>;
-  if (location.startsWith("/overlay/")) return <Switch><Route path="/overlay/:matchId"><WatchMatch overlay /></Route></Switch>;
-  if (location.startsWith("/championships/")) return <Switch><Route path="/championships/:id" component={Championship} /></Switch>;
-  if (location.startsWith("/championship-teams/")) return <Switch><Route path="/championship-teams/:id" component={ChampionshipTeam} /></Switch>;
-
-  // Stop voice narration when route changes (except when entering game)
+  // Stop voice narration when route changes (except when entering game).
+  //
+  // IMPORTANT: every hook in this component must run before the public-route
+  // early returns below. Previously this effect sat *after* them, so navigating
+  // between a normal page and /watch, /overlay, /championships or
+  // /championship-teams changed the number of hooks rendered between two
+  // renders of the same component and React threw
+  // "Rendered fewer hooks than expected than the previous render".
   useEffect(() => {
     if (
       location !== "/play" &&
@@ -79,6 +81,13 @@ function Router() {
       stopSpeaking();
     }
   }, [location]);
+
+  // Public routes — rendered without a player session. These must stay below
+  // every hook call above and must not introduce hooks of their own here.
+  if (location.startsWith("/watch/")) return <Switch><Route path="/watch/:matchId"><WatchMatch /></Route></Switch>;
+  if (location.startsWith("/overlay/")) return <Switch><Route path="/overlay/:matchId"><WatchMatch overlay /></Route></Switch>;
+  if (location.startsWith("/championships/")) return <Switch><Route path="/championships/:id" component={Championship} /></Switch>;
+  if (location.startsWith("/championship-teams/")) return <Switch><Route path="/championship-teams/:id" component={ChampionshipTeam} /></Switch>;
 
   // Public auth pages — no player session required
   if (location === "/auth") {

@@ -325,6 +325,74 @@ async function setupDatabase() {
       );
     `);
 
+    // Championship tables.
+    // Must be created AFTER users (championship_teams.captain_id references it).
+    // Definition is kept identical to migrations/add_championships.sql.
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS championships (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        start_date TIMESTAMP,
+        end_date TIMESTAMP,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','completed')),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS championship_teams (
+        id TEXT PRIMARY KEY,
+        championship_id TEXT NOT NULL REFERENCES championships(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        captain_id INTEGER NOT NULL REFERENCES users(id),
+        member_ids JSON NOT NULL DEFAULT '[]',
+        emoticon TEXT NOT NULL DEFAULT '👏',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (championship_id, name)
+      );
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS championship_matches (
+        id TEXT PRIMARY KEY,
+        championship_id TEXT NOT NULL REFERENCES championships(id) ON DELETE CASCADE,
+        team_a_id TEXT NOT NULL REFERENCES championship_teams(id),
+        team_b_id TEXT NOT NULL REFERENCES championship_teams(id),
+        scheduled_at TIMESTAMP,
+        status TEXT NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming','live','completed')),
+        stream_url TEXT,
+        team_a_score INTEGER NOT NULL DEFAULT 0,
+        team_b_score INTEGER NOT NULL DEFAULT 0,
+        winner_team_id TEXT REFERENCES championship_teams(id),
+        game_session_id TEXT,
+        started_at TIMESTAMP,
+        completed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CHECK (team_a_id <> team_b_id)
+      );
+    `);
+
+    await db.execute(`
+      CREATE INDEX IF NOT EXISTS championship_matches_championship_idx
+      ON championship_matches(championship_id, status);
+    `);
+
+    // One Championship match : one Team Battle session.
+    // See migrations/add_championship_session_indexes.sql for rationale.
+    await db.execute(`
+      CREATE UNIQUE INDEX IF NOT EXISTS championship_matches_game_session_id_key
+      ON championship_matches(game_session_id);
+    `);
+
+    await db.execute(`
+      CREATE INDEX IF NOT EXISTS idx_team_battles_game_session_id
+      ON team_battles(game_session_id);
+    `);
+
     // Create indexes for better performance
     await db.execute(`
       CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);

@@ -53,3 +53,27 @@ export function sanitizeUser(user: User) {
 export function sanitizeUserForAdmin(user: User) {
   return sanitizeUser(user);
 }
+
+/**
+ * Minimal directory shape for authenticated NON-admin consumers (Championship
+ * captain member picker, challenge opponent picker).
+ *
+ * Deliberately omits credentials and personal contact details: password,
+ * email, phone, bio, country, isEmailVerified, lastSeen and lastLoginAt.
+ * Only the identity fields needed to render a picker plus the win/loss/draw
+ * record that is already public on the leaderboard are exposed.
+ */
+export function sanitizeUserForDirectory(user: User) {
+  return {
+    id: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    profileImage: user.profileImage,
+    isAdmin: user.isAdmin,
+    isOnline: user.isOnline,
+    totalGames: user.totalGames,
+    wins: user.wins,
+    losses: user.losses,
+    draws: user.draws,
+  };
+}

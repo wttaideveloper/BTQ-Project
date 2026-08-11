@@ -405,6 +405,26 @@
   100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/*
+ * Broadcast overlay browser source (/overlay/:matchId).
+ *
+ * The app paints `body { @apply ... bg-black ... }`, which propagates to the
+ * page canvas. A browser source in OBS/Ecamm composites whatever the page
+ * renders, so that opaque black covered the entire video feed - the
+ * `bg-transparent` on the overlay's own <main> could not undo it, because the
+ * black is painted behind the React tree, not by it.
+ *
+ * WatchMatch adds `.overlay-transparent` to <body> only while rendering in
+ * overlay mode, so every other page keeps its existing background untouched.
+ * overflow is hidden as well: a browser source has a fixed canvas and must
+ * never show scrollbars.
+ */
+body.overlay-transparent,
+body.overlay-transparent #root {
+  background: transparent !important;
+  overflow: hidden;
+}
+
 /* Responsive Design Fixes for Mobile Devices */
 /* Prevent horizontal overflow */
 html, body {

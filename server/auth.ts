@@ -16,6 +16,7 @@ import {
   registerAvatarUpload,
   sanitizeUser,
   sanitizeUserForAdmin,
+  sanitizeUserForDirectory,
 } from "./user-profile";
 
 declare global {
@@ -30,6 +31,21 @@ interface RegisterRequest extends Request {
 
 const scryptAsync = promisify(scrypt);
 const PostgresStore = connectPgSimple(session);
+
+/**
+ * The single express-session middleware instance created by setupAuth().
+ *
+ * Exposed so the WebSocket server can resolve the SAME session, from the same
+ * Postgres store and with the same signing secret, for the cookie the browser
+ * sends during the WebSocket handshake. This is deliberately a reference to the
+ * existing middleware rather than a second authentication path - there is only
+ * one session mechanism in this project and WebSockets now reuse it.
+ */
+let sessionMiddleware: ReturnType<typeof session> | null = null;
+
+export function getSessionMiddleware() {
+  return sessionMiddleware;
+}
 
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -72,7 +88,11 @@ export function setupAuth(app: Express) {
   };
 
   app.set("trust proxy", 1);
-  app.use(session(sessionSettings));
+  // Keep a reference so setupWebSocketServer() can resolve the same session for
+  // the handshake cookie. setupAuth() runs before setupWebSocketServer() in
+  // registerRoutes(), so the reference is always populated in time.
+  sessionMiddleware = session(sessionSettings);
+  app.use(sessionMiddleware);
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -315,16 +335,34 @@ export function setupAuth(app: Express) {
     }
   );
 
-  // Get all users (admin only)
+  // Authenticated user directory.
+  //
+  // This is the single /api/users handler. A second, unreachable definition
+  // used to exist in routes.ts; because setupAuth() runs first, Express never
+  // reached it, which made this endpoint admin-only and broke the Championship
+  // captain member picker for non-admin players.
+  //
+  // Admins keep the exact full management payload they had before (used by the
+  // admin User Management panel and the admin Championship panel). Non-admin
+  // players get a minimal directory of *other* users — see
+  // sanitizeUserForDirectory for the field allow-list.
   app.get("/api/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
 
-    const user = req.user as SelectUser;
-    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    const currentUser = req.user as SelectUser;
 
     try {
       const users = await database.getAllUsers();
-      res.json(users.map((u: User) => sanitizeUserForAdmin(u)));
+
+      if (currentUser.isAdmin) {
+        return res.json(users.map((u: User) => sanitizeUserForAdmin(u)));
+      }
+
+      res.json(
+        users
+          .filter((u: User) => u.id !== currentUser.id)
+          .map((u: User) => sanitizeUserForDirectory(u))
+      );
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch users" });
     }

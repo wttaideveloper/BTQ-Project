@@ -1,5 +1,5 @@
 import type { Express, RequestHandler } from "express";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, or } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { database } from "./database";
@@ -36,6 +36,57 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
   };
 
+  /**
+   * Reject member id lists that reference users which do not exist.
+   *
+   * championship_teams.member_ids is a JSON integer array with no foreign key,
+   * so nothing at the database level validates it (captain_id, by contrast, IS
+   * a real FK to users). POST /api/championship-teams/:id/members already
+   * checks the user exists; team create and team edit did not, so a phantom id
+   * could be stored. It never crashed a read - GET /api/championship-teams/:id
+   * substitutes a "User {id}" placeholder and getTeamsForTeamBattleSession()
+   * silently drops unresolvable teammates - but it produced teams whose roster
+   * shows members that can never log in or play. This makes all three paths
+   * consistent.
+   */
+  /**
+   * Strip the internal Team Battle session key from a match before it leaves
+   * through a read endpoint.
+   *
+   * game_session_id is the join key between championship_matches and
+   * team_battles. It was being returned by the public spectator endpoints and
+   * broadcast to every anonymous watcher, which turned an engine-internal
+   * weakness into a publicly reachable one:
+   *
+   *   1. spectator reads game_session_id from the public match payload
+   *   2. sends the WebSocket event `get_game_state` with it
+   *   3. handleGetGameState() requires only client.userId - never membership -
+   *      and falls back to sessionTeams[0] for non-members, so it replies with
+   *      `game_state_update` carrying gameState.currentQuestion: the whole
+   *      question object, including answers[].isCorrect
+   *
+   * i.e. the correct answer, live, to anyone who opened the watch page. The
+   * session id is a v4 uuid, so withholding it closes the chain. Participants
+   * are unaffected: they receive game_session_id from
+   * POST /api/championship-matches/:id/join, which does check membership.
+   *
+   * The underlying missing membership check inside handleGetGameState is a
+   * Team Battle engine concern and is left for a later phase - see the report.
+   */
+  const toPublicMatch = <T extends { gameSessionId?: string | null }>(match: T) => {
+    const { gameSessionId: _internal, ...publicFields } = match;
+    return publicFields;
+  };
+
+  const assertUsersExist = async (ids: number[]) => {
+    if (!ids.length) return;
+    const found = await db.select({ id: users.id }).from(users).where(inArray(users.id, ids));
+    const missing = ids.filter(id => !found.some(user => user.id === id));
+    if (missing.length) {
+      throw new Error(`Unknown user id(s): ${missing.join(", ")}`);
+    }
+  };
+
   app.get("/api/championships", async (_req, res) =>
     res.json(await db.select().from(championships)));
   app.get("/api/championships/me/dashboard", async (req, res) => {
@@ -46,11 +97,29 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     const teams = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, championship.id));
     const team = teams.find(item => (item.memberIds ?? []).includes(req.user!.id)) ?? null;
     const matches = await db.select().from(championshipMatches).where(eq(championshipMatches.championshipId, championship.id));
-    res.json({ championship, team, teams, matches: team ? matches.filter(match => match.teamAId === team.id || match.teamBId === team.id) : matches });
+    // Participants obtain the Team Battle session key from
+    // POST /api/championship-matches/:id/join, which checks membership, so it
+    // is withheld here too. See toPublicMatch.
+    const visible = team ? matches.filter(match => match.teamAId === team.id || match.teamBId === team.id) : matches;
+    res.json({ championship, team, teams, matches: visible.map(toPublicMatch) });
   });
   app.post("/api/championships", ensureAdmin, async (req, res) => {
     try {
       const data = championshipInput.parse(req.body);
+      // "active" denotes the single current championship: /me/dashboard takes
+      // active[0], and POST /api/championship-matches/:id/start refuses any
+      // championship that is not active. PATCH already demotes every other
+      // active row when one is activated, but creating a championship directly
+      // with status:"active" bypassed that rule entirely. Two active
+      // championships means two simultaneously live matches, which in turn lets
+      // one user be pulled into two Team Battles at once.
+      //
+      // This mirrors the PATCH branch exactly. Draft creation - what the admin
+      // UI always sends - is unaffected because the branch does not run.
+      if (data.status === "active") {
+        await db.update(championships).set({ status: "draft", updatedAt: new Date() })
+          .where(eq(championships.status, "active"));
+      }
       const [row] = await db.insert(championships).values({ id: uuid(), ...data }).returning();
       res.status(201).json(row);
     } catch (e) { fail(res, e); }
@@ -91,13 +160,48 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     if (!championship) return res.status(404).json({ message: "Championship not found" });
     const teams = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, req.params.id));
     const matches = await db.select().from(championshipMatches).where(eq(championshipMatches.championshipId, req.params.id));
+    // Standings.
+    //
+    // A completed match records winnerTeamId = null when the two teams finished
+    // level (endTeamBattle and POST /:id/end both do this), so "completed and
+    // nobody won it" IS the draw signal. Previously losses were derived as
+    // `played - wins`, which counted every draw as a loss for both teams.
+    //
+    // Points rule is unchanged: 2 per win. The SOW does not define a points
+    // value for a draw, so none is invented here — a draw scores 0 and is
+    // simply no longer misreported as a loss. `draws` is added as a new field;
+    // played/wins/losses/points keep their existing names and meanings, so all
+    // current consumers (Championship.tsx, ChampionshipManagementPanel) stay
+    // valid without changes.
     const standings = teams.map(team => {
       const completed = matches.filter(m => m.status === "completed" && (m.teamAId === team.id || m.teamBId === team.id));
       const wins = completed.filter(m => m.winnerTeamId === team.id).length;
-      return { ...team, played: completed.length, wins, losses: completed.length - wins, points: wins * 2 };
+      const draws = completed.filter(m => !m.winnerTeamId).length;
+      return { ...team, played: completed.length, wins, draws, losses: completed.length - wins - draws, points: wins * 2 };
     }).sort((a, b) => b.points - a.points);
-    res.json({ championship, teams, matches, standings,
-      champion: (championship.status === "completed" || matches.every(m => m.status === "completed")) ? standings[0] ?? null : null });
+
+    // Champion: "the team with the highest points is the Championship winner".
+    // standings is already sorted by points descending, so standings[0] is that
+    // team. No tie-break is applied — none is defined — so an equal-points tie
+    // still resolves to whichever team sorts first, exactly as before.
+    //
+    // The completion condition is UNCHANGED from the original implementation:
+    // the championship is finished when an admin marks it "completed" OR when
+    // every match has been played. Requiring all matches to be completed before
+    // a champion can exist is NOT a documented requirement, so it is not
+    // imposed here.
+    //
+    // The ONLY fix is the `hasMatches` guard: `[].every(...)` returns true, so a
+    // championship with no matches at all previously satisfied the completion
+    // condition and crowned standings[0] — a team with 0 played, 0 wins,
+    // 0 points. A championship with zero matches can never have a winner.
+    const hasMatches = matches.length > 0;
+    const championshipFinished =
+      championship.status === "completed" || matches.every(m => m.status === "completed");
+    // This endpoint is public (it backs /championships/:id), so matches are
+    // returned without the internal Team Battle session key. See toPublicMatch.
+    res.json({ championship, teams, matches: matches.map(toPublicMatch), standings,
+      champion: hasMatches && championshipFinished ? standings[0] ?? null : null });
   });
 
   app.post("/api/championship-teams", async (req, res) => {
@@ -106,6 +210,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       const requested = teamInput.parse(req.body);
       const data = req.user.isAdmin ? requested : { ...requested, captainId: req.user.id };
       const members = [...new Set([data.captainId, ...data.memberIds])];
+      await assertUsersExist(members);
       const conflicting = await db.select().from(championshipTeams)
         .where(eq(championshipTeams.championshipId, data.championshipId));
       if (conflicting.some(t => (t.memberIds ?? []).some(id => members.includes(id))))
@@ -155,8 +260,24 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
         eq(championshipMatches.championshipId, team.championshipId), eq(championshipMatches.status, "live")));
       if (live.some(m => m.teamAId === team.id || m.teamBId === team.id)) throw new Error("Team is locked during a live match");
       const captainId = data.captainId ?? team.captainId;
-      const memberIds = data.memberIds ? [...new Set([captainId, ...data.memberIds])] : undefined;
+      // Recompute membership whenever the captain OR the member list changes.
+      //
+      // Previously this ran only when memberIds was supplied, which left two
+      // holes on a captain-only edit:
+      //   1. The new captain was never added to member_ids. Every membership
+      //      check reads member_ids - GET /api/championships/me/dashboard finds
+      //      the user's team with memberIds.includes(), and
+      //      POST /api/championship-matches/:id/join refuses anyone not in it -
+      //      so a captain outside member_ids could not see or join their own
+      //      team's match. POST already guarantees captain is a member; PATCH
+      //      now matches it.
+      //   2. The "one team per championship" rule was not checked, so the new
+      //      captain could already be a member of a sibling team.
+      const memberIds = data.memberIds !== undefined || data.captainId !== undefined
+        ? [...new Set([captainId, ...(data.memberIds ?? team.memberIds ?? [])])]
+        : undefined;
       if (memberIds) {
+        await assertUsersExist(memberIds);
         const siblingTeams = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, team.championshipId));
         if (siblingTeams.some(item => item.id !== team.id && (item.memberIds ?? []).some(id => memberIds.includes(id)))) throw new Error("A selected user already belongs to another team in this championship");
       }
@@ -166,11 +287,34 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     } catch (e) { fail(res, e); }
   });
   app.delete("/api/championship-teams/:id", ensureAdmin, async (req, res) => {
-    const completed = await db.select().from(championshipMatches).where(eq(championshipMatches.status, "completed"));
-    if (completed.some(m => m.teamAId === req.params.id || m.teamBId === req.params.id))
-      return res.status(409).json({ message: "A team in a completed match cannot be deleted" });
-    await db.delete(championshipTeams).where(eq(championshipTeams.id, req.params.id));
-    res.status(204).end();
+    // A team referenced by ANY match cannot be deleted.
+    //
+    // The previous guard only looked at completed matches, so deleting a team
+    // that was still scheduled in an upcoming or live match fell through to the
+    // DELETE. The database foreign keys (championship_matches_team_a_id_fkey /
+    // _team_b_id_fkey, both NO ACTION) correctly refused it, so no history was
+    // ever lost - but the route had no try/catch, so the driver error escaped to
+    // the generic Express handler and the admin got an opaque 500 instead of a
+    // usable message. Match rows are historical data and are never cascaded
+    // away; the fix is to detect the reference first and explain it.
+    try {
+      const [team] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, req.params.id));
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      const referencing = await db.select().from(championshipMatches).where(or(
+        eq(championshipMatches.teamAId, team.id),
+        eq(championshipMatches.teamBId, team.id),
+      ));
+      if (referencing.length) {
+        const completed = referencing.some(match => match.status === "completed");
+        return res.status(409).json({
+          message: completed
+            ? "A team in a completed match cannot be deleted"
+            : "Delete or reassign this team's scheduled matches before deleting the team",
+        });
+      }
+      await db.delete(championshipTeams).where(eq(championshipTeams.id, team.id));
+      res.status(204).end();
+    } catch (error) { fail(res, error); }
   });
 
   app.post("/api/championship-matches", ensureAdmin, async (req, res) => {
@@ -195,9 +339,29 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       if (existing.status === "completed") throw new Error("Completed matches cannot be edited");
       const teamAId = data.teamAId ?? existing.teamAId;
       const teamBId = data.teamBId ?? existing.teamBId;
+      // Team A/B are snapshotted into the team_battles row the moment a match
+      // starts, so swapping them on a live match desyncs the fixture from the
+      // game actually being played (and from the rosters the engine already
+      // loaded). Editing an upcoming match stays supported - the admin panel
+      // exposes team selectors only for upcoming matches.
+      const changingTeams =
+        (data.teamAId !== undefined && data.teamAId !== existing.teamAId) ||
+        (data.teamBId !== undefined && data.teamBId !== existing.teamBId);
+      if (changingTeams && existing.status !== "upcoming") {
+        return res.status(409).json({ message: "Teams cannot be changed once the match is live" });
+      }
       if (teamAId === teamBId) throw new Error("A team cannot play itself");
       const validTeams = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, existing.championshipId));
       if (!validTeams.some(team => team.id === teamAId) || !validTeams.some(team => team.id === teamBId)) throw new Error("Both teams must belong to this championship");
+      // A recorded winner must be one of the two teams playing, or null for a
+      // draw. The winner_team_id foreign key only requires *some*
+      // championship_teams row, so without this check an unrelated team - even
+      // one from another championship - could be stored as the winner. Standings
+      // count wins with `winnerTeamId === team.id`, so such a value would
+      // silently score as a draw for both sides instead of erroring.
+      if (data.winnerTeamId != null && data.winnerTeamId !== teamAId && data.winnerTeamId !== teamBId) {
+        throw new Error("The winner must be one of the two teams in this match");
+      }
       const [row] = await db.update(championshipMatches).set({ ...data, updatedAt: new Date() })
         .where(eq(championshipMatches.id, existing.id)).returning();
       broadcastChampionshipEvent({ type: "match_updated", match: row });
@@ -205,32 +369,65 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     } catch (e) { fail(res, e); }
   });
   app.post("/api/championship-matches/:id/start", ensureAdmin, async (req, res) => {
-    const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
-    if (!match) return res.status(404).json({ message: "Match not found" });
-    const [championship] = await db.select().from(championships).where(eq(championships.id, match.championshipId));
-    if (championship?.status !== "active") return res.status(409).json({ message: "Only active championships can play matches" });
-    const otherLive = await db.select().from(championshipMatches).where(and(
-      eq(championshipMatches.championshipId, match.championshipId), eq(championshipMatches.status, "live"), ne(championshipMatches.id, match.id)));
-    if (otherLive.length) return res.status(409).json({ message: "Another match is already live in this championship" });
-    const gameSessionId = match.gameSessionId ?? uuid();
-    const [teamA] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, match.teamAId));
-    const [teamB] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, match.teamBId));
-    if (!teamA || !teamB) return res.status(409).json({ message: "Both championship teams are required" });
-    const existingBattles = await database.getTeamBattlesByGameSession(gameSessionId);
-    if (!existingBattles.length) {
-      await database.createTeamBattle({
-        id: `championship-${match.id}`, gameSessionId, gameType: "question", category: "All Categories", difficulty: "Mixed", status: "forming",
-        teamACaptainId: teamA.captainId, teamAName: teamA.name, teamATeammates: (teamA.memberIds ?? []).filter(id => id !== teamA.captainId),
-        teamBCaptainId: teamB.captainId, teamBName: teamB.name, teamBTeammates: (teamB.memberIds ?? []).filter(id => id !== teamB.captainId),
-        teamAScore: 0, teamBScore: 0, teamACorrectAnswers: 0, teamBCorrectAnswers: 0, teamAIncorrectAnswers: 0, teamBIncorrectAnswers: 0,
-      });
-    }
-    const [row] = await db.update(championshipMatches).set({
-      status: "live", startedAt: new Date(), gameSessionId, updatedAt: new Date(),
-    }).where(and(eq(championshipMatches.id, match.id), eq(championshipMatches.status, "upcoming"))).returning();
-    if (!row) return res.status(409).json({ message: "Only upcoming matches can be started" });
-    broadcastChampionshipEvent({ type: "match_started", match: row });
-    res.json(row);
+    // Previously this route had no try/catch, so any driver error (see the
+    // duplicate-key case below) surfaced as an opaque 500.
+    try {
+      const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      const [championship] = await db.select().from(championships).where(eq(championships.id, match.championshipId));
+      if (championship?.status !== "active") return res.status(409).json({ message: "Only active championships can play matches" });
+      const otherLive = await db.select().from(championshipMatches).where(and(
+        eq(championshipMatches.championshipId, match.championshipId), eq(championshipMatches.status, "live"), ne(championshipMatches.id, match.id)));
+      if (otherLive.length) return res.status(409).json({ message: "Another match is already live in this championship" });
+      const [teamA] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, match.teamAId));
+      const [teamB] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, match.teamBId));
+      if (!teamA || !teamB) return res.status(409).json({ message: "Both championship teams are required" });
+      // Defence in depth. Match create/edit already guarantee both of these,
+      // and the database enforces team_a_id <> team_b_id, but the rosters are
+      // about to be copied into a Team Battle so they are re-checked at the
+      // last moment before that snapshot is taken.
+      if (teamA.championshipId !== match.championshipId || teamB.championshipId !== match.championshipId) {
+        return res.status(409).json({ message: "Both teams must belong to this championship" });
+      }
+      if (teamA.id === teamB.id) return res.status(409).json({ message: "A team cannot play itself" });
+
+      // ONE match : ONE Team Battle, keyed by a deterministic battle id.
+      //
+      // The battle used to be located by querying team_battles for the session
+      // id, where the session id was `match.gameSessionId ?? uuid()`. That left
+      // a reachable failure loop: if a previous attempt created the battle but
+      // the guarded UPDATE below did not match a row (so gameSessionId was
+      // never persisted on the match), a retry minted a NEW uuid, found no
+      // battle under it, and tried to INSERT a second row with the same
+      // `championship-{matchId}` primary key - a duplicate-key error that
+      // escaped as a 500 and left the match permanently unstartable.
+      //
+      // Looking the battle up by its deterministic id instead makes this route
+      // idempotent: a retry reuses the existing battle and its session id.
+      const battleId = `championship-${match.id}`;
+      const existingBattle = await database.getTeamBattle(battleId);
+      const gameSessionId = existingBattle?.gameSessionId || match.gameSessionId || uuid();
+      // Ordering is deliberate: create the battle FIRST, then flip the match to
+      // live. If the UPDATE does not match (concurrent start, or the match is
+      // no longer upcoming) we are left with an unused forming battle, which a
+      // retry reuses. The reverse order would risk a live match with no battle
+      // behind it, which nothing can recover from because /start then refuses
+      // the match for no longer being upcoming.
+      if (!existingBattle) {
+        await database.createTeamBattle({
+          id: battleId, gameSessionId, gameType: "question", category: "All Categories", difficulty: "Mixed", status: "forming",
+          teamACaptainId: teamA.captainId, teamAName: teamA.name, teamATeammates: (teamA.memberIds ?? []).filter(id => id !== teamA.captainId),
+          teamBCaptainId: teamB.captainId, teamBName: teamB.name, teamBTeammates: (teamB.memberIds ?? []).filter(id => id !== teamB.captainId),
+          teamAScore: 0, teamBScore: 0, teamACorrectAnswers: 0, teamBCorrectAnswers: 0, teamAIncorrectAnswers: 0, teamBIncorrectAnswers: 0,
+        });
+      }
+      const [row] = await db.update(championshipMatches).set({
+        status: "live", startedAt: new Date(), gameSessionId, updatedAt: new Date(),
+      }).where(and(eq(championshipMatches.id, match.id), eq(championshipMatches.status, "upcoming"))).returning();
+      if (!row) return res.status(409).json({ message: "Only upcoming matches can be started" });
+      broadcastChampionshipEvent({ type: "match_started", match: row });
+      res.json(row);
+    } catch (error) { fail(res, error); }
   });
   app.post("/api/championship-matches/:id/join", async (req, res) => {
     if (!req.isAuthenticated() || !req.user?.id) return res.status(401).json({ message: "Authentication required" });
@@ -242,16 +439,33 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     res.json({ matchId: match.id, gameSessionId: match.gameSessionId, teamId: team.id, isCaptain: team.captainId === req.user.id });
   });
   app.post("/api/championship-matches/:id/end", ensureAdmin, async (req, res) => {
-    const scores = z.object({ teamAScore: z.coerce.number().int().min(0), teamBScore: z.coerce.number().int().min(0), winnerTeamId: z.string().nullish() }).parse(req.body);
-    const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
-    if (!match || match.status !== "live") return res.status(409).json({ message: "Only a live match can be ended" });
-    const winnerTeamId = scores.winnerTeamId ?? (scores.teamAScore === scores.teamBScore ? null :
-      scores.teamAScore > scores.teamBScore ? match.teamAId : match.teamBId);
-    const [row] = await db.update(championshipMatches).set({
-      ...scores, winnerTeamId, status: "completed", completedAt: new Date(), updatedAt: new Date(),
-    }).where(eq(championshipMatches.id, match.id)).returning();
-    broadcastChampionshipEvent({ type: "match_ended", match: row });
-    res.json(row);
+    // Previously this route had no try/catch, so a malformed body made
+    // .parse() throw a ZodError straight past the handler and the admin got a
+    // generic 500 instead of the validation message.
+    try {
+      const scores = z.object({ teamAScore: z.coerce.number().int().min(0), teamBScore: z.coerce.number().int().min(0), winnerTeamId: z.string().nullish() }).parse(req.body);
+      const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
+      if (!match || match.status !== "live") return res.status(409).json({ message: "Only a live match can be ended" });
+      // Same rule as PATCH: an explicit winner must be one of the two teams
+      // playing. Omitting it (or sending null) keeps the existing behaviour -
+      // the winner is derived from the scores, and equal scores stay a draw
+      // (winnerTeamId = null), which is a valid result and not an error.
+      //
+      // NOTE: an explicit winner that contradicts the scores is still accepted.
+      // The admin panel deliberately offers a winner override next to the score
+      // fields, so that is treated as an intentional administrative decision
+      // rather than a bug. See the report for this product decision.
+      if (scores.winnerTeamId != null && scores.winnerTeamId !== match.teamAId && scores.winnerTeamId !== match.teamBId) {
+        throw new Error("The winner must be one of the two teams in this match");
+      }
+      const winnerTeamId = scores.winnerTeamId ?? (scores.teamAScore === scores.teamBScore ? null :
+        scores.teamAScore > scores.teamBScore ? match.teamAId : match.teamBId);
+      const [row] = await db.update(championshipMatches).set({
+        ...scores, winnerTeamId, status: "completed", completedAt: new Date(), updatedAt: new Date(),
+      }).where(eq(championshipMatches.id, match.id)).returning();
+      broadcastChampionshipEvent({ type: "match_ended", match: row });
+      res.json(row);
+    } catch (error) { fail(res, error); }
   });
   app.post("/api/championship-matches/:id/question", ensureAdmin, async (req, res) => {
     try {
@@ -269,10 +483,11 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       res.json({ ok: true });
     } catch (error) { fail(res, error); }
   });
+  // Public spectator endpoint - no authentication, by design.
   app.get("/api/championship-matches/:id", async (req, res) => {
     const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
     if (!match) return res.status(404).json({ message: "Match not found" });
     const teams = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, match.championshipId));
-    res.json({ match, teamA: teams.find(t => t.id === match.teamAId), teamB: teams.find(t => t.id === match.teamBId) });
+    res.json({ match: toPublicMatch(match), teamA: teams.find(t => t.id === match.teamAId), teamB: teams.find(t => t.id === match.teamBId) });
   });
 }

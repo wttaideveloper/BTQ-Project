@@ -156,7 +156,18 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
             <video ref={videoRef} autoPlay muted playsInline controls={false}
               onPause={e => e.currentTarget.play().catch(() => undefined)} className="w-full h-full object-contain" />
           ) : <div className="h-full grid place-items-center text-center text-slate-400">
-            <div><p className="text-xl font-semibold">{status === "upcoming" ? "Stream begins soon" : "Match completed"}</p>
+            {/*
+              This placeholder shows whenever there is no video to play, which
+              includes a LIVE match that simply has no stream URL configured
+              (stream_url is optional). It used to special-case only "upcoming"
+              and let everything else fall through to "Match completed", so a
+              live, in-progress match displayed the words "Match completed"
+              while people were still answering questions. The match status was
+              never wrong - only this label was. Driven off status explicitly
+              now, so each of the three states says what it means.
+            */}
+            <div><p className="text-xl font-semibold">{status === "upcoming" ? "Stream begins soon" : status === "live" ? "Match in progress" : "Match completed"}</p>
+            {status === "live" && <p className="text-sm mt-1">No video stream for this match — live scores below.</p>}
             {data.match.scheduledAt && <p>{new Date(data.match.scheduledAt).toLocaleString()}</p>}</div>
           </div>}
           {reactions.map(r => <span key={r.id} className={`absolute bottom-8 text-4xl animate-bounce ${r.side === "left" ? "left-[15%]" : "right-[15%]"}`}>{r.emoji}</span>)}

@@ -1,7 +1,7 @@
 import express, { type Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { database } from "./database";
-import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser, expireJoinRequestsForUserOnTeamAndNotify, hasPlayerLeftAnyActiveGame } from "./socket";
+import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser, expireJoinRequestsForUserOnTeamAndNotify, hasPlayerLeftAnyActiveGame, isChampionshipBattle } from "./socket";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
@@ -169,20 +169,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const deleteAll = req.body?.deleteAll === true; // Optional: delete ALL forming battles
 
+      // `id NOT LIKE 'championship-%'` is the SQL form of isChampionshipBattle()
+      // in socket.ts. A Championship fixture is "forming" for the whole window
+      // between the admin starting the match and a captain sending
+      // start_team_battle, so both branches below would otherwise sweep away the
+      // battle behind a match that is already `live` - the same loss that broke
+      // match #2 through /api/team-battle/cleanup. Ad-hoc lobby battles are
+      // still cleaned up exactly as before.
       let staleBattles;
       if (deleteAll) {
         // Delete ALL forming battles (for testing)
         staleBattles = await sql`
-          DELETE FROM team_battles 
+          DELETE FROM team_battles
           WHERE status = 'forming'
+          AND id NOT LIKE 'championship-%'
           RETURNING id, team_a_name, team_b_name, created_at
         `;
       } else {
         // Delete only stale battles (forming >30 minutes)
         staleBattles = await sql`
-          DELETE FROM team_battles 
-          WHERE status = 'forming' 
+          DELETE FROM team_battles
+          WHERE status = 'forming'
           AND created_at < NOW() - INTERVAL '30 minutes'
+          AND id NOT LIKE 'championship-%'
           RETURNING id, team_a_name, team_b_name, created_at
         `;
       }
@@ -2517,7 +2526,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const formingBattles = await database.getTeamBattlesByUser(req.user.id, 'forming');
         const readyBattles = await database.getTeamBattlesByUser(req.user.id, 'ready');
-        const existingBattles = [...formingBattles, ...readyBattles];
+        // A Championship fixture is NEVER a "ghost team" to be cleaned up.
+        //
+        // getTeamBattlesByUser() selects purely on captain id + status, so it
+        // returns the `championship-<matchId>` row that
+        // POST /api/championship-matches/:id/start just created. That row is
+        // "forming" for the whole window between the admin starting the match
+        // and a captain sending start_team_battle, so a captain who creates an
+        // ad-hoc lobby team in that window deleted the fixture behind a match
+        // that is already `live`. The match then had a game_session_id pointing
+        // at nothing: getTeamBattlesByGameSession() returned [], and every
+        // captain who joined got "No active team or game found".
+        //
+        // Championship battles are torn down only by their own lifecycle
+        // (endTeamBattle / declareTeamBattleWinner set status "finished"), never
+        // by lobby cleanup. Same rule the disconnect and team-setup teardowns in
+        // socket.ts already apply via isChampionshipBattle().
+        const existingBattles = [...formingBattles, ...readyBattles]
+          .filter(battle => !isChampionshipBattle(battle.id));
 
         for (const battle of existingBattles) {
 
@@ -2657,7 +2683,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // This prevents stale ready state when same teams play again
       const formingBattles = await database.getTeamBattlesByUser(userId, 'forming');
       const readyBattles = await database.getTeamBattlesByUser(userId, 'ready');
-      const existingBattles = [...formingBattles, ...readyBattles];
+      // A Championship fixture is NEVER cleaned up here. See the identical guard
+      // in POST /api/teams above for the full reasoning.
+      //
+      // This route is the one that actually reproduced the bug: the Team Battle
+      // game page calls it on exit (and via sendBeacon on unload), and Home
+      // calls it when entering Team Battle / Rapid Fire. Straight after
+      // Championship match #1 finishes, both captains' clients run exactly that
+      // teardown - which is precisely when the admin starts match #2 and its
+      // fresh `championship-<matchId>` row is sitting in "forming".
+      const existingBattles = [...formingBattles, ...readyBattles]
+        .filter(battle => !isChampionshipBattle(battle.id));
       cleanupStats.removedOldTeams = existingBattles.length;
 
       for (const battle of existingBattles) {
@@ -3050,6 +3086,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (battle.status === "playing" || battle.status === "finished") {
         return res.status(400).json({
           message: "Cannot leave team during or after battle. Please wait for the battle to complete."
+        });
+      }
+
+      // A Championship fixture is never dismantled through the ad-hoc lobby.
+      //
+      // The status check above only stops "playing"/"finished", so a
+      // `championship-<matchId>` row is still reachable here for the whole
+      // window in which it sits "forming" - between the admin starting the
+      // match and a captain sending start_team_battle. All three branches below
+      // are destructive to it:
+      //   Team A captain  -> deleteTeamBattle(), the same total loss that broke
+      //                      match #2 via the /api/team-battle/cleanup path
+      //   Team B captain  -> nulls teamBCaptainId/teamBName/teamBTeammates, so
+      //                      getTeamsForTeamBattleSession() returns 1 team and
+      //                      handleStartTeamBattle() refuses the match
+      //   teammate        -> drops a player the fixture copied from
+      //                      championship_teams
+      // A Championship roster is fixed by the fixture and is managed by the
+      // admin panel, so "leaving" has no meaning here. Same rule the disconnect
+      // and team-setup teardowns in socket.ts already apply.
+      if (isChampionshipBattle(battleId)) {
+        return res.status(400).json({
+          message: "Championship match teams cannot be left. Contact the championship admin to change the fixture."
         });
       }
 

@@ -108,14 +108,44 @@ interface ElevenLabsVoice {
   preview_url?: string;
 }
 
+/**
+ * Which section the admin panel is showing, mirrored in the URL as `?tab=`.
+ *
+ * The active section used to live only in component state, so every refresh
+ * dropped back to the default "questions" tab no matter which section was open.
+ * Keeping it in the query string means a reload (and a shared/bookmarked link)
+ * reopens the same section. The route itself is untouched - this is still
+ * /admin/dashboard, only the search string carries the section - so routing,
+ * the AdminGate and every panel below behave exactly as before.
+ */
+const ADMIN_TABS = ["questions", "users", "stats", "settings", "leaderboard", "championships", "voices"];
+const DEFAULT_ADMIN_TAB = "questions";
+
+function readAdminTabFromUrl(): string {
+  if (typeof window === "undefined") return DEFAULT_ADMIN_TAB;
+  const tab = new URLSearchParams(window.location.search).get("tab");
+  return tab && ADMIN_TABS.includes(tab) ? tab : DEFAULT_ADMIN_TAB;
+}
+
 const AdminPanel: React.FC = () => {
   const [, setLocation] = useLocation();
   const { logoutMutation } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   // States
-  const [activeTab, setActiveTab] = useState<string>("questions");
+  const [activeTab, setActiveTabState] = useState<string>(readAdminTabFromUrl);
+  // Switching section also records it in the URL, so a refresh stays put.
+  // replaceState (not pushState) keeps the browser Back button behaving exactly
+  // as it did before - it still leaves the admin panel rather than stepping
+  // back through previously visited sections.
+  const setActiveTab = useCallback((tab: string) => {
+    setActiveTabState(tab);
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", tab);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, []);
   const [selectedCategory, setSelectedCategory] = useState<string>("All Categories");
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>("All Difficulties");
   const [searchQuery, setSearchQuery] = useState<string>("");

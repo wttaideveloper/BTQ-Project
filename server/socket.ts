@@ -412,7 +412,7 @@ const CHAMPIONSHIP_BATTLE_ID_PREFIX = "championship-";
  * created, needs no database read, and is the identifier /start itself uses to
  * make the route idempotent.
  */
-function isChampionshipBattle(battleId: string | null | undefined): boolean {
+export function isChampionshipBattle(battleId: string | null | undefined): boolean {
   return typeof battleId === "string" && battleId.startsWith(CHAMPIONSHIP_BATTLE_ID_PREFIX);
 }
 

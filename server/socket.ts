@@ -389,6 +389,132 @@ async function broadcastChampionshipScore(gameSession: ActiveGameSession) {
   broadcastChampionshipEvent({ type: "match_updated", match: updated });
 }
 
+/**
+ * Prefix of the deterministic primary key every Championship battle is created
+ * with: `championship-{matchId}` - see POST /api/championship-matches/:id/start
+ * in server/championship-routes.ts.
+ *
+ * Every other team_battles row is created by POST /api/team-battles in
+ * server/routes.ts with a bare `uuidv4()`, so a uuid can never begin with this
+ * prefix and the test below cannot produce a false positive for a normal Team
+ * Battle or a Rapid Fire battle.
+ */
+const CHAMPIONSHIP_BATTLE_ID_PREFIX = "championship-";
+
+/**
+ * Is this team_battles row the fixture behind a Championship match?
+ *
+ * Deliberately keyed on the battle id rather than on a
+ * `championship_matches.game_session_id` lookup. /start creates the battle
+ * FIRST and only then writes game_session_id onto the match row, so there is a
+ * short window in which a lookup by session id finds nothing while the battle
+ * already exists. The id carries the answer from the instant the row is
+ * created, needs no database read, and is the identifier /start itself uses to
+ * make the route idempotent.
+ */
+function isChampionshipBattle(battleId: string | null | undefined): boolean {
+  return typeof battleId === "string" && battleId.startsWith(CHAMPIONSHIP_BATTLE_ID_PREFIX);
+}
+
+/**
+ * Complete the Championship match behind a finished Team Battle session.
+ *
+ * This is the single Championship completion path. It was previously inline in
+ * endTeamBattle() and simply absent from declareTeamBattleWinner(), which is
+ * why a match that ended by forfeit stayed `live` for ever - blocking every
+ * other match in that championship (POST /:id/start refuses while another match
+ * is live) and blocking championship deletion.
+ *
+ * Does nothing at all unless a championship_matches row is joined to this
+ * session, so ordinary Team Battle and Rapid Fire sessions fall straight
+ * through - exactly as they did when this code lived in endTeamBattle().
+ *
+ * @param forfeitWinnerTeam
+ *   Omitted for a normal completion: the winner is derived from the two team
+ *   scores and equal scores stay a draw (winnerTeamId = null). This is the
+ *   pre-existing rule and is unchanged.
+ *
+ *   Supplied by the forfeit path: the in-memory session team that
+ *   declareTeamBattleWinner() already decided had won. No new scoring rule is
+ *   introduced - the engine's decision is simply mapped onto the Championship
+ *   team id. If that mapping cannot be made with certainty the match is left
+ *   untouched rather than recording a guess.
+ *
+ * Never throws: both callers already have their own teardown to finish, and
+ * neither should change behaviour because a Championship write failed.
+ */
+async function completeChampionshipMatchForSession(
+  gameSession: ActiveGameSession,
+  forfeitWinnerTeam?: { id?: string; teamSide?: "A" | "B" } | null
+): Promise<void> {
+  try {
+    const sessionId = gameSession.teams?.[0]?.gameSessionId;
+    if (!sessionId) return;
+
+    const [match] = await database.db
+      .select()
+      .from(championshipMatches)
+      .where(eq(championshipMatches.gameSessionId, sessionId));
+    if (!match || match.status !== "live") return;
+
+    // Same A/B resolution as broadcastChampionshipScore(): teamSide is set by
+    // getTeamsForTeamBattleSession() from the battle's Team A / Team B columns,
+    // which /start copied from the Championship fixture, so side "A" is always
+    // match.teamAId.
+    const teamA = gameSession.teams?.find((team: any) => team.teamSide === "A") ?? gameSession.teams?.[0];
+    const teamB = gameSession.teams?.find((team: any) => team.teamSide === "B") ?? gameSession.teams?.[1];
+    const teamAScore = teamA?.score ?? 0;
+    const teamBScore = teamB?.score ?? 0;
+
+    let winnerTeamId: string | null;
+    if (forfeitWinnerTeam) {
+      if (teamA && forfeitWinnerTeam.id === teamA.id) {
+        winnerTeamId = match.teamAId;
+      } else if (teamB && forfeitWinnerTeam.id === teamB.id) {
+        winnerTeamId = match.teamBId;
+      } else if (forfeitWinnerTeam.teamSide === "A") {
+        winnerTeamId = match.teamAId;
+      } else if (forfeitWinnerTeam.teamSide === "B") {
+        winnerTeamId = match.teamBId;
+      } else {
+        // Unresolvable. Leaving the match `live` is recoverable by an admin;
+        // writing the wrong winner into the standings is not.
+        console.error(
+          `[Championship] Could not map forfeit winner to a championship team for match ${match.id}; match left live.`
+        );
+        return;
+      }
+    } else {
+      winnerTeamId =
+        teamAScore === teamBScore ? null : teamAScore > teamBScore ? match.teamAId : match.teamBId;
+    }
+
+    // Guarded update: `status = 'live'` is re-tested inside the UPDATE, so of
+    // two racing callers (forfeit vs normal completion, or declareTeamBattleWinner
+    // reached twice) exactly one matches a row and returns it. The loser gets
+    // undefined and returns without writing or broadcasting, so the match can
+    // never be completed twice, never has its winner overwritten, never has its
+    // scores reset, and can never revert from completed back to live.
+    const [completedMatch] = await database.db
+      .update(championshipMatches)
+      .set({
+        status: "completed",
+        teamAScore,
+        teamBScore,
+        winnerTeamId,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(championshipMatches.id, match.id), eq(championshipMatches.status, "live")))
+      .returning();
+
+    if (!completedMatch) return;
+    broadcastChampionshipEvent({ type: "match_ended", match: completedMatch });
+  } catch (error) {
+    console.error("[Championship] Failed to complete match for finished session:", error);
+  }
+}
+
 // Store active game sessions
 interface ActiveGameSession {
   id: string;
@@ -1407,8 +1533,41 @@ export function setupWebSocketServer(server: Server) {
                   let updatedBattle = battle;
                   let teamRemoved = false;
 
+                  // ============================================================
+                  // A Championship fixture is NEVER torn down by lobby cleanup.
+                  //
+                  // This block is the ad-hoc Team Battle lobby teardown: a
+                  // captain leaving means "cancel and re-invite", so Team A
+                  // leaving deletes the battle outright and Team B leaving
+                  // nulls teamBCaptainId/teamBName/teamBTeammates so a new
+                  // opponent can be invited. Both are correct there.
+                  //
+                  // They are catastrophic for a Championship. Its rosters are
+                  // fixed by the fixture and were copied into this row by
+                  // POST /api/championship-matches/:id/start. A Championship
+                  // player sits in exactly this state - client.gameSessionId
+                  // set by handleAuthenticate(), client.gameId still unset
+                  // because no in-memory session exists until a captain sends
+                  // start_team_battle - for the whole window between the admin
+                  // starting the match and the battle actually starting. A
+                  // captain closing their tab in that window destroyed the
+                  // fixture: getTeamsForTeamBattleSession() then returns fewer
+                  // than 2 teams, handleStartTeamBattle() refuses, and the
+                  // match cannot be recovered because it is already `live` so
+                  // POST /:id/start rejects it and no route can move it back to
+                  // `upcoming`.
+                  //
+                  // Falling through to the teams_updated broadcast below keeps
+                  // the remaining clients in sync against the UNCHANGED roster.
+                  // teamRemoved stays false, so that broadcast runs exactly as
+                  // it always has.
+                  // ============================================================
+                  if (isChampionshipBattle(battle.id)) {
+                    // No roster mutation, no battle deletion, no cancellation
+                    // notice - the match is still scheduled and still playable.
+                  }
                   // Check if the disconnected user is a captain
-                  if (battle.teamACaptainId === disconnectUserId) {
+                  else if (battle.teamACaptainId === disconnectUserId) {
                     // Team A captain disconnected - remove Team A (required for battle)
                     // IMPORTANT: capture existing Team A teammates BEFORE deleting, so we can notify them
                     const oldTeamATeammateIds = extractTeammateIds(battle.teamATeammates);
@@ -4291,6 +4450,22 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
     );
 
     if (!leavingTeam) {
+      return;
+    }
+
+    // A Championship fixture is never torn down by team-setup cleanup.
+    //
+    // Same defect as the lobby-disconnect teardown in setupWebSocketServer():
+    // below, a Team A captain leaving deletes the battle and a Team B captain
+    // leaving nulls teamBCaptainId/teamBName/teamBTeammates. Correct for an
+    // ad-hoc lobby, destructive for a Championship whose rosters are fixed by
+    // the fixture.
+    //
+    // This handler is reachable for a Championship battle: it is driven by the
+    // `player_leaving_team_setup` event and reads gameSessionId/userId straight
+    // off that event, so it is not limited to the Team Battle setup page that
+    // normally sends it.
+    if (isChampionshipBattle(leavingTeam.teamBattleId)) {
       return;
     }
 
@@ -8040,19 +8215,13 @@ async function endTeamBattle(gameId: string, reason?: string) {
     const isDraw =
       sortedTeams.length > 1 && sortedTeams[0].score === sortedTeams[1].score;
 
-    const championshipSessionId = gameSession.teams[0]?.gameSessionId;
-    if (championshipSessionId) {
-      const [championshipMatch] = await database.db.select().from(championshipMatches).where(eq(championshipMatches.gameSessionId, championshipSessionId));
-      if (championshipMatch && championshipMatch.status === "live") {
-        const teamA = gameSession.teams.find((team: any) => team.teamSide === "A") ?? gameSession.teams[0];
-        const teamB = gameSession.teams.find((team: any) => team.teamSide === "B") ?? gameSession.teams[1];
-        const teamAScore = teamA?.score ?? 0;
-        const teamBScore = teamB?.score ?? 0;
-        const winnerTeamId = teamAScore === teamBScore ? null : teamAScore > teamBScore ? championshipMatch.teamAId : championshipMatch.teamBId;
-        const [completedMatch] = await database.db.update(championshipMatches).set({ status: "completed", teamAScore, teamBScore, winnerTeamId, completedAt: new Date(), updatedAt: new Date() }).where(eq(championshipMatches.id, championshipMatch.id)).returning();
-        broadcastChampionshipEvent({ type: "match_ended", match: completedMatch });
-      }
-    }
+    // Championship completion. Unchanged in behaviour - the winner is still
+    // derived from the two team scores and equal scores still record a draw -
+    // but the logic now lives in completeChampionshipMatchForSession() so that
+    // the forfeit path (declareTeamBattleWinner) can reuse it instead of
+    // leaving the match stuck on `live`, and so that both paths share one
+    // guarded, single-completion update.
+    await completeChampionshipMatchForSession(gameSession);
 
     // Get game session data for history
     const sessionData = await database.getGameSession(gameId);
@@ -8668,6 +8837,22 @@ async function declareTeamBattleWinner(
         incorrectAnswers: t.incorrectAnswers || 0,
       }))
       .sort((a: any, b: any) => b.score - a.score);
+
+    // Championship completion for a forfeit.
+    //
+    // This function marks the battle finished and deletes the in-memory
+    // session, but it never touched championship_matches, so a Championship
+    // match that ended this way stayed `live` for ever: it blocked every
+    // subsequent match in that championship (POST /:id/start refuses while
+    // another match is live), blocked championship deletion, and never reached
+    // the standings.
+    //
+    // `winningTeam` is the decision this function has ALREADY made - the same
+    // in-memory session team it is about to announce to the players - so no new
+    // rule is introduced here; it is only mapped onto the Championship team id.
+    // Runs before the session is deleted below, while gameSession.teams is
+    // still populated. No-ops for ordinary Team Battle and Rapid Fire.
+    await completeChampionshipMatchForSession(gameSession, winningTeam);
 
     // Send results to all players
     const gameClients = Array.from(clients.values()).filter(

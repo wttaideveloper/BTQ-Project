@@ -53,13 +53,13 @@ export function MatchActions({
             size={buttonSize}
             onClick={onJoin}
             disabled={joining}
-            className="bg-accent hover:bg-accent/90 text-primary font-bold"
+            className="champ-btn-gold"
           >
             {joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
             {joining ? "Joining…" : "Join match"}
           </Button>
         ) : (
-          <Button size={buttonSize} variant="outline" className="home-btn-outline" onClick={onOpen}>
+          <Button size={buttonSize} variant="outline" className="champ-btn-ghost" onClick={onOpen}>
             <Eye className="mr-2 h-4 w-4" /> Watch live
           </Button>
         )}
@@ -70,7 +70,7 @@ export function MatchActions({
   if (status === "completed") {
     return (
       <div className={cn("flex flex-wrap gap-2", className)}>
-        <Button size={buttonSize} variant="outline" className="home-btn-outline" onClick={onViewResult}>
+        <Button size={buttonSize} variant="outline" className="champ-btn-ghost" onClick={onViewResult}>
           <Trophy className="mr-2 h-4 w-4" /> View result
         </Button>
       </div>
@@ -82,7 +82,7 @@ export function MatchActions({
   if (!mine) return null;
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
-      <Button size={buttonSize} variant="outline" className="home-btn-outline" onClick={onOpen}>
+      <Button size={buttonSize} variant="outline" className="champ-btn-ghost" onClick={onOpen}>
         <Eye className="mr-2 h-4 w-4" /> View match
       </Button>
     </div>

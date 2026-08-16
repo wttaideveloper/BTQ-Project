@@ -3,25 +3,26 @@ import { cn } from "@/lib/utils";
 import type { ChampionshipStatus, MatchDisplayState, MatchOutcome } from "@/lib/championship";
 
 /**
- * Status pills for the player dashboard.
+ * Status pills for the Championship player portal.
  *
- * Colour has one meaning across the whole page:
- *   red    - genuinely live right now
- *   sky    - kick-off time reached, waiting on the organiser to start it
- *   amber  - scheduled, not yet playable
- *   green  - finished / positive participation
- *   muted  - not the player's concern
+ * Colour carries one meaning across the whole page, and status colour is used
+ * as a thin accent rather than a fill so the navy/gold palette stays dominant:
+ *   crimson - genuinely live right now
+ *   gold    - kick-off reached, waiting on the organiser
+ *   amber   - scheduled, not yet playable
+ *   emerald - finished / positive participation
+ *   muted   - not the player's concern
  */
 
 const badgeBase =
-  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap";
+  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] whitespace-nowrap backdrop-blur-[1px]";
 
 const MATCH_TONES: Record<MatchDisplayState, { label: string; className: string }> = {
-  live: { label: "Live now", className: "border-red-400/50 bg-red-500/15 text-red-200" },
-  // Deliberately NOT red: the match is not live and cannot be joined yet.
-  ready: { label: "Ready to start", className: "border-sky-400/50 bg-sky-400/15 text-sky-200" },
-  upcoming: { label: "Upcoming", className: "border-amber-400/50 bg-amber-400/15 text-amber-200" },
-  completed: { label: "Completed", className: "border-emerald-400/40 bg-emerald-400/10 text-emerald-200" },
+  live: { label: "Live now", className: "border-[#f0576a]/45 bg-[#f0576a]/12 text-[#ff9aa6]" },
+  // Deliberately not crimson: the match is not live and cannot be joined yet.
+  ready: { label: "Ready to start", className: "border-[#d4af37]/50 bg-[#d4af37]/12 text-[#f0d58a]" },
+  upcoming: { label: "Upcoming", className: "border-[#e7c766]/30 bg-[#e7c766]/10 text-[#e7c766]" },
+  completed: { label: "Completed", className: "border-white/12 bg-white/[0.04] text-white/65" },
 };
 
 export function MatchStatusBadge({
@@ -44,40 +45,40 @@ export function MatchStatusBadge({
 }
 
 const CHAMPIONSHIP_TONES: Record<ChampionshipStatus, { label: string; className: string }> = {
-  active: { label: "Active", className: "border-emerald-400/40 bg-emerald-400/10 text-emerald-200" },
-  draft: { label: "Draft", className: "border-white/15 bg-white/5 text-white/60" },
-  completed: { label: "Completed", className: "border-white/15 bg-white/5 text-white/70" },
+  active: { label: "Active", className: "border-[#4fd1a5]/35 bg-[#4fd1a5]/10 text-[#7ee2be]" },
+  draft: { label: "Draft", className: "border-white/12 bg-white/[0.04] text-white/55" },
+  completed: { label: "Completed", className: "border-white/12 bg-white/[0.04] text-white/65" },
 };
 
 export function ChampionshipStatusBadge({ status, className }: { status: ChampionshipStatus; className?: string }) {
   const tone = CHAMPIONSHIP_TONES[status];
   return (
     <span className={cn(badgeBase, tone.className, className)}>
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      <span className={cn("h-1.5 w-1.5 rounded-full bg-current", status === "active" && "animate-pulse")} />
       {tone.label}
     </span>
   );
 }
 
-/** "You are participating" / "You are not participating" - question 1 of the page. */
+/** "You are participating" / "You are not participating". */
 export function ParticipationBadge({ participating, className }: { participating: boolean; className?: string }) {
   return (
     <span
       className={cn(
         badgeBase,
         participating
-          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
-          : "border-white/15 bg-white/5 text-white/55",
+          ? "border-[#4fd1a5]/35 bg-[#4fd1a5]/10 text-[#7ee2be]"
+          : "border-white/12 bg-white/[0.04] text-white/55",
         className,
       )}
     >
-      <span className={cn("h-1.5 w-1.5 rounded-full", participating ? "bg-emerald-400" : "bg-white/40")} />
-      {participating ? "You are participating" : "You are not participating"}
+      <span className={cn("h-1.5 w-1.5 rounded-full", participating ? "bg-[#4fd1a5]" : "bg-white/35")} />
+      {participating ? "Participating" : "Not participating"}
     </span>
   );
 }
 
-/** Captain vs member - question 3 of the page. */
+/** Captain vs member - the one place gold is spent inside the team panel. */
 export function TeamRoleBadge({ isCaptain, className }: { isCaptain: boolean; className?: string }) {
   const Icon = isCaptain ? Crown : Shield;
   return (
@@ -85,8 +86,8 @@ export function TeamRoleBadge({ isCaptain, className }: { isCaptain: boolean; cl
       className={cn(
         badgeBase,
         isCaptain
-          ? "border-accent/40 bg-accent/15 text-accent"
-          : "border-white/15 bg-white/5 text-white/70",
+          ? "border-[#d4af37]/45 bg-[#d4af37]/12 text-[#f0d58a]"
+          : "border-white/12 bg-white/[0.04] text-white/65",
         className,
       )}
     >
@@ -97,9 +98,9 @@ export function TeamRoleBadge({ isCaptain, className }: { isCaptain: boolean; cl
 }
 
 const OUTCOME_TONES: Record<MatchOutcome, { label: string; className: string }> = {
-  won: { label: "Won", className: "border-emerald-400/40 bg-emerald-400/15 text-emerald-200" },
-  lost: { label: "Lost", className: "border-white/15 bg-white/5 text-white/60" },
-  draw: { label: "Draw", className: "border-sky-400/30 bg-sky-400/10 text-sky-200" },
+  won: { label: "You won", className: "border-[#4fd1a5]/40 bg-[#4fd1a5]/12 text-[#7ee2be]" },
+  lost: { label: "You lost", className: "border-[#c76a7a]/35 bg-[#c76a7a]/10 text-[#e2a3ad]" },
+  draw: { label: "Draw", className: "border-white/15 bg-white/[0.05] text-white/70" },
 };
 
 /** Result of a finished match from the player's own team's point of view. */

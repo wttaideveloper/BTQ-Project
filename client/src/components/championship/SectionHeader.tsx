@@ -25,7 +25,7 @@ export function SectionHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-4", className)}>
+    <div className={cn("mb-3.5", className)}>
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-2 champ-eyebrow">
@@ -49,7 +49,7 @@ export function SectionHeader({
         </div>
         {action}
       </div>
-      <div className={cn("champ-divider mt-3", muted && "opacity-40")} />
+      <div className={cn("champ-divider mt-2.5", muted && "opacity-40")} />
     </div>
   );
 }

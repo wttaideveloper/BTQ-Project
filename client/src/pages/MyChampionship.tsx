@@ -129,15 +129,28 @@ function FocusMatchPanel({
             ? "Your team lost this match."
             : "This match finished level.";
 
-  // Broadcast-style side: emoticon crest above the team name.
+  // A finished fixture is a summary, not a call to action, so it renders in a
+  // compact form: one balanced row instead of the stacked broadcast treatment,
+  // with tighter padding and a smaller scoreline. Live and upcoming keep the
+  // full-height presentation - the current match stays the strongest section.
+  const compact = status === "completed";
+
+  // Broadcast-style side: emoticon crest above the team name (stacked), or
+  // beside it when compact.
   const teamSide = (team: ChampionshipTeamSummary | undefined, fallback: string, isMine: boolean) => (
-    <div className="flex min-w-0 flex-1 flex-col items-center gap-2 text-center">
-      <span className="text-3xl leading-none sm:text-4xl" aria-hidden="true">
+    <div
+      className={cn(
+        "flex min-w-0 flex-1 items-center",
+        compact ? "gap-2" : "flex-col gap-2 text-center",
+      )}
+    >
+      <span className={cn("shrink-0 leading-none", compact ? "text-xl" : "text-3xl sm:text-4xl")} aria-hidden="true">
         {team?.emoticon ?? "🏳️"}
       </span>
       <span
         className={cn(
-          "w-full truncate text-sm font-bold sm:text-base",
+          "min-w-0 truncate font-bold",
+          compact ? "text-sm" : "w-full text-sm sm:text-base",
           isMine ? "text-[#f0d58a]" : "text-white/85",
         )}
       >
@@ -152,7 +165,8 @@ function FocusMatchPanel({
   return (
     <section
       className={cn(
-        "champ-surface champ-fade-in relative overflow-hidden p-6 sm:p-8",
+        "champ-surface champ-fade-in relative overflow-hidden",
+        compact ? "p-4 sm:p-5" : "p-6 sm:p-8",
         status === "live" && "champ-live-glow border-[#f0576a]/30",
         display === "ready" && "border-[#d4af37]/30",
       )}
@@ -178,35 +192,66 @@ function FocusMatchPanel({
           )}
         </div>
 
-        <p className="mt-5 text-center champ-eyebrow">{heading}</p>
+        <p className={cn("text-center champ-eyebrow", compact ? "mt-3" : "mt-5")}>{heading}</p>
 
-        <div className="mt-4 flex items-center justify-center gap-4 sm:gap-8">
-          {teamSide(teamA, "Team A", match.teamAId === myTeamId)}
-          <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.22em] text-white/25">vs</span>
-          {teamSide(teamB, "Team B", match.teamBId === myTeamId)}
-        </div>
-
-        {status === "upcoming" ? (
-          kickoff && (
-            <p className="mt-6 text-center text-lg font-bold text-[#e7c766] sm:text-xl">{kickoff}</p>
-          )
+        {compact ? (
+          /* One balanced row: team · score · team. */
+          <div className="mt-3 flex items-center justify-center gap-3 sm:gap-5">
+            <div className="flex min-w-0 flex-1 justify-end">
+              {teamSide(teamA, "Team A", match.teamAId === myTeamId)}
+            </div>
+            <p className="champ-scoreline shrink-0 text-2xl font-black text-white sm:text-3xl">
+              {match.teamAScore}
+              <span className="mx-1.5 align-middle text-base text-white/25">:</span>
+              {match.teamBScore}
+            </p>
+            <div className="flex min-w-0 flex-1 justify-start">
+              {teamSide(teamB, "Team B", match.teamBId === myTeamId)}
+            </div>
+          </div>
         ) : (
-          <p className="champ-scoreline mt-6 text-center text-5xl font-black text-white sm:text-6xl">
-            {match.teamAScore}
-            <span className="mx-3 align-middle text-2xl text-white/25 sm:text-3xl">:</span>
-            {match.teamBScore}
-          </p>
+          <>
+            <div className="mt-4 flex items-center justify-center gap-4 sm:gap-8">
+              {teamSide(teamA, "Team A", match.teamAId === myTeamId)}
+              <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.22em] text-white/25">vs</span>
+              {teamSide(teamB, "Team B", match.teamBId === myTeamId)}
+            </div>
+
+            {status === "upcoming" ? (
+              kickoff && (
+                <p className="mt-5 text-center text-lg font-bold text-[#e7c766] sm:text-xl">{kickoff}</p>
+              )
+            ) : (
+              <p className="champ-scoreline mt-5 text-center text-5xl font-black text-white sm:text-6xl">
+                {match.teamAScore}
+                <span className="mx-3 align-middle text-2xl text-white/25 sm:text-3xl">:</span>
+                {match.teamBScore}
+              </p>
+            )}
+          </>
         )}
 
         {outcomeLabel && (
-          <p className="mt-3 text-center text-xs font-black uppercase tracking-[0.2em] text-white/55">
+          <p
+            className={cn(
+              "text-center text-xs font-black uppercase tracking-[0.2em] text-white/55",
+              compact ? "mt-2.5" : "mt-3",
+            )}
+          >
             {outcomeLabel}
           </p>
         )}
 
-        <p className="mx-auto mt-5 max-w-md text-center text-sm leading-relaxed champ-meta">{explanation}</p>
+        <p
+          className={cn(
+            "mx-auto max-w-md text-center leading-relaxed champ-meta",
+            compact ? "mt-1.5 text-xs" : "mt-5 text-sm",
+          )}
+        >
+          {explanation}
+        </p>
 
-        <div className="mt-7 flex justify-center">
+        <div className={cn("flex justify-center", compact ? "mt-4" : "mt-6")}>
           {status === "live" && canJoin ? (
             <Button
               onClick={onJoin}
@@ -217,7 +262,7 @@ function FocusMatchPanel({
               {joining ? "Joining match…" : "Join match"}
             </Button>
           ) : status === "completed" ? (
-            <Button onClick={onViewResult} className="champ-btn-gold w-full sm:w-auto sm:min-w-52">
+            <Button onClick={onViewResult} className="champ-btn-gold champ-btn-sm w-full sm:w-auto sm:min-w-44">
               <Trophy className="mr-2 h-4 w-4" /> View result
             </Button>
           ) : (
@@ -446,7 +491,7 @@ export default function MyChampionship() {
 
   return (
     <div className={PAGE_SHELL}>
-      <div className="mx-auto max-w-5xl space-y-9 px-4 py-5 sm:space-y-11 sm:py-8">
+      <div className="mx-auto max-w-5xl space-y-7 px-4 py-5 sm:space-y-9 sm:py-7">
         <div className="flex items-center justify-between gap-3">
           <Button variant="outline" className="champ-btn-ghost" onClick={() => setLocation("/")}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Home
@@ -468,7 +513,7 @@ export default function MyChampionship() {
           {/* The app's own tree mark, used as a faint crest rather than imagery. */}
           <FaithIQTreeMark className="champ-watermark -right-10 -top-16 h-64 w-64 sm:h-80 sm:w-80" />
 
-          <div className="relative px-5 pb-6 pt-8 sm:px-10 sm:pb-7 sm:pt-11">
+          <div className="relative px-5 pb-5 pt-7 sm:px-10 sm:pb-6 sm:pt-9">
             <div className="text-center">
               <div className="flex items-center justify-center gap-2.5">
                 <FaithIQTreeMark className="h-5 w-5 text-[#d4af37]" />
@@ -478,21 +523,21 @@ export default function MyChampionship() {
                 Bible Trivia Tournament
               </p>
 
-              <h1 className="mt-6 break-words text-4xl font-black leading-[1.05] tracking-tight text-white sm:text-6xl">
+              <h1 className="mt-5 break-words text-4xl font-black leading-[1.05] tracking-tight text-white sm:text-6xl">
                 {championship.name}
               </h1>
               {championship.description && (
-                <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed champ-meta">
+                <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed champ-meta">
                   {championship.description}
                 </p>
               )}
 
-              <div className="mt-6 flex justify-center">
+              <div className="mt-5 flex justify-center">
                 <ChampionshipStatusBadge status={championshipStatusOf(championship)} />
               </div>
             </div>
 
-            <div className="champ-divider my-7" />
+            <div className="champ-divider my-6" />
 
             {/* 2 — Where the player stands, aligned with the tournament above. */}
             {myTeam ? (
@@ -598,7 +643,7 @@ export default function MyChampionship() {
                 description="Your team has not been drawn into a fixture yet. Matches are scheduled by the championship organiser."
               />
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {myGrouped.live.length > 0 && (
                   <div>
                     <h3 className="mb-2.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#ff9aa6]">
@@ -634,7 +679,7 @@ export default function MyChampionship() {
 
         {/* 6 — Team identity. Read-only: the roster is administered elsewhere. */}
         {myTeam && (
-          <section className="champ-surface relative overflow-hidden p-5 pl-6 sm:p-6 sm:pl-7">
+          <section className="champ-surface relative overflow-hidden p-4 pl-5 sm:p-5 sm:pl-6">
             {/* Gold side accent - the team's identity marker. */}
             <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[#f0d58a] via-[#d4af37] to-transparent" />
 
@@ -676,7 +721,7 @@ export default function MyChampionship() {
 
             {roster.length > 0 && (
               <>
-                <div className="champ-divider my-4 opacity-50" />
+                <div className="champ-divider my-3.5 opacity-50" />
                 <ul className="flex flex-wrap gap-2">
                   {roster.map(member => (
                     <li
@@ -698,7 +743,7 @@ export default function MyChampionship() {
               </>
             )}
 
-            <p className="mt-4 text-xs text-white/35">
+            <p className="mt-3.5 text-xs text-white/35">
               Your team and its roster are managed by the championship administrator.
             </p>
           </section>

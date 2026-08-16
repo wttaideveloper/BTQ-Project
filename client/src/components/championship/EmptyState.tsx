@@ -36,7 +36,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "rounded-2xl border px-5 py-6 text-center sm:px-7 sm:py-8 sm:text-left",
+        "rounded-2xl border px-5 py-5 text-center sm:px-6 sm:py-6 sm:text-left",
         dashed ? "border-dashed" : "",
         styles.panel,
         className,
@@ -51,7 +51,7 @@ export function EmptyState({
           {description && (
             <p className="mt-1.5 text-sm leading-relaxed champ-meta">{description}</p>
           )}
-          {children && <div className="mt-5">{children}</div>}
+          {children && <div className="mt-4">{children}</div>}
         </div>
       </div>
     </div>

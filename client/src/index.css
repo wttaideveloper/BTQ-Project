@@ -712,6 +712,14 @@ button span, .answer-button span {
   letter-spacing: 0.01em;
 }
 
+/* Secondary-weight action inside compact summary cards. */
+.champ-btn-sm.champ-btn-gold,
+.champ-btn-sm.champ-btn-ghost {
+  height: 2.375rem;
+  border-radius: 0.6rem;
+  font-size: 0.8125rem;
+}
+
 .champ-btn-gold {
   background: linear-gradient(135deg, #f0d58a 0%, #d4af37 55%, #b8912b 100%) !important;
   color: #171238 !important;

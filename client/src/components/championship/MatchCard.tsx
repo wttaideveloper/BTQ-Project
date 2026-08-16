@@ -28,7 +28,7 @@ function TeamLine({
   dimmed: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2.5 py-1">
+    <div className="flex items-center gap-2.5 py-0.5">
       <span className="text-lg leading-none shrink-0" aria-hidden="true">
         {team?.emoticon ?? "🏳️"}
       </span>
@@ -113,7 +113,7 @@ export function MatchCard({
         )}
       </div>
 
-      <div className="mt-3">
+      <div className="mt-2.5">
         <TeamLine
           team={teamA}
           fallbackLabel="Team A"
@@ -138,7 +138,7 @@ export function MatchCard({
         />
       </div>
 
-      {actions && <div className="mt-4">{actions}</div>}
+      {actions && <div className="mt-3">{actions}</div>}
     </article>
   );
 }

@@ -99,14 +99,6 @@ export interface ChampionshipTeamDetail {
   matches: ChampionshipMatchSummary[];
 }
 
-/** A user row from GET /api/users (directory shape for non-admins). */
-export interface DirectoryUser {
-  id: number;
-  username: string;
-  fullName?: string | null;
-  isAdmin?: boolean | null;
-}
-
 export type MatchOutcome = "won" | "lost" | "draw";
 
 /** Narrow the raw status string, defaulting to the schema default. */

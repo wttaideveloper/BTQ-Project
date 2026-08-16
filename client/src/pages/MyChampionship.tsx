@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   ArrowLeft,
@@ -9,18 +9,14 @@ import {
   Gamepad2,
   ListOrdered,
   Loader2,
-  Lock,
   Play,
-  Plus,
   Radio,
   RefreshCw,
   Trophy,
-  UserPlus,
+  UserRound,
   Users,
-  UsersRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
@@ -44,7 +40,6 @@ import {
   type ChampionshipMatchSummary,
   type ChampionshipTeamDetail,
   type ChampionshipTeamSummary,
-  type DirectoryUser,
   type MyChampionshipDashboard,
 } from "@/lib/championship";
 import { EmptyState } from "@/components/championship/EmptyState";
@@ -62,9 +57,18 @@ const DASHBOARD_KEY = "/api/championships/me/dashboard";
 const CHAMPIONSHIP_KEY = "/api/championships";
 const TEAM_KEY = "/api/championship-teams";
 
-/** Emoticons a captain can pick for a new team. Stored in the existing `emoticon` column. */
-const TEAM_EMOTICONS = ["👏", "🔥", "⚡", "🦁", "🕊️", "⭐", "🛡️", "🎯"];
-
+/**
+ * This page is read-only with respect to championship teams.
+ *
+ * Championship teams, captains and rosters are created and assigned by an
+ * administrator in the Championship Management panel - never by a player, and
+ * never by a team captain from here. The only write this page performs is
+ * POST /api/championship-matches/:id/join, which is gameplay: it hands an
+ * already-assigned team member into their live Team Battle.
+ *
+ * "Captain" is therefore displayed as information only. It carries no team
+ * management capability on the player side.
+ */
 const PAGE_SHELL = "home-page min-h-screen bg-gradient-to-b from-[#121628] via-[#1a1f3a] to-[#0d1020] font-heading";
 
 /**
@@ -196,10 +200,6 @@ export default function MyChampionship() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [teamName, setTeamName] = useState("");
-  const [teamEmoticon, setTeamEmoticon] = useState(TEAM_EMOTICONS[0]);
-  const [newMemberId, setNewMemberId] = useState("");
-  const [rosterOpen, setRosterOpen] = useState(false);
   const [joiningMatchId, setJoiningMatchId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -241,10 +241,6 @@ export default function MyChampionship() {
     enabled: !!myTeam?.id,
     staleTime: 30_000,
   });
-
-  // The member picker is a captain-only control, so the user directory is only
-  // fetched for a captain.
-  const directoryQuery = useQuery<DirectoryUser[]>({ queryKey: ["/api/users"], enabled: isCaptain });
 
   // Tracked separately from isFetching so the button does not flicker on every
   // background poll - it only reports refreshes the player actually asked for.
@@ -288,67 +284,12 @@ export default function MyChampionship() {
 
   const myGrouped = useMemo(() => groupMatches(myMatches), [myMatches]);
   const focusMatch = useMemo(() => pickFocusMatch(myGrouped), [myGrouped]);
-  // Adding a member is refused by the server while the team is in a live match,
-  // so the control says so instead of failing after the fact.
-  const rosterLocked = myGrouped.live.length > 0;
 
   const standings = detailQuery.data?.standings ?? [];
   const champion = detailQuery.data?.champion ?? null;
 
   const roster = teamQuery.data?.members ?? [];
   const memberCount = teamMemberIds(myTeam).length;
-
-  // A user can only belong to one team per championship, so anyone already on a
-  // team is left out of the picker rather than rejected on submit.
-  const candidates = useMemo(() => {
-    const assigned = new Set<number>();
-    teams.forEach(team => teamMemberIds(team).forEach(id => assigned.add(id)));
-    return (directoryQuery.data ?? []).filter(candidate => !candidate.isAdmin && !assigned.has(candidate.id));
-  }, [directoryQuery.data, teams]);
-
-  const createTeam = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/championship-teams", {
-        championshipId: championship!.id,
-        name: teamName.trim(),
-        captainId: user?.id,
-        memberIds: [],
-        emoticon: teamEmoticon,
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      setTeamName("");
-      refreshAll();
-      toast({ title: "Team created", description: "You are the captain of this team." });
-    },
-    onError: (error: unknown) =>
-      toast({
-        title: "Could not create team",
-        description: error instanceof Error ? error.message : "Please try again",
-        variant: "destructive",
-      }),
-  });
-
-  const addMember = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", `/api/championship-teams/${myTeam!.id}/members`, {
-        userId: Number(newMemberId),
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      setNewMemberId("");
-      refreshAll();
-      toast({ title: "Member added" });
-    },
-    onError: (error: unknown) =>
-      toast({
-        title: "Could not add member",
-        description: error instanceof Error ? error.message : "Please try again",
-        variant: "destructive",
-      }),
-  });
 
   // Join flow - unchanged. The captain starts the Team Battle over the socket
   // and gets a longer hand-off delay so the session exists before teammates
@@ -525,59 +466,18 @@ export default function MyChampionship() {
             />
           )
         ) : (
+          /* Informational only. Championship teams and rosters are assigned by
+             an administrator, so there is nothing for a player to act on here. */
           <EmptyState
-            icon={UsersRound}
-            tone="amber"
+            icon={UserRound}
+            tone="info"
+            dashed={false}
             title="You are not participating"
-            description="You are not currently part of a championship team. Create a team to captain it, or ask an existing team captain to add you."
-          >
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-1.5">
-                {TEAM_EMOTICONS.map(emoticon => (
-                  <button
-                    key={emoticon}
-                    type="button"
-                    aria-label={`Use ${emoticon} as the team emoticon`}
-                    aria-pressed={teamEmoticon === emoticon}
-                    onClick={() => setTeamEmoticon(emoticon)}
-                    className={cn(
-                      "h-9 w-9 rounded-lg text-lg leading-none transition-colors",
-                      teamEmoticon === emoticon
-                        ? "bg-accent/20 border border-accent/50"
-                        : "bg-white/5 border border-white/10 hover:bg-white/10",
-                    )}
-                  >
-                    {emoticon}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2 max-w-lg">
-                <Input
-                  className="bg-slate-950/40 border-white/15 text-white placeholder:text-white/35"
-                  placeholder="Your team name"
-                  value={teamName}
-                  maxLength={80}
-                  onChange={event => setTeamName(event.target.value)}
-                />
-                <Button
-                  className="bg-accent hover:bg-accent/90 text-primary font-semibold shrink-0"
-                  disabled={!teamName.trim() || createTeam.isPending}
-                  onClick={() => createTeam.mutate()}
-                >
-                  {createTeam.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                  Create a team
-                </Button>
-              </div>
-              <p className="text-xs text-white/45">
-                {teams.size === 0
-                  ? "No teams have been created yet — create the first one and you become its captain."
-                  : "Creating a team makes you its captain. You can add members afterwards."}
-              </p>
-            </div>
-          </EmptyState>
+            description="You are not currently assigned to a championship team. Please contact the championship administrator or your team captain to be added to a team."
+          />
         )}
 
-        {/* 2 — Team and role, with captain-only controls. */}
+        {/* 2 — Team and role. Read-only: the roster is administered elsewhere. */}
         {myTeam && (
           <section className="home-glass-card rounded-2xl border border-white/10 p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -594,16 +494,8 @@ export default function MyChampionship() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {isCaptain && (
-                  <Button
-                    variant="outline"
-                    className="home-btn-outline"
-                    onClick={() => setRosterOpen(open => !open)}
-                    aria-expanded={rosterOpen}
-                  >
-                    <UserPlus className="mr-2 h-4 w-4" /> Manage team
-                  </Button>
-                )}
+                {/* Captain and member get the same action: this page never
+                    manages a roster, whichever role the player holds. */}
                 <Button
                   variant="outline"
                   className="home-btn-outline"
@@ -635,55 +527,9 @@ export default function MyChampionship() {
               </ul>
             )}
 
-            {/* Captain-only. A member never sees these controls. */}
-            {isCaptain && rosterOpen && (
-              <div className="mt-5 border-t border-white/10 pt-4">
-                <p className="text-sm font-semibold text-white">Add a member</p>
-                <p className="mt-1 text-xs text-white/50">
-                  Only players who are not already on a team in this championship can be added.
-                </p>
-                {rosterLocked ? (
-                  <p className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/60">
-                    <Lock className="h-4 w-4 shrink-0" />
-                    Your roster is locked while your match is live.
-                  </p>
-                ) : (
-                  <div className="mt-3 flex flex-col sm:flex-row gap-2">
-                    <select
-                      className="flex-1 rounded-md border border-white/15 bg-slate-950/60 px-3 py-2 text-sm text-white"
-                      value={newMemberId}
-                      onChange={event => setNewMemberId(event.target.value)}
-                      aria-label="Select a player to add"
-                    >
-                      <option value="">
-                        {directoryQuery.isLoading
-                          ? "Loading players…"
-                          : candidates.length === 0
-                            ? "No players available"
-                            : "Select a registered player"}
-                      </option>
-                      {candidates.map(candidate => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {displayName(candidate)}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      className="bg-accent hover:bg-accent/90 text-primary font-semibold shrink-0"
-                      disabled={!newMemberId || addMember.isPending}
-                      onClick={() => addMember.mutate()}
-                    >
-                      {addMember.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <UserPlus className="mr-2 h-4 w-4" />
-                      )}
-                      Add member
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
+            <p className="mt-4 text-xs text-white/40">
+              Your team and its roster are managed by the championship administrator.
+            </p>
           </section>
         )}
 
@@ -746,7 +592,7 @@ export default function MyChampionship() {
               description={
                 myTeam
                   ? "Matches between other teams — you can watch, but not play in these."
-                  : "Matches between championship teams. You can watch these, but you are not playing in them."
+                  : "Matches between championship teams. You can watch these, but you cannot join a match unless an administrator has assigned you to one of the teams playing."
               }
               count={otherMatches.length}
               muted

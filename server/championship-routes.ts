@@ -204,11 +204,29 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       champion: hasMatches && championshipFinished ? standings[0] ?? null : null });
   });
 
-  app.post("/api/championship-teams", async (req, res) => {
+  /**
+   * Championship teams are created by an administrator only.
+   *
+   * The route previously accepted any authenticated user and silently forced
+   * captainId to the requester, so a player could create a championship team
+   * for themselves by calling it directly. Team composition decides who plays
+   * the fixtures an admin schedules, so it belongs with the rest of the
+   * admin-gated championship routes here (create/edit/delete championship,
+   * PATCH/DELETE team, all match management).
+   *
+   * This is the SAME ensureAdmin used by those routes - 403 with the project's
+   * standard message - so there is no new authorization path. Admin behaviour is
+   * byte-for-byte what it was: the previous `isAdmin ? requested : ...` branch
+   * already used the body verbatim for an admin, and the admin panel has always
+   * sent an explicit captainId.
+   *
+   * NOTE: this is the Championship team endpoint. Ordinary ad-hoc Team Battle
+   * teams are created by POST /api/teams in server/routes.ts, which is gated by
+   * ensureAuthenticated and is deliberately left untouched.
+   */
+  app.post("/api/championship-teams", ensureAdmin, async (req, res) => {
     try {
-      if (!req.isAuthenticated() || !req.user?.id) return res.status(401).json({ message: "Authentication required" });
-      const requested = teamInput.parse(req.body);
-      const data = req.user.isAdmin ? requested : { ...requested, captainId: req.user.id };
+      const data = teamInput.parse(req.body);
       const members = [...new Set([data.captainId, ...data.memberIds])];
       await assertUsersExist(members);
       const conflicting = await db.select().from(championshipTeams)
@@ -219,13 +237,21 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       res.status(201).json(row);
     } catch (e) { fail(res, e); }
   });
-  app.post("/api/championship-teams/:id/members", async (req, res) => {
+  /**
+   * Roster assignment is an administrator action, exactly like team creation
+   * above. The route used to accept the team's own captain as well; that branch
+   * is gone because ensureAdmin now rejects every non-admin before the handler
+   * runs, captain included.
+   *
+   * Only the authorization changed. The request body, the 404/409 checks (unknown
+   * user, roster locked during a live match, one team per championship) and the
+   * updated-team response are untouched.
+   */
+  app.post("/api/championship-teams/:id/members", ensureAdmin, async (req, res) => {
     try {
-      if (!req.isAuthenticated() || !req.user?.id) return res.status(401).json({ message: "Authentication required" });
       const input = z.object({ userId: z.coerce.number().int().positive() }).parse(req.body);
       const [team] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, req.params.id));
       if (!team) return res.status(404).json({ message: "Team not found" });
-      if (!req.user.isAdmin && team.captainId !== req.user.id) return res.status(403).json({ message: "Only this team captain or an admin can add members" });
       const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, input.userId));
       if (!user) return res.status(404).json({ message: "User not found" });
       const live = await db.select().from(championshipMatches).where(and(eq(championshipMatches.championshipId, team.championshipId), eq(championshipMatches.status, "live")));

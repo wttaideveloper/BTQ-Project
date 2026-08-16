@@ -46,6 +46,7 @@ import {
 import { EmptyState } from "@/components/championship/EmptyState";
 import { MatchActions } from "@/components/championship/MatchActions";
 import { MatchCard } from "@/components/championship/MatchCard";
+import { MatchResultModal } from "@/components/championship/MatchResultModal";
 import { SectionHeader } from "@/components/championship/SectionHeader";
 import {
   ChampionshipStatusBadge,
@@ -89,6 +90,7 @@ function FocusMatchPanel({
   joining,
   onJoin,
   onOpen,
+  onViewResult,
 }: {
   match: ChampionshipMatchSummary;
   teamA?: ChampionshipTeamSummary;
@@ -98,6 +100,8 @@ function FocusMatchPanel({
   joining: boolean;
   onJoin: () => void;
   onOpen: () => void;
+  /** Finished fixture: show the result here rather than opening /watch. */
+  onViewResult: () => void;
 }) {
   const status = matchStatusOf(match);
   const display = matchDisplayState(match);
@@ -180,7 +184,7 @@ function FocusMatchPanel({
             size="lg"
             variant="outline"
             className="home-btn-outline w-full sm:w-auto"
-            onClick={onOpen}
+            onClick={status === "completed" ? onViewResult : onOpen}
           >
             {status === "live" ? (
               <>
@@ -210,6 +214,9 @@ export default function MyChampionship() {
 
   const [joiningMatchId, setJoiningMatchId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // The completed match whose result dialog is open. Holding the match itself
+  // means the dialog needs no lookup and no request of its own.
+  const [resultMatch, setResultMatch] = useState<ChampionshipMatchSummary | null>(null);
 
   // The player's own state. Polled so a match going live shows up without a
   // manual reload - championship socket events are addressed to spectators of a
@@ -338,6 +345,7 @@ export default function MyChampionship() {
           joining={joiningMatchId === match.id}
           onJoin={() => joinMatch(match)}
           onOpen={() => openMatch(match)}
+          onViewResult={() => setResultMatch(match)}
           size="sm"
         />
       }
@@ -465,6 +473,7 @@ export default function MyChampionship() {
               joining={joiningMatchId === focusMatch.id}
               onJoin={() => joinMatch(focusMatch)}
               onOpen={() => openMatch(focusMatch)}
+              onViewResult={() => setResultMatch(focusMatch)}
             />
           ) : (
             <EmptyState
@@ -692,6 +701,16 @@ export default function MyChampionship() {
           </p>
         )}
       </div>
+
+      {/* Result of a finished fixture, shown in place. Everything it renders is
+          already-loaded page data, so opening it issues no request. */}
+      <MatchResultModal
+        match={resultMatch}
+        teamA={resultMatch ? teams.get(resultMatch.teamAId) : undefined}
+        teamB={resultMatch ? teams.get(resultMatch.teamBId) : undefined}
+        myTeamId={myTeam?.id ?? null}
+        onClose={() => setResultMatch(null)}
+      />
     </div>
   );
 }

@@ -1,12 +1,13 @@
 import { Crown, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ChampionshipStatus, MatchOutcome, MatchStatus } from "@/lib/championship";
+import type { ChampionshipStatus, MatchDisplayState, MatchOutcome } from "@/lib/championship";
 
 /**
  * Status pills for the player dashboard.
  *
  * Colour has one meaning across the whole page:
  *   red    - genuinely live right now
+ *   sky    - kick-off time reached, waiting on the organiser to start it
  *   amber  - scheduled, not yet playable
  *   green  - finished / positive participation
  *   muted  - not the player's concern
@@ -15,8 +16,10 @@ import type { ChampionshipStatus, MatchOutcome, MatchStatus } from "@/lib/champi
 const badgeBase =
   "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap";
 
-const MATCH_TONES: Record<MatchStatus, { label: string; className: string }> = {
+const MATCH_TONES: Record<MatchDisplayState, { label: string; className: string }> = {
   live: { label: "Live now", className: "border-red-400/50 bg-red-500/15 text-red-200" },
+  // Deliberately NOT red: the match is not live and cannot be joined yet.
+  ready: { label: "Ready to start", className: "border-sky-400/50 bg-sky-400/15 text-sky-200" },
   upcoming: { label: "Upcoming", className: "border-amber-400/50 bg-amber-400/15 text-amber-200" },
   completed: { label: "Completed", className: "border-emerald-400/40 bg-emerald-400/10 text-emerald-200" },
 };
@@ -26,7 +29,7 @@ export function MatchStatusBadge({
   muted = false,
   className,
 }: {
-  status: MatchStatus;
+  status: MatchDisplayState;
   /** Unrelated matches keep the same wording but step back visually. */
   muted?: boolean;
   className?: string;

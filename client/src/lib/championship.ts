@@ -16,6 +16,17 @@ export type ApiDate = string | Date | null | undefined;
 /** The three values championship_matches.status can hold. */
 export type MatchStatus = "live" | "upcoming" | "completed";
 
+/**
+ * What the UI shows, which is the stored status plus one derived state:
+ * "ready" is an upcoming match whose kick-off time has passed.
+ *
+ * There is no such status in the database and nothing starts a match because of
+ * it - an admin still presses Start Match, and the row stays "upcoming" until
+ * POST /api/championship-matches/:id/start flips it. This exists only so a
+ * fixture whose time has come stops claiming it is still merely scheduled.
+ */
+export type MatchDisplayState = MatchStatus | "ready";
+
 /** The three values championships.status can hold. */
 export type ChampionshipStatus = "draft" | "active" | "completed";
 
@@ -139,6 +150,24 @@ export function canJoinMatch(
   return isTeamInMatch(match, team.id) && teamMemberIds(team).includes(userId);
 }
 
+/**
+ * Has an upcoming match reached its scheduled kick-off time?
+ *
+ * Display only - see MatchDisplayState. A match with no scheduled time is never
+ * "ready": there is no time to have arrived. Evaluated at render time against
+ * `now`, so it needs no extra request and no new field.
+ */
+export function isMatchReadyToStart(match: ChampionshipMatchSummary, now: number = Date.now()): boolean {
+  if (matchStatusOf(match) !== "upcoming") return false;
+  const scheduled = timeOf(match.scheduledAt);
+  return scheduled !== null && scheduled <= now;
+}
+
+/** The stored status, upgraded to "ready" once kick-off time has passed. */
+export function matchDisplayState(match: ChampionshipMatchSummary, now?: number): MatchDisplayState {
+  return isMatchReadyToStart(match, now) ? "ready" : matchStatusOf(match);
+}
+
 function timeOf(value: ApiDate): number | null {
   if (!value) return null;
   const time = new Date(value).getTime();
@@ -246,6 +275,9 @@ export function matchTimingLabel(match: ChampionshipMatchSummary): string | null
       return played ? `Played ${played}` : "Final result";
     }
     default: {
+      // Past its kick-off time but not started: say so rather than showing a
+      // time that has already gone by as though it were still to come.
+      if (isMatchReadyToStart(match)) return "Scheduled time has arrived";
       return formatKickoff(match.scheduledAt) ?? "Time to be announced";
     }
   }

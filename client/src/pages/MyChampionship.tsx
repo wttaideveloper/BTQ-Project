@@ -30,6 +30,7 @@ import {
   formatKickoff,
   groupMatches,
   isTeamInMatch,
+  matchDisplayState,
   matchOutcome,
   matchStatusOf,
   matchTimingLabel,
@@ -99,6 +100,7 @@ function FocusMatchPanel({
   onOpen: () => void;
 }) {
   const status = matchStatusOf(match);
+  const display = matchDisplayState(match);
   const outcome = matchOutcome(match, myTeamId);
   const kickoff = formatKickoff(match.scheduledAt);
 
@@ -108,9 +110,13 @@ function FocusMatchPanel({
     status === "live"
       ? "Your team is playing now — join to take your place."
       : status === "upcoming"
-        ? kickoff
-          ? `Kick-off ${kickoff}. You can join once the match goes live.`
-          : "A kick-off time has not been announced yet. You can join once the match goes live."
+        // The kick-off time passing does not start the match: the organiser
+        // does, and only then can anyone join.
+        ? display === "ready"
+          ? "The scheduled time has arrived. Your match begins when the organiser starts it — you can join as soon as it goes live."
+          : kickoff
+            ? `Kick-off ${kickoff}. You can join once the match goes live.`
+            : "A kick-off time has not been announced yet. You can join once the match goes live."
         : outcome === "won"
           ? "Your team won this match."
           : outcome === "lost"
@@ -130,13 +136,15 @@ function FocusMatchPanel({
         "rounded-2xl border p-5 sm:p-6",
         status === "live"
           ? "border-red-400/50 bg-gradient-to-br from-red-500/15 to-red-500/[0.04] shadow-[0_0_30px_-12px_rgba(248,113,113,0.5)]"
-          : status === "upcoming"
-            ? "border-amber-400/40 bg-gradient-to-br from-amber-400/12 to-amber-400/[0.03]"
-            : "border-emerald-400/30 bg-gradient-to-br from-emerald-400/10 to-emerald-400/[0.02]",
+          : display === "ready"
+            ? "border-sky-400/40 bg-gradient-to-br from-sky-400/12 to-sky-400/[0.03]"
+            : status === "upcoming"
+              ? "border-amber-400/40 bg-gradient-to-br from-amber-400/12 to-amber-400/[0.03]"
+              : "border-emerald-400/30 bg-gradient-to-br from-emerald-400/10 to-emerald-400/[0.02]",
       )}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <MatchStatusBadge status={status} />
+        <MatchStatusBadge status={display} />
         <span className="text-xs text-white/50">{matchTimingLabel(match)}</span>
       </div>
 

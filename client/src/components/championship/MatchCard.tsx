@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import {
+  matchDisplayState,
   matchOutcome,
   matchStatusOf,
   matchTimingLabel,
@@ -101,7 +102,9 @@ export function MatchCard({
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <MatchStatusBadge status={status} muted={muted} />
+          {/* Badge reports the derived state; the card's layout and its actions
+              stay keyed on the real status, so nothing becomes joinable early. */}
+          <MatchStatusBadge status={matchDisplayState(match)} muted={muted} />
           {outcome && <MatchOutcomeBadge outcome={outcome} />}
         </div>
         {timing && <span className="text-xs text-white/45">{timing}</span>}

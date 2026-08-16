@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, Clock3, Crown, Edit3,
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
+import { formatKickoff, isMatchReadyToStart, matchDisplayState } from "@/lib/championship";
+import { onEvent, sendGameEvent, setupGameSocket } from "@/lib/socket";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -32,9 +34,14 @@ const championshipStatusStyle: Record<string, string> = {
 const championshipStatusDot: Record<string, string> = {
   draft: "bg-slate-400", active: "bg-emerald-500 animate-pulse", completed: "bg-violet-500",
 };
-const matchStatusLabel: Record<string, string> = { upcoming: "Upcoming", live: "Live", completed: "Completed" };
+// "ready" is a DISPLAY state only - an upcoming match whose scheduled time has
+// passed. Nothing starts by itself; the operator still presses Start Match, and
+// the stored status stays "upcoming" until /start flips it. See
+// matchDisplayState in @/lib/championship.
+const matchStatusLabel: Record<string, string> = { upcoming: "Upcoming", ready: "Ready to start", live: "Live", completed: "Completed" };
 const matchStatusStyle: Record<string, string> = {
   upcoming: "bg-sky-100 text-sky-800 border-sky-200",
+  ready: "bg-amber-100 text-amber-800 border-amber-200",
   live: "bg-red-100 text-red-700 border-red-200",
   completed: "bg-emerald-100 text-emerald-800 border-emerald-200",
 };
@@ -89,11 +96,15 @@ function SectionCard({ id, title, description, icon: Icon, action, children }: {
   </section>;
 }
 
-function LiveScoreCard({ team, value, onChange }: { team: any; value: number; onChange: (value: number) => void }) {
+/**
+ * Read-only scoreboard tile. The score is owned by gameplay - the answer
+ * handler writes it onto the championship_matches row through
+ * broadcastChampionshipScore() - so the desk reports it and never edits it.
+ */
+function LiveScoreCard({ team, value }: { team: any; value: number }) {
   return <div className="rounded-xl border bg-slate-50 p-4 text-center">
     <p className="truncate text-sm font-bold text-slate-800">{team?.emoticon} {team?.name ?? "Team"}</p>
-    <Input className="mx-auto mt-2 h-14 w-28 text-center text-3xl font-black" type="number" min="0"
-      aria-label={`${team?.name ?? "Team"} score`} value={value} onChange={event => onChange(Number(event.target.value))} />
+    <p className="mt-2 text-4xl font-black tabular-nums text-slate-900" aria-label={`${team?.name ?? "Team"} score`}>{value}</p>
     <p className="mt-1 text-xs text-slate-500">Score</p>
   </div>;
 }
@@ -115,6 +126,139 @@ function BroadcastPanel({ matchId }: { matchId: string }) {
   </div>;
 }
 
+/**
+ * Live match desk - monitoring, not manual control.
+ *
+ * Once a match kicks off, the Team Battle engine owns it: the question
+ * dispatcher calls broadcastChampionshipQuestion() with the real question
+ * number, and the answer handler calls broadcastChampionshipScore(), which
+ * writes teamAScore/teamBScore onto the championship_matches row and broadcasts
+ * `match_updated` (both in server/socket.ts). The engine also completes the
+ * match itself when the battle finishes. So there is nothing here to start a
+ * question with, and a manually PATCHed score would simply be overwritten by
+ * the next answer - those controls were removed.
+ *
+ * The score and question shown below arrive over the SAME public championship
+ * events the watch page consumes. `watch_match` is the existing spectator
+ * subscription (handleWatchMatch): it binds this socket to the match and
+ * replies with the cached current question. No new event, no server change, no
+ * gameplay effect.
+ *
+ * What stays actionable: Watch / Overlay for the broadcast operator, End Match
+ * as the manual fallback for a match that never finishes cleanly, and the
+ * winner override for the exceptional case where the recorded winner must
+ * differ from the score.
+ */
+function LiveMatchControl({
+  match, teamA, teamB, winnerOverride, onWinnerOverrideChange, onEndMatch, onMatchEnded,
+}: {
+  match: any;
+  teamA: any;
+  teamB: any;
+  winnerOverride: string;
+  onWinnerOverrideChange: (value: string) => void;
+  /** Receives the match carrying the live score, so /end records what gameplay reported. */
+  onEndMatch: (match: any) => void;
+  onMatchEnded: () => void;
+}) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [score, setScore] = useState({ a: match.teamAScore, b: match.teamBScore });
+  const [question, setQuestion] = useState<number | null>(null);
+
+  // The server payload is the baseline; live events refine it from here.
+  useEffect(() => {
+    setScore({ a: match.teamAScore, b: match.teamBScore });
+  }, [match.id, match.teamAScore, match.teamBScore]);
+
+  // Held in a ref so re-rendering the parent cannot re-subscribe this socket.
+  const matchEnded = useRef(onMatchEnded);
+  useEffect(() => { matchEnded.current = onMatchEnded; }, [onMatchEnded]);
+
+  useEffect(() => {
+    const matchId = match.id;
+    setupGameSocket();
+    sendGameEvent({ type: "watch_match", matchId });
+    // A reconnect creates a new server-side client with no subscription, so the
+    // desk re-subscribes on connection_established exactly like the watch page.
+    const offConnected = onEvent("connection_established", () => sendGameEvent({ type: "watch_match", matchId }));
+    const offRestored = onEvent("match_state_restored", event => {
+      if (event.matchId !== matchId) return;
+      setQuestion(event.currentQuestion?.questionNumber ?? null);
+    });
+    const offUpdated = onEvent("match_updated", event => {
+      if (event.match?.id !== matchId) return;
+      setScore({ a: event.match.teamAScore, b: event.match.teamBScore });
+    });
+    const offQuestionStarted = onEvent("question_started", event => {
+      if (event.matchId === matchId) setQuestion(event.questionNumber ?? null);
+    });
+    const offQuestionEnded = onEvent("question_ended", event => {
+      if (event.matchId === matchId) setQuestion(null);
+    });
+    // The engine completes the match on its own, so the desk refreshes itself
+    // out of live mode instead of stranding the operator on a finished match.
+    const offEnded = onEvent("match_ended", event => {
+      if (event.match?.id !== matchId) return;
+      setQuestion(null);
+      matchEnded.current();
+    });
+    return () => { offConnected(); offRestored(); offUpdated(); offQuestionStarted(); offQuestionEnded(); offEnded(); };
+  }, [match.id]);
+
+  return <section className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-sm">
+    <div className="flex flex-wrap items-center gap-3 bg-gradient-to-r from-red-600 to-rose-600 p-5 text-white">
+      <h3 className="flex items-center gap-2 text-lg font-black"><span className="h-2.5 w-2.5 rounded-full bg-white animate-pulse" /> Live Match Control</h3>
+      <span className="ml-auto text-sm font-semibold text-red-50">Match status: Live</span>
+    </div>
+    <div className="space-y-5 p-5">
+      <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
+        <LiveScoreCard team={teamA} value={score.a} />
+        <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-slate-900 text-[11px] font-black text-white">VS</div>
+        <LiveScoreCard team={teamB} value={score.b} />
+      </div>
+
+      <div className="rounded-xl border bg-slate-50 p-4 text-center">
+        <p className="text-sm font-bold text-slate-800">
+          {question ? `Current question: ${question}` : "Waiting for the next question…"}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          Questions and scores are controlled by the match itself and update here automatically.
+        </p>
+      </div>
+
+      <BroadcastPanel matchId={match.id} />
+
+      <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+        <p className="flex items-start gap-2 text-xs text-slate-500">
+          <Info size={14} className="mt-0.5 shrink-0" />
+          The match ends by itself when the battle finishes. End it here only if it needs to be closed manually.
+        </p>
+        <Button variant="destructive" className="ml-auto" onClick={() => onEndMatch({ ...match, teamAScore: score.a, teamBScore: score.b })}>
+          End Match
+        </Button>
+      </div>
+
+      <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+        <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+          <ChevronDown size={16} className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`} /> Advanced Controls
+          <span className="ml-auto text-xs font-normal text-slate-400">Only needed in special cases</span>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="rounded-b-xl border border-t-0 px-4 pb-4 pt-3">
+          <label className="text-sm font-semibold text-slate-700">Winner when the match ends
+            <select className="mt-1 block h-10 w-full max-w-sm rounded-md border bg-white px-3 text-sm font-normal"
+              value={winnerOverride} onChange={event => onWinnerOverrideChange(event.target.value)}>
+              <option value="">Automatic — highest score wins</option>
+              <option value={match.teamAId}>{teamA?.name}</option>
+              <option value={match.teamBId}>{teamB?.name}</option>
+            </select>
+          </label>
+          <p className="mt-2 text-xs text-slate-500">Leave this on Automatic unless you need to record a different winner than the score shows.</p>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  </section>;
+}
+
 export function ChampionshipManagementPanel() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -130,8 +274,6 @@ export function ChampionshipManagementPanel() {
   const [teamBId, setTeamBId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [streamUrl, setStreamUrl] = useState("");
-  const [scores, setScores] = useState<Record<string, { a: number; b: number }>>({});
-  const [questionNumber, setQuestionNumber] = useState<Record<string, number>>({});
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [editingTeam, setEditingTeam] = useState<any>(null);
   const [editingMatch, setEditingMatch] = useState<any>(null);
@@ -144,7 +286,6 @@ export function ChampionshipManagementPanel() {
   const [showScheduleMatch, setShowScheduleMatch] = useState(false);
   const [deleteTeamTarget, setDeleteTeamTarget] = useState<any>(null);
   const [endMatchTarget, setEndMatchTarget] = useState<any>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { data: championships = [] } = useQuery<any[]>({ queryKey: ["/api/championships"] });
   const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
@@ -158,7 +299,6 @@ export function ChampionshipManagementPanel() {
     if (!detail?.championship) return;
     const value = detail.championship;
     setEditForm({ name: value.name, description: value.description ?? "", startDate: value.startDate?.slice(0, 10) ?? "", endDate: value.endDate?.slice(0, 10) ?? "" });
-    setScores(Object.fromEntries(detail.matches.map((match: any) => [match.id, { a: match.teamAScore, b: match.teamBScore }])));
   }, [detail]);
 
   // Switching championship hands the Setup panel back to its automatic state:
@@ -260,6 +400,10 @@ export function ChampionshipManagementPanel() {
   const matches: any[] = detail?.matches ?? [];
   const liveMatch = matches.find(match => match.status === "live") ?? null;
   const upcomingMatches = matches.filter(match => match.status === "upcoming");
+  // Same list, narrowed to the ones whose kick-off time has already passed.
+  // Grouping and every action stay driven by match.status; this only decides
+  // what the summary line talks about first.
+  const readyMatches = upcomingMatches.filter(match => isMatchReadyToStart(match));
   const completedMatches = matches.filter(match => match.status === "completed");
   const championshipStatus: string = detail?.championship?.status ?? "draft";
   const teamById = (id: string) => teams.find(team => team.id === id);
@@ -292,6 +436,11 @@ export function ChampionshipManagementPanel() {
       message: "This championship is marked Completed. Review the final standings below.",
       button: <Button size="sm" variant="outline" onClick={() => scrollToSection(SECTION.results)}><Trophy size={15} /> View standings</Button>,
     }
+    : readyMatches.length ? {
+      tone: "action",
+      message: `Ready to start: ${teamById(readyMatches[0].teamAId)?.name ?? "Team A"} vs ${teamById(readyMatches[0].teamBId)?.name ?? "Team B"} has reached its scheduled time. It will not start automatically.`,
+      button: <Button size="sm" variant="outline" onClick={() => scrollToSection(SECTION.matches)}><CalendarDays size={15} /> Go to matches</Button>,
+    }
     : upcomingMatches.length ? {
       tone: "ready",
       message: "Championship is ready. Start a scheduled match when you're ready.",
@@ -312,24 +461,25 @@ export function ChampionshipManagementPanel() {
   const isSetupOpen = setupOpen ?? !setupComplete;
   const leader = detail?.standings?.[0] ?? null;
 
-  const startQuestionFor = (match: any) => action.mutate({
-    url: `/api/championship-matches/${match.id}/question`,
-    body: { questionId: `question-${questionNumber[match.id] ?? 1}`, questionNumber: questionNumber[match.id] ?? 1, phase: "started" },
-    success: "Question started",
-  });
-
   const renderMatchCard = (match: any, options?: { hideResultLink?: boolean }) => {
     const teamA = teamById(match.teamAId);
     const teamB = teamById(match.teamBId);
+    const readyToStart = isMatchReadyToStart(match);
+    // Every branch below still keys off match.status - only the wording changes.
+    const scheduleLine = match.status !== "upcoming"
+      ? (match.scheduledAt ? `Scheduled ${formatDateTime(match.scheduledAt)}` : "No date set")
+      : readyToStart ? "Scheduled time has arrived"
+      : match.scheduledAt ? `Scheduled for ${formatKickoff(match.scheduledAt) ?? formatDateTime(match.scheduledAt)}`
+      : "No date set";
     return <div key={match.id} className="rounded-xl border bg-white p-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <b className="text-base text-slate-900">{teamA?.emoticon} {teamA?.name ?? "Team A"} <span className="text-slate-400">vs</span> {teamB?.emoticon} {teamB?.name ?? "Team B"}</b>
-            <MatchStatusBadge status={match.status} />
+            <MatchStatusBadge status={matchDisplayState(match)} />
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            {match.scheduledAt ? `Scheduled ${formatDateTime(match.scheduledAt)}` : "No date set"}
+            {scheduleLine}
             {match.status === "completed" && ` · Final score ${match.teamAScore} – ${match.teamBScore}`}
           </p>
           {match.status === "completed" && <p className="mt-1 text-xs font-semibold text-emerald-700">
@@ -362,6 +512,9 @@ export function ChampionshipManagementPanel() {
       </div>
       {match.status === "upcoming" && championshipStatus !== "active" && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
         <Info size={14} className="mt-0.5 shrink-0" /> Set this championship to Active before starting the match.
+      </p>}
+      {match.status === "upcoming" && readyToStart && championshipStatus === "active" && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+        <Info size={14} className="mt-0.5 shrink-0" /> The match will not start automatically. Start it when both teams are ready.
       </p>}
     </div>;
   };
@@ -546,59 +699,15 @@ export function ChampionshipManagementPanel() {
       {/* 5 — Live match control. Contextual: the full desk appears only while a
           match is actually live, otherwise a compact placeholder holds its place. */}
       <div id={SECTION.live} className="scroll-mt-4">
-      {liveMatch ? (() => {
-        const teamA = teamById(liveMatch.teamAId);
-        const teamB = teamById(liveMatch.teamBId);
-        const score = scores[liveMatch.id] ?? { a: liveMatch.teamAScore, b: liveMatch.teamBScore };
-        const question = questionNumber[liveMatch.id] ?? 1;
-        return <section className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center gap-3 bg-gradient-to-r from-red-600 to-rose-600 p-5 text-white">
-            <h3 className="flex items-center gap-2 text-lg font-black"><span className="h-2.5 w-2.5 rounded-full bg-white animate-pulse" /> Live Match Control</h3>
-            <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold">Current question: {question}</span>
-            <span className="ml-auto text-sm font-semibold text-red-50">Match status: Live</span>
-          </div>
-          <div className="space-y-5 p-5">
-            <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
-              <LiveScoreCard team={teamA} value={score.a} onChange={value => setScores(current => ({ ...current, [liveMatch.id]: { ...score, a: value } }))} />
-              <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-slate-900 text-[11px] font-black text-white">VS</div>
-              <LiveScoreCard team={teamB} value={score.b} onChange={value => setScores(current => ({ ...current, [liveMatch.id]: { ...score, b: value } }))} />
-            </div>
-
-            <div className="flex flex-wrap items-end gap-3 border-t pt-4">
-              <Button onClick={() => action.mutate({ method: "PATCH", url: `/api/championship-matches/${liveMatch.id}`, body: { teamAScore: score.a, teamBScore: score.b }, success: "Score updated" })}>
-                Update Score
-              </Button>
-              <label className="text-xs font-semibold text-slate-600">Question number
-                <Input className="mt-1 h-10 w-24 font-normal" type="number" min="1" value={question}
-                  onChange={event => setQuestionNumber(current => ({ ...current, [liveMatch.id]: Number(event.target.value) }))} />
-              </label>
-              <Button variant="outline" onClick={() => startQuestionFor(liveMatch)}>Start Question</Button>
-              <Button variant="destructive" className="ml-auto" onClick={() => setEndMatchTarget(liveMatch)}>End Match</Button>
-            </div>
-
-            <BroadcastPanel matchId={liveMatch.id} />
-
-            <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-              <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                <ChevronDown size={16} className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`} /> Advanced Controls
-                <span className="ml-auto text-xs font-normal text-slate-400">Only needed in special cases</span>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="rounded-b-xl border border-t-0 px-4 pb-4 pt-3">
-                <label className="text-sm font-semibold text-slate-700">Winner when the match ends
-                  <select className="mt-1 block h-10 w-full max-w-sm rounded-md border bg-white px-3 text-sm font-normal"
-                    value={winnerOverrides[liveMatch.id] ?? ""}
-                    onChange={event => setWinnerOverrides(current => ({ ...current, [liveMatch.id]: event.target.value }))}>
-                    <option value="">Automatic — highest score wins</option>
-                    <option value={liveMatch.teamAId}>{teamA?.name}</option>
-                    <option value={liveMatch.teamBId}>{teamB?.name}</option>
-                  </select>
-                </label>
-                <p className="mt-2 text-xs text-slate-500">Leave this on Automatic unless you need to record a different winner than the score shows.</p>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-        </section>;
-      })() : <section className="flex flex-wrap items-center gap-3 rounded-2xl border bg-white p-5 shadow-sm">
+      {liveMatch ? <LiveMatchControl
+          match={liveMatch}
+          teamA={teamById(liveMatch.teamAId)}
+          teamB={teamById(liveMatch.teamBId)}
+          winnerOverride={winnerOverrides[liveMatch.id] ?? ""}
+          onWinnerOverrideChange={value => setWinnerOverrides(current => ({ ...current, [liveMatch.id]: value }))}
+          onEndMatch={setEndMatchTarget}
+          onMatchEnded={refresh}
+        /> : <section className="flex flex-wrap items-center gap-3 rounded-2xl border bg-white p-5 shadow-sm">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500"><Radio size={20} /></span>
         <div className="min-w-0 flex-1">
           <h3 className="text-base font-bold text-slate-900">🔴 No match is currently live.</h3>
@@ -840,7 +949,7 @@ export function ChampionshipManagementPanel() {
           <AlertDialogTitle>End this match?</AlertDialogTitle>
           <AlertDialogDescription>
             {endMatchTarget && <>
-              The final score will be recorded as <b>{teamById(endMatchTarget.teamAId)?.name} {(scores[endMatchTarget.id] ?? { a: endMatchTarget.teamAScore }).a} – {(scores[endMatchTarget.id] ?? { b: endMatchTarget.teamBScore }).b} {teamById(endMatchTarget.teamBId)?.name}</b>
+              The final score will be recorded as <b>{teamById(endMatchTarget.teamAId)?.name} {endMatchTarget.teamAScore} – {endMatchTarget.teamBScore} {teamById(endMatchTarget.teamBId)?.name}</b>
               {winnerOverrides[endMatchTarget.id] ? <> and <b>{teamById(winnerOverrides[endMatchTarget.id])?.name}</b> will be recorded as the winner.</> : " and the winner is decided by the highest score."}
               {" "}The standings update immediately and the match cannot be reopened.
             </>}
@@ -849,8 +958,9 @@ export function ChampionshipManagementPanel() {
         <AlertDialogFooter>
           <AlertDialogCancel>Keep playing</AlertDialogCancel>
           <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => {
-            const score = scores[endMatchTarget.id] ?? { a: endMatchTarget.teamAScore, b: endMatchTarget.teamBScore };
-            action.mutate({ url: `/api/championship-matches/${endMatchTarget.id}/end`, body: { teamAScore: score.a, teamBScore: score.b, winnerTeamId: winnerOverrides[endMatchTarget.id] || null }, success: "Match completed" });
+            // The live desk hands over the match carrying the score gameplay
+            // last reported, so /end records that rather than a stale payload.
+            action.mutate({ url: `/api/championship-matches/${endMatchTarget.id}/end`, body: { teamAScore: endMatchTarget.teamAScore, teamBScore: endMatchTarget.teamBScore, winnerTeamId: winnerOverrides[endMatchTarget.id] || null }, success: "Match completed" });
             setEndMatchTarget(null);
           }}>End match</AlertDialogAction>
         </AlertDialogFooter>

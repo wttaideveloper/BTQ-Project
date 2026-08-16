@@ -5,6 +5,7 @@ import { playSound } from "@/lib/sounds";
 import { playBasicSound } from "@/lib/basic-sound";
 import { voiceService } from "@/lib/voice-service";
 import { isVoiceEnabled } from "@/lib/sounds";
+import { ChampionshipQuestionBoard } from "@/components/championship/game/ChampionshipQuestionBoard";
 
 export type TeamBattleAnswer = {
   id: string;
@@ -44,6 +45,14 @@ interface TeamBattleQuestionBoardProps {
   answeringTeamName?: string;
   selectedAnswerId?: string | null; // Track selected answer for highlighting
   isToss?: boolean;
+  /**
+   * Presentation skin. "championship" swaps ONLY the markup for the FaithIQ
+   * Championship look; every hook above it - timer, voice narration, sounds,
+   * suggestion handling and the answer click semantics - stays in this
+   * component, so a Championship match and a Team Battle run identical logic.
+   * Omitted everywhere else, so Team Battle and Rapid Fire are unchanged.
+   */
+  variant?: "default" | "championship";
 }
 
 const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
@@ -66,6 +75,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   answeringTeamName,
   selectedAnswerId = null,
   isToss = false,
+  variant = "default",
 }) => {
   const [displayTime, setDisplayTime] = useState(timeRemaining);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -308,6 +318,34 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   const getSuggestionsForAnswer = (answerId: string): AnswerSuggestion[] => {
     return suggestions[answerId] || [];
   };
+
+  // Championship skin. Everything above this line - the timer, the voice
+  // session, the countdown sounds and handleClick - has already run and is
+  // handed over as values, so the two skins can never diverge in behaviour.
+  if (variant === "championship") {
+    return (
+      <ChampionshipQuestionBoard
+        question={question}
+        answers={answers}
+        labels={labels}
+        displayTime={displayTime}
+        timePercentage={timePercentage}
+        score={score}
+        totalQuestions={totalQuestions}
+        currentQuestionIndex={currentQuestionIndex}
+        category={category}
+        difficultyLabel={difficultyLabel}
+        isCaptain={isCaptain}
+        isQuestionLocked={isQuestionLocked}
+        isReadOnly={isReadOnly}
+        isToss={isToss}
+        answeringTeamName={answeringTeamName}
+        selectedAnswerId={selectedAnswerId}
+        getSuggestionsForAnswer={getSuggestionsForAnswer}
+        onAnswerClick={handleClick}
+      />
+    );
+  }
 
   return (
     <div className={`flex-grow flex flex-col bg-black rounded-3xl shadow-2xl overflow-hidden relative border-2 ${isToss ? 'border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.3)]' : isReadOnly ? 'border-yellow-500/50' : 'border-accent'}`}>

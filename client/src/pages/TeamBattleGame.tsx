@@ -47,6 +47,9 @@ import {
 } from "@/lib/sounds";
 import { toggleBasicSound, initBasicSounds } from "@/lib/basic-sound";
 import BrandLogo from "@/components/BrandLogo";
+import { ChampionshipGameHeader } from "@/components/championship/game/ChampionshipGameHeader";
+import { ChampionshipScoreboard } from "@/components/championship/game/ChampionshipScoreboard";
+import { ChampionshipResult, ChampionshipStatusPanel } from "@/components/championship/game/ChampionshipResult";
 
 interface TeamMember {
   userId: number;
@@ -58,6 +61,15 @@ interface TeamMember {
 interface Team {
   id: string;
   name: string;
+  /**
+   * The team_battles row this team belongs to, sent by the server with every
+   * team payload (getTeamsForTeamBattleSession in server/socket.ts). For a
+   * Championship fixture it is the deterministic `championship-{matchId}` id
+   * that POST /api/championship-matches/:id/start creates - the same value the
+   * server's own isChampionshipBattle() tests. Optional because a payload from
+   * an older cached state may not carry it.
+   */
+  teamBattleId?: string;
   captainId: number;
   gameSessionId: string;
   members: TeamMember[];
@@ -105,6 +117,28 @@ interface GameState {
   gameType?: "regular" | "rapid_fire";
 }
 
+/**
+ * Prefix of the deterministic battle id every Championship fixture is created
+ * with by POST /api/championship-matches/:id/start (`championship-{matchId}`).
+ * This is the project's EXISTING Championship identification mechanism - the
+ * server's own isChampionshipBattle() in server/socket.ts tests the same string
+ * - so no new flag, request or socket event is introduced to detect it here.
+ */
+const CHAMPIONSHIP_BATTLE_PREFIX = "championship-";
+
+/**
+ * Is the session on screen a Championship match?
+ *
+ * Read straight off the team payloads the server already sends
+ * (getTeamsForTeamBattleSession includes `teamBattleId` on every team), so it
+ * costs no extra API call and no extra subscription. Anything else - ordinary
+ * Team Battle, Rapid Fire - answers false and keeps its existing UI.
+ */
+function isChampionshipTeamBattle(state: GameState): boolean {
+  const teams = [state.playerTeam, state.opposingTeam, ...(state.teams ?? [])];
+  return teams.some(team => team?.teamBattleId?.startsWith(CHAMPIONSHIP_BATTLE_PREFIX));
+}
+
 export default function TeamBattleGame() {
   const [_, setLocation] = useLocation();
   const { user } = useAuth();
@@ -130,6 +164,8 @@ export default function TeamBattleGame() {
     return { phase: "waiting" };
   });
   const gameStateRef = useRef<GameState>(gameState);
+  // Presentation switch only - it selects a skin and changes no behaviour.
+  const isChampionshipMatch = isChampionshipTeamBattle(gameState);
   const isRapidFireRef = useRef<boolean>(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -1457,7 +1493,29 @@ export default function TeamBattleGame() {
     }
   };
 
-  const renderWaitingPhase = () => (
+  const renderWaitingPhase = () =>
+    isChampionshipMatch ? (
+      <ChampionshipStatusPanel
+        title="Connecting to the match"
+        description="Taking your seat at the championship table…"
+      >
+        {showConnectExit && (
+          <Button
+            onClick={() => {
+              if (gameState.phase === "finished") {
+                handleExitGame();
+              } else {
+                setShowExitConfirmation(true);
+              }
+            }}
+            className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Exit to Home
+          </Button>
+        )}
+      </ChampionshipStatusPanel>
+    ) : (
     <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6 w-full min-w-0 overflow-x-hidden">
       <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 px-4 sm:px-6 py-6 sm:py-8 md:py-10 min-w-0">
         {/* Icon */}
@@ -1509,6 +1567,14 @@ export default function TeamBattleGame() {
   const renderQuestionPhase = () => {
     // Always show something - if no question, show loading
     if (!gameState.currentQuestion) {
+      if (isChampionshipMatch) {
+        return (
+          <ChampionshipStatusPanel
+            title="Loading question"
+            description="The next question is on its way…"
+          />
+        );
+      }
       return (
         <div className="max-w-xl mx-auto p-6">
           <Card className="bg-gradient-to-b from-[#0F1624] to-[#0A0F1A] text-white rounded-3xl shadow-2xl border border-white/10 px-6 py-10">
@@ -1540,8 +1606,13 @@ export default function TeamBattleGame() {
     const isYourTurn = gameState.isYourTurn !== false; // Default to true if not specified
 
     return (
-      <div className="max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative bg-gradient-to-br from-secondary to-secondary-dark text-white w-full min-w-0 overflow-x-hidden">
+      <div
+        className={`max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative text-white w-full min-w-0 overflow-x-hidden ${
+          isChampionshipMatch ? "" : "bg-gradient-to-br from-secondary to-secondary-dark"
+        }`}
+      >
         <TeamBattleQuestionBoard
+          variant={isChampionshipMatch ? "championship" : "default"}
           question={{ id: question.id, text: question.text }}
           answers={question.answers.map((a) => ({ id: a.id, text: a.text }))}
           timeRemaining={timeRemaining}
@@ -1694,11 +1765,16 @@ export default function TeamBattleGame() {
       : timeLimit;
 
     return (
-      <div className="max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative bg-gradient-to-br from-secondary to-secondary-dark text-white w-full min-w-0 overflow-x-hidden">
+      <div
+        className={`max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative text-white w-full min-w-0 overflow-x-hidden ${
+          isChampionshipMatch ? "" : "bg-gradient-to-br from-secondary to-secondary-dark"
+        }`}
+      >
         <div className="mb-3 text-center">
           <Badge className="bg-yellow-500 text-black font-bold px-3 py-1">TOSS RACE</Badge>
         </div>
         <TeamBattleQuestionBoard
+          variant={isChampionshipMatch ? "championship" : "default"}
           question={{ id: question.id, text: question.text }}
           answers={question.answers.map((a) => ({ id: a.id, text: a.text }))}
           timeRemaining={timeRemaining}
@@ -1844,6 +1920,29 @@ export default function TeamBattleGame() {
     );
   };
 
+  /**
+   * Existing end-of-match exit: clear the player's Team Battle status, then
+   * navigate away. One copy of the cleanup, shared by both result screens - only
+   * the destination differs (Team Battle goes home, a Championship fixture goes
+   * back to My Championship).
+   */
+  const exitFinishedMatchTo = async (destination: string) => {
+    isExitingRef.current = true;
+    try {
+      await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
+        isInTeamBattle: false,
+        gameType: null,
+      });
+    } catch (err) {
+      console.error("[TeamBattleGame] Failed to reset Team Battle status:", err);
+      // Continue to the destination anyway
+    }
+    setLocation(destination);
+  };
+
+  /** Team Battle / Rapid Fire finished-phase exit - unchanged behaviour. */
+  const returnHomeAfterMatch = () => exitFinishedMatchTo("/");
+
   const renderFinishedPhase = () => {
     const teams = gameState.teams || [];
 
@@ -1913,6 +2012,33 @@ export default function TeamBattleGame() {
             ? `You outscored ${opponentLabel} ${yourScore}–${opponentScore}.`
             : "Your team claimed victory!"
           : `${opponentLabel} finished ahead ${opponentScore}–${yourScore}. Every round grows your wisdom — come back stronger!`;
+
+    // Championship result: the same winner, draw handling and copy computed
+    // above, presented as a tournament result instead of the Team Battle card.
+    if (isChampionshipMatch) {
+      return (
+        <ChampionshipResult
+          yourTeamName={yourTeamLabel}
+          opponentName={opponentLabel}
+          yourScore={yourScore}
+          opponentScore={opponentScore}
+          isDraw={isDraw}
+          isYourTeamWinner={isYourTeamWinner}
+          headline={outcomeHeadline}
+          detail={outcomeDetail}
+          actions={
+            /* Same cleanup as the Team Battle exit, then back to the player's
+               championship page rather than the home screen. */
+            <Button
+              onClick={() => exitFinishedMatchTo("/my-championship")}
+              className="bg-gradient-to-r from-[#f0d08a] to-[#c99f45] text-[#1b2559] px-6 py-3 rounded-xl font-bold shadow-lg hover:from-[#f5dca6] hover:to-[#d8b25f] transition-all"
+            >
+              Back to Championship
+            </Button>
+          }
+        />
+      );
+    }
 
     return (
       <div className="max-w-2xl mx-auto p-3 sm:p-4 md:p-6">
@@ -2097,19 +2223,7 @@ export default function TeamBattleGame() {
               Back to Lobby
             </Button>
             <Button
-              onClick={async () => {
-                isExitingRef.current = true;
-                try {
-                  await apiRequest("PATCH", `/api/users/${user?.id}/team-battle-status`, {
-                    isInTeamBattle: false,
-                    gameType: null,
-                  });
-                } catch (err) {
-                  console.error("[TeamBattleGame] Failed to reset Team Battle status:", err);
-                  // Continue to home anyway
-                }
-                setLocation("/");
-              }}
+              onClick={returnHomeAfterMatch}
               className="bg-gradient-to-r from-accent to-accent-dark text-primary px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 rounded-lg sm:rounded-xl hover:from-accent-light hover:to-accent font-bold text-sm sm:text-base md:text-lg shadow-lg hover:shadow-xl transition-all duration-200 w-full sm:w-auto"
             >
               Return Home
@@ -2183,8 +2297,98 @@ export default function TeamBattleGame() {
     }
   }, [gameState.phase, gameState.gameType, isRapidFireRef]);
 
+  // The game controls, defined once and rendered by whichever header skin is
+  // active. Identical elements, classes and handlers in both - only their
+  // placement differs, so the Team Battle header renders exactly as before.
+  const exitGameButton = (
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={() => {
+        // If game finished, skip confirmation and exit immediately.
+        if (gameState.phase === "finished") {
+          handleExitGame();
+        } else {
+          setShowExitConfirmation(true);
+        }
+      }}
+      className="rounded-full transition-all duration-200 flex-shrink-0 h-9 w-9 sm:h-11 sm:w-11 bg-gradient-to-br from-red-500/20 to-red-600/20 text-red-400 border-2 border-red-500/40 hover:from-red-500/30 hover:to-red-600/30 hover:border-red-500/60 shadow-lg hover:shadow-red-500/20 hover:scale-105 active:scale-95"
+      title="Exit game"
+    >
+      <LogOut size={18} className="sm:w-5 sm:h-5" />
+    </Button>
+  );
+
+  const soundControlButton = (
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={() => {
+        const newState = !soundEnabled;
+        setSoundEnabled(newState);
+        toggleSound(newState);
+        toggleBasicSound(newState);
+        toast({
+          title: newState ? "Sound Enabled" : "Sound Disabled",
+          description: newState ? "Game sounds are now on" : "Game sounds are now off",
+          duration: 2000,
+        });
+      }}
+      className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
+      title={soundEnabled ? "Disable sounds" : "Enable sounds"}
+    >
+      {soundEnabled ? <Volume2 size={16} className="sm:w-[18px] sm:h-[18px]" /> : <VolumeX size={16} className="sm:w-[18px] sm:h-[18px]" />}
+    </Button>
+  );
+
+  const voiceControlButton = (
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={() => {
+        const newState = !voiceEnabled;
+        setVoiceEnabled(newState);
+        toggleVoice(newState);
+        toast({
+          title: newState ? "Voice Narration Enabled" : "Voice Narration Disabled",
+          description: newState ? "Question narration is now on" : "Question narration is now off",
+          duration: 2000,
+        });
+      }}
+      className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
+      title={voiceEnabled ? "Disable voice narration" : "Enable voice narration"}
+    >
+      {voiceEnabled ? <Mic size={16} className="sm:w-[18px] sm:h-[18px]" /> : <MicOff size={16} className="sm:w-[18px] sm:h-[18px]" />}
+    </Button>
+  );
+
+  const helpControlButton = (
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={() => {
+        toast({
+          title: "How to Play",
+          description:
+            "Work with your team to select the correct answer. Captain finalizes the team's choice. Earn points for each correct answer!",
+          duration: 5000,
+        });
+      }}
+      className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
+      title="How to play"
+    >
+      <HelpCircle size={16} className="sm:w-[18px] sm:h-[18px]" />
+    </Button>
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-primary-dark to-black text-white relative">
+    <div
+      className={`min-h-screen text-white relative ${
+        isChampionshipMatch
+          ? "champ-stage"
+          : "bg-gradient-to-br from-black via-primary-dark to-black"
+      }`}
+    >
       {/* Rapid Fire Rules Dialog */}
       {/* Rapid Fire Rules Dialog - Removed to use inline rendering for robustness */}
 
@@ -2200,7 +2404,26 @@ export default function TeamBattleGame() {
         </div>
       )}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 w-full min-w-0 overflow-x-hidden">
+        {/* Championship header. Same controls, same handlers - the buttons
+            below are rendered into the tournament frame instead. */}
+        {isChampionshipMatch && (
+          <div className="mb-3 sm:mb-4">
+            <ChampionshipGameHeader
+              live={gameState.phase === "question" || gameState.phase === "playing" || gameState.phase === "toss"}
+              controls={
+                <div className="flex items-center gap-1.5">
+                  {soundControlButton}
+                  {voiceControlButton}
+                  {helpControlButton}
+                  {exitGameButton}
+                </div>
+              }
+            />
+          </div>
+        )}
+
         {/* Header with logo on left and controls on right */}
+        {!isChampionshipMatch && (
         <header className="mb-3 sm:mb-4">
           {/* First Row: Logo and Exit Game Button */}
           <div className="flex items-center justify-between gap-2 sm:gap-4 mb-2 sm:mb-0">
@@ -2208,99 +2431,27 @@ export default function TeamBattleGame() {
             <BrandLogo className="flex-shrink-0 min-w-0" />
 
             {/* Exit Game Button - Always visible */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                // If game finished, skip confirmation and exit immediately.
-                if (gameState.phase === "finished") {
-                  handleExitGame();
-                } else {
-                  setShowExitConfirmation(true);
-                }
-              }}
-              className="rounded-full transition-all duration-200 flex-shrink-0 h-9 w-9 sm:h-11 sm:w-11 bg-gradient-to-br from-red-500/20 to-red-600/20 text-red-400 border-2 border-red-500/40 hover:from-red-500/30 hover:to-red-600/30 hover:border-red-500/60 shadow-lg hover:shadow-red-500/20 hover:scale-105 active:scale-95"
-              title="Exit game"
-            >
-              <LogOut size={18} className="sm:w-5 sm:h-5" />
-            </Button>
+            {exitGameButton}
           </div>
 
           {/* Second Row: All Other Controls - Wraps on mobile */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {/* Sound Button */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                const newState = !soundEnabled;
-                setSoundEnabled(newState);
-                toggleSound(newState);
-                toggleBasicSound(newState);
-                toast({
-                  title: newState ? "Sound Enabled" : "Sound Disabled",
-                  description: newState
-                    ? "Game sounds are now on"
-                    : "Game sounds are now off",
-                  duration: 2000,
-                });
-              }}
-              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
-              title={soundEnabled ? "Disable sounds" : "Enable sounds"}
-            >
-              {soundEnabled ? <Volume2 size={16} className="sm:w-[18px] sm:h-[18px]" /> : <VolumeX size={16} className="sm:w-[18px] sm:h-[18px]" />}
-            </Button>
+            {soundControlButton}
 
             {/* Voice Button */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                const newState = !voiceEnabled;
-                setVoiceEnabled(newState);
-                toggleVoice(newState);
-                toast({
-                  title: newState
-                    ? "Voice Narration Enabled"
-                    : "Voice Narration Disabled",
-                  description: newState
-                    ? "Question narration is now on"
-                    : "Question narration is now off",
-                  duration: 2000,
-                });
-              }}
-              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
-              title={
-                voiceEnabled
-                  ? "Disable voice narration"
-                  : "Enable voice narration"
-              }
-            >
-              {voiceEnabled ? <Mic size={16} className="sm:w-[18px] sm:h-[18px]" /> : <MicOff size={16} className="sm:w-[18px] sm:h-[18px]" />}
-            </Button>
+            {voiceControlButton}
 
             {/* Help Button */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                toast({
-                  title: "How to Play",
-                  description:
-                    "Work with your team to select the correct answer. Captain finalizes the team's choice. Earn points for each correct answer!",
-                  duration: 5000,
-                });
-              }}
-              className="rounded-full bg-neutral-200 text-neutral-700 hover:bg-neutral-300 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
-              title="How to play"
-            >
-              <HelpCircle size={16} className="sm:w-[18px] sm:h-[18px]" />
-            </Button>
+            {helpControlButton}
           </div>
         </header>
+        )}
 
-        {/* Mode & player — matches Solo Quiz header strip */}
-        {user && (
+        {/* Mode & player — matches Solo Quiz header strip.
+            A Championship match states its context in the tournament header and
+            scoreboard instead, so this strip is not shown there. */}
+        {user && !isChampionshipMatch && (
           <div className="mb-3 sm:mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 sm:px-4 sm:py-2.5">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
               <span
@@ -2335,7 +2486,20 @@ export default function TeamBattleGame() {
         )}
 
         {/* Team Scores Header - Show during game (normal or rapid fire) - even during preparing/loading phase */}
-        {((gameState.phase === "question") || (gameState.phase === "playing")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && (
+        {((gameState.phase === "question") || (gameState.phase === "playing")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && isChampionshipMatch && (
+          <div className="mb-3 sm:mb-4">
+            <ChampionshipScoreboard
+              playerTeam={gameState.playerTeam}
+              opposingTeam={gameState.opposingTeam}
+              isYourTurn={gameState.isYourTurn !== false}
+              answeringTeamName={gameState.answeringTeamName}
+              questionNumber={gameState.questionNumber}
+              totalQuestions={gameState.totalQuestions}
+            />
+          </div>
+        )}
+
+        {((gameState.phase === "question") || (gameState.phase === "playing")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && !isChampionshipMatch && (
           <div className="mb-3 sm:mb-4 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               {/* Your Team */}
@@ -2405,7 +2569,15 @@ export default function TeamBattleGame() {
         )}
       </div>
       {gameState.phase === "waiting" && renderWaitingPhase()}
-      {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && (
+      {/* Preparing the match. Championship fixtures are always regular team
+          battles, so the rapid-fire rules card below never applies to them. */}
+      {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && isChampionshipMatch && (
+        <ChampionshipStatusPanel
+          title="Preparing the match"
+          description="Setting up the board and loading the first question…"
+        />
+      )}
+      {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && !isChampionshipMatch && (
         <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6">
           {showRapidRules ? (
             <Card className="bg-gradient-to-br from-[#0F1624] to-[#0A0F1A] border border-[#DEB126]/50 text-white p-0 overflow-hidden shadow-2xl">

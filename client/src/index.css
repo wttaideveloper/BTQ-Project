@@ -530,3 +530,100 @@ button span, .answer-button span {
     max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
 }
+/* ==========================================================================
+   FaithIQ Championship — match presentation
+   --------------------------------------------------------------------------
+   Scoped entirely under .champ-* class names and applied ONLY by the
+   Championship match presentation components. Normal Team Battle and Rapid
+   Fire never receive these classes, so their appearance is unaffected.
+   ========================================================================== */
+.champ-stage {
+  --champ-navy: #0b1030;
+  --champ-purple: #2a1259;
+  --champ-purple-deep: #1a0d3d;
+  --champ-gold: #d8b25f;
+  --champ-gold-bright: #f0d08a;
+  --champ-cream: #f7f1e4;
+  --champ-ink: #1b2559;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(88, 40, 160, 0.55) 0%, transparent 60%),
+    linear-gradient(160deg, #150a33 0%, #1c1046 45%, #0a0a22 100%);
+  color: #fff;
+}
+
+/* Purple tournament panel with a hairline gold edge. */
+.champ-panel {
+  background: linear-gradient(160deg, rgba(58, 28, 116, 0.92) 0%, rgba(32, 16, 68, 0.94) 100%);
+  border: 1px solid rgba(216, 178, 95, 0.38);
+  box-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.9);
+}
+
+/* The ivory question surface from the printed reference cards. */
+.champ-card {
+  background: linear-gradient(175deg, #fdf9f0 0%, #f4ecdb 100%);
+  border: 1px solid rgba(216, 178, 95, 0.75);
+  box-shadow: 0 18px 50px -24px rgba(0, 0, 0, 0.85);
+}
+
+.champ-gold-text {
+  color: var(--champ-gold-bright);
+}
+
+/* Thin metallic rule used to separate header bands. */
+.champ-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(216, 178, 95, 0.7) 20%, rgba(240, 208, 138, 0.95) 50%, rgba(216, 178, 95, 0.7) 80%, transparent);
+}
+
+/* Circular A/B/C/D marker. */
+.champ-marker {
+  background: linear-gradient(160deg, #3b1e78 0%, #24124f 100%);
+  border: 1.5px solid rgba(216, 178, 95, 0.85);
+  color: #fff;
+}
+
+.champ-answer {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(27, 37, 89, 0.14);
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+.champ-answer:not(:disabled):hover {
+  background: #fff;
+  border-color: rgba(216, 178, 95, 0.9);
+  transform: translateY(-1px);
+}
+.champ-answer:focus-visible {
+  outline: 2px solid var(--champ-gold);
+  outline-offset: 2px;
+}
+.champ-answer[data-state="selected"] {
+  background: #fff;
+  border-color: rgba(216, 178, 95, 1);
+  box-shadow: 0 0 0 2px rgba(216, 178, 95, 0.55), 0 8px 20px -14px rgba(0, 0, 0, 0.6);
+}
+.champ-answer[data-state="selected"] .champ-marker {
+  background: linear-gradient(160deg, #d8b25f 0%, #b78e3c 100%);
+  color: #1b2559;
+}
+.champ-answer:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+/* Active-turn glow: gold for the player's team, quiet for waiting. */
+.champ-turn-active {
+  border-color: rgba(216, 178, 95, 0.85);
+  box-shadow: 0 0 24px -8px rgba(216, 178, 95, 0.55);
+}
+
+.champ-enter {
+  animation: champEnter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes champEnter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .champ-enter { animation: none; }
+}

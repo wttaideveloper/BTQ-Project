@@ -7,6 +7,11 @@ import { WatchHeader } from "@/components/watch/WatchHeader";
 import { WatchStage } from "@/components/watch/WatchStage";
 import { WatchScoreboard } from "@/components/watch/WatchScoreboard";
 import { WatchCommentary, type CommentaryEntry } from "@/components/watch/WatchCommentary";
+import {
+  WatchQuestionPanel,
+  type WatchQuestion,
+  type WatchQuestionResult,
+} from "@/components/watch/WatchQuestionPanel";
 import { WatchTicker } from "@/components/watch/WatchTicker";
 
 type MatchPayload = { match: any; teamA: any; teamB: any };
@@ -27,6 +32,17 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   // nothing is inferred and nothing is fetched for it. Newest first, capped so a
   // broadcast left open all evening cannot grow without bound.
   const [commentary, setCommentary] = useState<CommentaryEntry[]>([]);
+  // Last scores seen, so a score change can be reported as "who gained what"
+  // instead of a bare pair of numbers. Display only.
+  const lastScoreRef = useRef<{ a: number; b: number } | null>(null);
+  const teamNamesRef = useRef<{ a: string; b: string }>({ a: "Team A", b: "Team B" });
+  // The question on screen and its result, from the two sanitised championship
+  // broadcasts. Keyed by questionId so a late result cannot land on a newer
+  // question.
+  const [liveQuestionDetail, setLiveQuestionDetail] = useState<WatchQuestion | null>(null);
+  const [questionResult, setQuestionResult] = useState<WatchQuestionResult | null>(null);
+  const currentQuestionIdRef = useRef<string | null>(null);
+  currentQuestionIdRef.current = liveQuestionDetail?.questionId ?? null;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamError, setStreamError] = useState("");
 
@@ -71,6 +87,13 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     setStreamError("HLS playback is not supported by this browser.");
   }, [data?.match?.streamUrl, data?.match?.status]);
 
+  // Keep the refs the event handlers read in step with the loaded match.
+  useEffect(() => {
+    if (!data?.match) return;
+    if (!lastScoreRef.current) lastScoreRef.current = { a: data.match.teamAScore, b: data.match.teamBScore };
+    teamNamesRef.current = { a: data.teamA?.name ?? "Team A", b: data.teamB?.name ?? "Team B" };
+  }, [data?.match, data?.teamA?.name, data?.teamB?.name]);
+
   // Appends one line to the commentary log. Display only: it reads the event
   // payloads the handlers below already receive and touches no game state.
   const logCommentary = (entry: Omit<CommentaryEntry, "id" | "at">) => {
@@ -97,9 +120,24 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     });
     const offUpdate = onEvent("match_updated", (e) => {
       if (e.match?.id !== matchId) return;
+      // Which side gained, and by how much, read from two consecutive server
+      // payloads. Nothing is scored here - this is the difference between
+      // numbers the server already sent.
+      const previous = lastScoreRef.current;
+      const deltaA = e.match.teamAScore - (previous?.a ?? e.match.teamAScore);
+      const deltaB = e.match.teamBScore - (previous?.b ?? e.match.teamBScore);
+      lastScoreRef.current = { a: e.match.teamAScore, b: e.match.teamBScore };
+
+      const gained =
+        deltaA > 0
+          ? { name: teamNamesRef.current.a, points: deltaA }
+          : deltaB > 0
+            ? { name: teamNamesRef.current.b, points: deltaB }
+            : null;
+
       logCommentary({
         tone: "score",
-        label: "Score update",
+        label: gained ? `${gained.name} +${gained.points}` : "Score update",
         detail: `${e.match.teamAScore} – ${e.match.teamBScore}`,
       });
       refetch();
@@ -124,8 +162,50 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     });
     const offQuestionStarted = onEvent("question_started", (e) => {
       if (e.matchId !== matchId) return;
-      if (e.questionNumber) logCommentary({ tone: "question", label: `Question ${e.questionNumber}`, detail: "In play" });
+      if (e.questionNumber) {
+        logCommentary({
+          tone: "question",
+          label: `Question ${e.questionNumber}`,
+          detail: e.answeringTeamName ? `${e.answeringTeamName} is answering` : "In play",
+        });
+      }
       setCurrentQuestion(e.questionNumber ?? null);
+      // A new question always clears the previous result, so a late result for
+      // the question just finished can never paint over the new one.
+      setQuestionResult(null);
+      setLiveQuestionDetail(
+        e.questionId
+          ? {
+              questionId: e.questionId,
+              questionNumber: e.questionNumber,
+              totalQuestions: e.totalQuestions,
+              questionText: e.questionText,
+              options: Array.isArray(e.options) ? e.options : [],
+              answeringTeamId: e.answeringTeamId,
+              answeringTeamName: e.answeringTeamName,
+            }
+          : null,
+      );
+    });
+    // Resolution of the question above. The server only sends this once the
+    // answer has been evaluated and the score committed, so correctness cannot
+    // reach a spectator early.
+    const offQuestionAnswered = onEvent("question_answered", (e) => {
+      if (e.matchId !== matchId) return;
+      // Stale-guard: ignore a result for anything but the question on screen.
+      if (currentQuestionIdRef.current && e.questionId !== currentQuestionIdRef.current) return;
+      setQuestionResult({
+        questionId: e.questionId,
+        selectedAnswerId: e.selectedAnswerId ?? null,
+        correctAnswerId: e.correctAnswerId ?? null,
+        isCorrect: !!e.isCorrect,
+        pointsAwarded: e.pointsAwarded ?? 0,
+      });
+      logCommentary({
+        tone: e.isCorrect ? "final" : "question",
+        label: `${e.answeringTeamName ?? "Team"} ${e.isCorrect ? "answered correctly" : "answered incorrectly"}`,
+        detail: `+${e.pointsAwarded ?? 0} points`,
+      });
     });
     const offQuestionEnded = onEvent("question_ended", (e) => e.matchId === matchId && setCurrentQuestion(null));
     const offRestore = onEvent("match_state_restored", (e) => {
@@ -146,7 +226,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
       setReactions(r => [...r.slice(-35), { id, emoji: e.emoticon, side: e.teamId === data?.teamA?.id ? "left" : "right" }]);
       window.setTimeout(() => setReactions(r => r.filter(x => x.id !== id)), 2400);
     });
-    return () => { offConnected(); offUpdate(); offStart(); offEnd(); offQuestionStarted(); offQuestionEnded(); offRestore(); offReaction(); };
+    return () => { offConnected(); offUpdate(); offStart(); offEnd(); offQuestionStarted(); offQuestionAnswered(); offQuestionEnded(); offRestore(); offReaction(); };
   }, [matchId, refetch, data?.teamA?.id, overlay]);
 
   const support = (team: any) => sendGameEvent({ type: "team_reaction", matchId, teamId: team.id, emoticon: team.emoticon });
@@ -247,6 +327,21 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               liveQuestion={liveQuestion}
               scheduledLabel={scheduledLabel}
               media={media}
+              questionPanel={
+                status === "live" && liveQuestionDetail ? (
+                  <WatchQuestionPanel
+                    question={liveQuestionDetail}
+                    result={questionResult}
+                    teamEmoticon={
+                      liveQuestionDetail.answeringTeamId === data.teamA?.id
+                        ? data.teamA?.emoticon
+                        : liveQuestionDetail.answeringTeamId === data.teamB?.id
+                          ? data.teamB?.emoticon
+                          : undefined
+                    }
+                  />
+                ) : undefined
+              }
               overlays={
                 <>
                   {reactions.map(r => (

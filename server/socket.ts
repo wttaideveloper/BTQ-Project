@@ -371,11 +371,103 @@ async function handleTeamReaction(clientId: string, event: GameEvent) {
   });
 }
 
-async function broadcastChampionshipQuestion(gameSession: ActiveGameSession, questionId: string, questionNumber: number) {
+/**
+ * Public question payload for /watch spectators.
+ *
+ * SPECTATOR QUESTION PAYLOAD INTENTIONALLY STRIPS CORRECTNESS METADATA.
+ *
+ * The stored question carries `answers[].isCorrect`, and /watch is an
+ * unauthenticated screen anyone can open - including a player in a second tab.
+ * Broadcasting the stored answer objects would therefore hand out the correct
+ * answer before the answering team has committed one, which is the same leak
+ * that keeps game_session_id out of the public match payloads (see
+ * toPublicMatch in server/championship-routes.ts).
+ *
+ * So the options are mapped field by field below - id and text only. The stored
+ * answer object is never spread, never passed through, and correctness is only
+ * ever broadcast by broadcastChampionshipQuestionResult(), which runs after the
+ * answer has been evaluated and the score committed.
+ */
+function toSpectatorOptions(question: any) {
+  return (question?.answers ?? []).map((answer: any) => ({
+    id: answer.id,
+    text: answer.text,
+    // NOTE: answer.isCorrect is deliberately NOT copied.
+  }));
+}
+
+async function championshipMatchForSession(gameSession: ActiveGameSession) {
   const sessionId = gameSession.teams?.[0]?.gameSessionId;
-  if (!sessionId) return;
+  if (!sessionId) return null;
   const [match] = await database.db.select().from(championshipMatches).where(eq(championshipMatches.gameSessionId, sessionId));
-  if (match?.status === "live") broadcastChampionshipEvent({ type: "question_started", matchId: match.id, questionId, questionNumber });
+  return match ?? null;
+}
+
+/** Resolve a session team's side onto the championship team id the spectator knows. */
+function championshipTeamIdForSide(match: any, teamSide?: string | null) {
+  if (teamSide === "A") return match.teamAId;
+  if (teamSide === "B") return match.teamBId;
+  return undefined;
+}
+
+async function broadcastChampionshipQuestion(
+  gameSession: ActiveGameSession,
+  question: any,
+  questionNumber: number,
+  answeringTeam?: any,
+) {
+  const match = await championshipMatchForSession(gameSession);
+  if (match?.status !== "live") return;
+
+  broadcastChampionshipEvent({
+    type: "question_started",
+    matchId: match.id,
+    questionId: question.id,
+    questionNumber,
+    totalQuestions: gameSession.questions?.length,
+    questionText: question.text,
+    options: toSpectatorOptions(question),
+    answeringTeamId: championshipTeamIdForSide(match, answeringTeam?.teamSide),
+    answeringTeamName: answeringTeam?.name,
+  });
+}
+
+/**
+ * Result of one question, for /watch spectators.
+ *
+ * Safe to carry correctness because it is emitted ONLY from
+ * processTeamBattleAnswers, after the team's answer has been evaluated, the
+ * team score updated and the team_battles row written. Nothing here is
+ * recomputed: isCorrect and the points come straight from the evaluated
+ * teamResults entry the engine just produced.
+ */
+async function broadcastChampionshipQuestionResult(
+  gameSession: ActiveGameSession,
+  payload: {
+    question: any;
+    questionNumber: number;
+    answeringTeam?: any;
+    selectedAnswerId?: string | null;
+    correctAnswerId?: string | null;
+    isCorrect: boolean;
+    pointsAwarded: number;
+  },
+) {
+  const match = await championshipMatchForSession(gameSession);
+  if (match?.status !== "live") return;
+
+  broadcastChampionshipEvent({
+    type: "question_answered",
+    matchId: match.id,
+    questionId: payload.question?.id,
+    questionNumber: payload.questionNumber,
+    answeringTeamId: championshipTeamIdForSide(match, payload.answeringTeam?.teamSide),
+    answeringTeamName: payload.answeringTeam?.name,
+    selectedAnswerId: payload.selectedAnswerId ?? null,
+    correctAnswerId: payload.correctAnswerId ?? null,
+    isCorrect: payload.isCorrect,
+    pointsAwarded: payload.pointsAwarded,
+  });
 }
 
 async function broadcastChampionshipScore(gameSession: ActiveGameSession) {
@@ -7072,7 +7164,6 @@ function sendTeamBattleQuestion(gameId: string) {
   // Team A answers odd questions (1,3,5,7,9)
   // Team B answers even questions (2,4,6,8,10)
   const questionNumber = currentIndex + 1;
-  void broadcastChampionshipQuestion(gameSession, currentQuestion.id, questionNumber);
   const isTeamATurn = questionNumber % 2 === 1; // Odd numbers = Team A
 
   // Find the team that should answer (Team A or Team B)
@@ -7095,6 +7186,12 @@ function sendTeamBattleQuestion(gameId: string) {
 
   // Find the opposing team
   const opposingTeam = gameSession.teams.find((team) => team.id !== answeringTeam?.id);
+
+  // Spectator broadcast. Moved below the turn resolution so /watch can name the
+  // answering team; the payload is sanitised in broadcastChampionshipQuestion
+  // and carries no correctness data. Players are unaffected - their private
+  // team_battle_question sends are untouched below.
+  void broadcastChampionshipQuestion(gameSession, currentQuestion, questionNumber, answeringTeam);
 
   if (!answeringTeam) {
     console.error(`[TeamBattle] Cannot determine answering team for gameId: ${gameId}, question ${questionNumber}`);
@@ -7352,6 +7449,26 @@ async function processTeamBattleAnswers(gameId: string) {
       }
     }
   }
+
+  // Spectator result, emitted only now: the answer has been evaluated, the team
+  // score updated and the team_battles row written above. isCorrect and the
+  // points are read from the evaluated result rather than recomputed, and the
+  // selected answer is read from the same finalAnswers entry the evaluation
+  // used. Players' own result events below are unchanged.
+  const answeringTeamResult = teamResults.find((result) => result.teamId === answeringTeam?.id);
+  const answeringTeamFinalAnswer = answeringTeam?.finalAnswers?.find(
+    (fa: any) => fa.questionId === currentQuestion.id
+  );
+  void broadcastChampionshipQuestionResult(gameSession, {
+    question: currentQuestion,
+    questionNumber: currentIndex + 1,
+    answeringTeam,
+    selectedAnswerId: answeringTeamFinalAnswer?.answerId ?? null,
+    correctAnswerId: correctAnswer?.id ?? null,
+    isCorrect: !!answeringTeamResult?.correct,
+    pointsAwarded: answeringTeamResult?.score ?? 0,
+  });
+
   void broadcastChampionshipScore(gameSession);
 
   // CRITICAL FIX: Send results to all players (both teams see the results)

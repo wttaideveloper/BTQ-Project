@@ -28,6 +28,7 @@ export function WatchStage({
   scheduledLabel,
   media,
   overlays,
+  questionPanel,
 }: {
   status: string;
   teamAName?: string;
@@ -45,6 +46,8 @@ export function WatchStage({
   media?: ReactNode;
   /** Floating reactions and the stream error notice, positioned over the stage. */
   overlays?: ReactNode;
+  /** The live question broadcast, when the page has received one. */
+  questionPanel?: ReactNode;
 }) {
   const heading =
     status === "completed" ? "Match complete" : status === "live" ? "Match in progress" : "Stream begins soon";
@@ -113,10 +116,29 @@ export function WatchStage({
               </p>
             )}
 
+            {/*
+              Live question panel.
+
+              The spectator socket receives the question NUMBER only - the five
+              championship broadcasts carry no question text, options, selected
+              answer or correct answer (see the report). So this shows exactly
+              what is known and says plainly what it is waiting for, rather than
+              rendering an empty frame or inventing a question.
+            */}
             {status === "live" && (
-              <p className="mt-4 text-xs champ-meta">
-                {liveQuestion ? `Question ${liveQuestion} in play` : "No video stream for this match — live scores below."}
-              </p>
+              <div className="mt-5">
+                {questionPanel ?? (
+                  liveQuestion ? (
+                    <div className="mx-auto max-w-sm rounded-xl border border-[#d4af37]/30 bg-white/[0.04] px-5 py-4">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/40">Now playing</p>
+                      <p className="champ-scoreline mt-1 text-3xl font-black text-white">Question {liveQuestion}</p>
+                      <p className="mt-1.5 text-xs champ-meta">Waiting for the question to be broadcast…</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs champ-meta">Waiting for the next question…</p>
+                  )
+                )}
+              </div>
             )}
 
             {status === "upcoming" && (

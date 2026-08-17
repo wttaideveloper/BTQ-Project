@@ -9,14 +9,17 @@ import { FaithIQTreeMark } from "@/components/championship/game/FaithIQTreeMark"
  */
 export function WatchHeader({
   status,
+  gameplayStarted,
   teamAName,
   teamBName,
 }: {
   status: string;
+  /** A fixture is "live" once an admin opens it - play may not have begun. */
+  gameplayStarted?: boolean;
   teamAName?: string;
   teamBName?: string;
 }) {
-  const live = status === "live";
+  const live = status === "live" && gameplayStarted !== false;
   return (
     <header className="champ-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3 sm:px-5">
       <div className="flex items-center gap-2.5">
@@ -46,7 +49,7 @@ export function WatchHeader({
           }`}
         >
           <span className={`h-1.5 w-1.5 rounded-full bg-current ${live ? "animate-pulse" : ""}`} />
-          {live ? "Live" : status === "completed" ? "Completed" : "Upcoming"}
+          {live ? "Live" : status === "completed" ? "Completed" : status === "live" ? "Starting soon" : "Upcoming"}
         </span>
       </div>
     </header>

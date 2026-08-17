@@ -16,6 +16,7 @@ import { FaithIQTreeMark } from "@/components/championship/game/FaithIQTreeMark"
  */
 export function WatchStage({
   status,
+  gameplayStarted,
   teamAName,
   teamBName,
   teamAEmoticon,
@@ -31,6 +32,8 @@ export function WatchStage({
   questionPanel,
 }: {
   status: string;
+  /** Has play actually begun? A fixture is "live" before any captain starts it. */
+  gameplayStarted: boolean;
   teamAName?: string;
   teamBName?: string;
   teamAEmoticon?: string;
@@ -49,12 +52,26 @@ export function WatchStage({
   /** The live question broadcast, when the page has received one. */
   questionPanel?: ReactNode;
 }) {
-  // With a live question on the stage the panel is the hierarchy; the status
-  // medallion, the heading and the duplicate score line all step aside.
-  const showQuestion = status === "live" && !!questionPanel;
+  // THE ONE PLACE THE VISUAL STAGE IS DECIDED.
+  //
+  //   waiting  - fixture open, captains have not started play yet
+  //   toss/    - play running: whichever panel the page supplies
+  //   question
+  //   completed / upcoming - unchanged
+  //
+  // `status` alone cannot make this call: it reads "live" from the moment an
+  // admin opens the fixture, while the team_battles row is still forming.
+  const awaitingKickoff = status === "live" && !gameplayStarted;
+  const showQuestion = status === "live" && gameplayStarted && !!questionPanel;
 
   const heading =
-    status === "completed" ? "Match complete" : status === "live" ? "Match in progress" : "Stream begins soon";
+    status === "completed"
+      ? "Match complete"
+      : awaitingKickoff
+        ? "Match starting soon"
+        : status === "live"
+          ? "Match in progress"
+          : "Stream begins soon";
 
   return (
     // 16:9 only while a video is playing. With a question panel inside, a fixed
@@ -136,7 +153,13 @@ export function WatchStage({
               what is known and says plainly what it is waiting for, rather than
               rendering an empty frame or inventing a question.
             */}
-            {status === "live" && (
+            {awaitingKickoff && (
+              <p className="mt-4 text-xs champ-meta">
+                Waiting for the captains to start the match…
+              </p>
+            )}
+
+            {status === "live" && gameplayStarted && (
               <div className={showQuestion ? "mt-1" : "mt-5"}>
                 {questionPanel ?? (
                   liveQuestion ? (
@@ -162,7 +185,7 @@ export function WatchStage({
       )}
 
       {/* Live ribbon over the top edge of the stage. */}
-      {status === "live" && (
+      {status === "live" && gameplayStarted && (
         <div className="watch-ribbon pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 px-4 py-2.5">
           <span className="flex items-center gap-1.5 rounded-full border border-[#f0576a]/50 bg-[#f0576a]/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ff9aa6]">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> Live

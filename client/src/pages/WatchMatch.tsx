@@ -42,6 +42,11 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   // question.
   const [liveQuestionDetail, setLiveQuestionDetail] = useState<WatchQuestion | null>(null);
   const [questionResult, setQuestionResult] = useState<WatchQuestionResult | null>(null);
+  // Has play actually begun? A fixture is "live" from the moment an admin opens
+  // it, which is before any captain starts the game, so status alone must never
+  // drive the stage. Set by the first gameplay broadcast and restored on
+  // reconnect from match_state_restored.
+  const [gameplayStarted, setGameplayStarted] = useState(false);
   // Toss phase, from the same sanitised broadcast pair as the main question.
   const [toss, setToss] = useState<WatchToss | null>(null);
   const [tossResult, setTossResult] = useState<WatchTossResult | null>(null);
@@ -162,10 +167,12 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
         detail: `Final score ${e.match.teamAScore} – ${e.match.teamBScore}`,
       });
       setCurrentQuestion(null);
+      setGameplayStarted(false);
       refetch();
     });
     const offQuestionStarted = onEvent("question_started", (e) => {
       if (e.matchId !== matchId) return;
+      setGameplayStarted(true);
       if (e.questionNumber) {
         logCommentary({
           tone: "question",
@@ -197,6 +204,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     const offTossStarted = onEvent("toss_started", (e) => {
       if (e.matchId !== matchId) return;
       setTossResult(null);
+      setGameplayStarted(true);
       setToss({
         questionId: e.questionId,
         questionText: e.questionText,
@@ -253,6 +261,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
       setQuestionResult(null);
       // The cache holds whichever is in play; a resolved toss is dropped server
       // side, so an entry marked isToss means the toss is still running.
+      setGameplayStarted(!!e.gameplayStarted);
       const restored = e.currentQuestion;
       setToss(
         restored?.isToss && Array.isArray(restored.options)
@@ -344,7 +353,9 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     status === "completed"
       ? `Final score ${data.match.teamAScore} – ${data.match.teamBScore}`
       : status === "live"
-        ? `Live score ${data.match.teamAScore} – ${data.match.teamBScore}`
+        ? gameplayStarted
+          ? `Live score ${data.match.teamAScore} – ${data.match.teamBScore}`
+          : "Waiting for the captains to start the match"
         : scheduledLabel
           ? `Scheduled for ${scheduledLabel}`
           : "Kick-off time to be announced",
@@ -371,12 +382,18 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   return (
     <main className="champ-portal flex min-h-screen flex-col font-heading">
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 sm:py-7">
-        <WatchHeader status={status} teamAName={data.teamA?.name} teamBName={data.teamB?.name} />
+        <WatchHeader
+          status={status}
+          gameplayStarted={gameplayStarted}
+          teamAName={data.teamA?.name}
+          teamBName={data.teamB?.name}
+        />
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="space-y-5">
             <WatchStage
               status={status}
+              gameplayStarted={gameplayStarted}
               teamAName={data.teamA?.name}
               teamBName={data.teamB?.name}
               teamAEmoticon={data.teamA?.emoticon}

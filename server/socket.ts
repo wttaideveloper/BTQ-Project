@@ -225,6 +225,8 @@ interface GameEvent {
   emoticon?: string;
   reactionCounts?: Record<string, number>;
   currentQuestion?: any;
+  /** Spectator lifecycle: has play actually begun, as opposed to the fixture being open. */
+  gameplayStarted?: boolean;
   removedMemberId?: number;
   disconnectedUserId?: number;
   inviteeId?: number;
@@ -235,6 +237,23 @@ interface GameEvent {
 const clients: Map<string, Client> = new Map();
 const matchReactionCounts = new Map<string, Map<string, number>>();
 const reactionWindows = new Map<string, { startedAt: number; count: number }>();
+/**
+ * Championship matches whose GAMEPLAY has actually begun.
+ *
+ * `championship_matches.status` flips to "live" the moment an admin opens the
+ * fixture (POST /api/championship-matches/:id/start) - at which point the
+ * team_battles row is still `forming` and no captain has pressed start. So
+ * "live" means "open", never "being played", and a spectator screen that treats
+ * the two as the same shows a match in progress before anyone is playing.
+ *
+ * This set is the spectator-safe answer to "has play begun": it is filled by
+ * the first gameplay broadcast (the toss, or the first question) and cleared
+ * when the match ends. It holds a match id and nothing else - no private state.
+ * liveQuestionState cannot serve this purpose because it is emptied between
+ * questions and after the toss resolves.
+ */
+const championshipGameplayStarted = new Set<string>();
+
 const liveQuestionState = new Map<string, {
   questionId: string;
   questionNumber?: number;
@@ -273,6 +292,10 @@ export function broadcastChampionshipEvent(event: Record<string, unknown>) {
       answeringTeamName: event.answeringTeamName as string | undefined,
     });
   }
+  if (matchId && (event.type === "toss_started" || event.type === "question_started")) {
+    championshipGameplayStarted.add(matchId);
+  }
+  if (matchId && event.type === "match_ended") championshipGameplayStarted.delete(matchId);
   if (matchId && event.type === "toss_started") {
     liveQuestionState.set(matchId, {
       questionId: String(event.questionId),
@@ -352,6 +375,9 @@ async function handleWatchMatch(clientId: string, event: GameEvent) {
     type: "match_state_restored", matchId,
     reactionCounts: Object.fromEntries(matchReactionCounts.get(matchId) ?? []),
     currentQuestion: liveQuestionState.get(matchId) ?? null,
+    // Survives the gaps between questions, so a spectator who joins or
+    // reconnects mid-match is not told the game has yet to start.
+    gameplayStarted: championshipGameplayStarted.has(matchId),
   });
 }
 

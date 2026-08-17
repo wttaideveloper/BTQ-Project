@@ -235,12 +235,59 @@ interface GameEvent {
 const clients: Map<string, Client> = new Map();
 const matchReactionCounts = new Map<string, Map<string, number>>();
 const reactionWindows = new Map<string, { startedAt: number; count: number }>();
-const liveQuestionState = new Map<string, { questionId: string; questionNumber?: number }>();
+const liveQuestionState = new Map<string, {
+  questionId: string;
+  questionNumber?: number;
+  totalQuestions?: number;
+  questionText?: string;
+  options?: Array<{ id: string; text: string }>;
+  answeringTeamId?: string;
+  answeringTeamName?: string;
+  /** True while the cached entry is the toss question rather than a fixture question. */
+  isToss?: boolean;
+}>();
 
 export function broadcastChampionshipEvent(event: Record<string, unknown>) {
   const matchId = (event.matchId as string | undefined) ?? (event.match as { id?: string } | undefined)?.id;
-  if (matchId && event.type === "question_started") liveQuestionState.set(matchId, { questionId: String(event.questionId), questionNumber: event.questionNumber as number | undefined });
-  if (matchId && (event.type === "question_ended" || event.type === "match_ended")) liveQuestionState.delete(matchId);
+  // Cache exactly what was just broadcast publicly, so a spectator who
+  // reconnects mid-question gets it back through match_state_restored without a
+  // new event, a new request, or any read of private game state.
+  //
+  // The payload has already passed through toSpectatorOptions, and the options
+  // are re-mapped to id/text here as well - so this map can never hold
+  // correctness metadata even if the event shape changes later.
+  if (matchId && event.type === "question_started") {
+    liveQuestionState.set(matchId, {
+      questionId: String(event.questionId),
+      questionNumber: event.questionNumber as number | undefined,
+      totalQuestions: event.totalQuestions as number | undefined,
+      questionText: event.questionText as string | undefined,
+      options: Array.isArray(event.options)
+        ? (event.options as Array<Record<string, unknown>>).map(option => ({
+            id: String(option.id),
+            text: String(option.text),
+            // NOTE: correctness is deliberately not carried into the cache.
+          }))
+        : undefined,
+      answeringTeamId: event.answeringTeamId as string | undefined,
+      answeringTeamName: event.answeringTeamName as string | undefined,
+    });
+  }
+  if (matchId && event.type === "toss_started") {
+    liveQuestionState.set(matchId, {
+      questionId: String(event.questionId),
+      questionText: event.questionText as string | undefined,
+      options: Array.isArray(event.options)
+        ? (event.options as Array<Record<string, unknown>>).map(option => ({
+            id: String(option.id),
+            text: String(option.text),
+          }))
+        : undefined,
+      isToss: true,
+    });
+  }
+  // A resolved toss is no longer the thing to restore - the first question is.
+  if (matchId && (event.type === "question_ended" || event.type === "match_ended" || event.type === "toss_resolved")) liveQuestionState.delete(matchId);
 
   // Spectators are anonymous, so the internal Team Battle session key must not
   // ride along on the match payload. Holding it lets a socket call
@@ -403,10 +450,20 @@ async function championshipMatchForSession(gameSession: ActiveGameSession) {
   return match ?? null;
 }
 
-/** Resolve a session team's side onto the championship team id the spectator knows. */
-function championshipTeamIdForSide(match: any, teamSide?: string | null) {
-  if (teamSide === "A") return match.teamAId;
-  if (teamSide === "B") return match.teamBId;
+/**
+ * Resolve a session team onto the championship team id the spectator knows.
+ *
+ * Keyed on the session team id (`championship-{matchId}-team-a|b`), which
+ * getTeamsForTeamBattleSession assigns from the fixture and nothing ever
+ * rewrites - NOT on teamSide, which finalizeTossWinner flips so the toss winner
+ * takes the first turn. Mapping on teamSide would therefore name the wrong
+ * fixture team for every question after a toss.
+ */
+function championshipTeamIdForSessionTeam(match: any, team: any) {
+  if (typeof team?.id === "string") {
+    if (team.id.endsWith("-team-a")) return match.teamAId;
+    if (team.id.endsWith("-team-b")) return match.teamBId;
+  }
   return undefined;
 }
 
@@ -427,8 +484,61 @@ async function broadcastChampionshipQuestion(
     totalQuestions: gameSession.questions?.length,
     questionText: question.text,
     options: toSpectatorOptions(question),
-    answeringTeamId: championshipTeamIdForSide(match, answeringTeam?.teamSide),
+    answeringTeamId: championshipTeamIdForSessionTeam(match, answeringTeam),
     answeringTeamName: answeringTeam?.name,
+  });
+}
+
+/**
+ * Toss question, for /watch spectators.
+ *
+ * Same boundary as the main question: the stored toss question carries
+ * `answers[].isCorrect`, so the options go through toSpectatorOptions and only
+ * id + text cross over. No answering team is named because the toss has none -
+ * the server's own rule is "first correct team wins the toss", so both teams
+ * are racing.
+ */
+async function broadcastChampionshipToss(gameSession: ActiveGameSession, question: any) {
+  const match = await championshipMatchForSession(gameSession);
+  if (match?.status !== "live") return;
+
+  broadcastChampionshipEvent({
+    type: "toss_started",
+    matchId: match.id,
+    questionId: question?.id,
+    questionText: question?.text,
+    options: toSpectatorOptions(question),
+  });
+}
+
+/**
+ * Toss outcome, for /watch spectators.
+ *
+ * Emitted from finalizeTossWinner only, after the winner has been committed to
+ * the session and the sides reassigned - so correctness reaches spectators only
+ * once the toss is over. The toss awards the FIRST TURN, not points, so no
+ * score is sent: firstTurnTeamId is the winner, which is exactly what
+ * finalizeTossWinner just encoded by making them side "A".
+ */
+async function broadcastChampionshipTossResult(
+  gameSession: ActiveGameSession,
+  winnerTeam: any,
+  correctAnswerId?: string | null,
+) {
+  const match = await championshipMatchForSession(gameSession);
+  if (match?.status !== "live") return;
+
+  const winnerId = championshipTeamIdForSessionTeam(match, winnerTeam);
+  broadcastChampionshipEvent({
+    type: "toss_resolved",
+    matchId: match.id,
+    questionId: (gameSession as any).tossQuestion?.id,
+    winnerTeamId: winnerId,
+    winnerTeamName: winnerTeam?.name,
+    // The toss winner takes the first turn - that is the whole prize.
+    firstTurnTeamId: winnerId,
+    firstTurnTeamName: winnerTeam?.name,
+    correctAnswerId: correctAnswerId ?? null,
   });
 }
 
@@ -461,7 +571,7 @@ async function broadcastChampionshipQuestionResult(
     matchId: match.id,
     questionId: payload.question?.id,
     questionNumber: payload.questionNumber,
-    answeringTeamId: championshipTeamIdForSide(match, payload.answeringTeam?.teamSide),
+    answeringTeamId: championshipTeamIdForSessionTeam(match, payload.answeringTeam),
     answeringTeamName: payload.answeringTeam?.name,
     selectedAnswerId: payload.selectedAnswerId ?? null,
     correctAnswerId: payload.correctAnswerId ?? null,
@@ -6801,6 +6911,10 @@ async function startTeamBattleQuestions(gameId: string) {
           });
         }
 
+        // Spectators get the same question, sanitised. Players' private
+        // team_battle_toss sends above are untouched.
+        void broadcastChampionshipToss(gameSession, validToss);
+
         // Create a promise that will be resolved when toss completes (winner decided)
         let tossResolve: ((value?: any) => void) | undefined;
         const tossPromise = new Promise((resolve) => {
@@ -7747,6 +7861,9 @@ async function processTossResult(gameId: string) {
             });
           }
 
+          // The replacement toss reaches spectators too.
+          void broadcastChampionshipToss(gameSession, newToss);
+
           // No timeout for re-toss either - wait indefinitely
 
           // Do not resolve toss Promise yet - wait for retry to finish
@@ -7803,6 +7920,13 @@ async function finalizeTossWinner(
         message: "Toss complete. First turn assigned.",
       });
     }
+
+    // Spectator result. The winner is already committed and the sides already
+    // reassigned above, so this is the first moment correctness may leave the
+    // server for /watch. Players' own team_battle_toss_result is unchanged.
+    const winnerTeam = gameSession.teams.find((team: any) => team.id === winningTeamId);
+    const tossCorrectAnswerId = (gameSession as any).tossQuestion?.answers?.find((a: any) => a.isCorrect)?.id;
+    void broadcastChampionshipTossResult(gameSession, winnerTeam, tossCorrectAnswerId);
 
     if ((gameSession as any)?._tossResolve) {
       (gameSession as any)._tossResolve({});

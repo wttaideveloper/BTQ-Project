@@ -49,15 +49,22 @@ export function WatchStage({
   /** The live question broadcast, when the page has received one. */
   questionPanel?: ReactNode;
 }) {
+  // With a live question on the stage the panel is the hierarchy; the status
+  // medallion, the heading and the duplicate score line all step aside.
+  const showQuestion = status === "live" && !!questionPanel;
+
   const heading =
     status === "completed" ? "Match complete" : status === "live" ? "Match in progress" : "Stream begins soon";
 
   return (
-    <section className="watch-stage aspect-video">
+    // 16:9 only while a video is playing. With a question panel inside, a fixed
+    // ratio would either clip the options on a phone or leave a half-empty box
+    // on a desktop, so the composed stage sizes to its content instead.
+    <section className={`watch-stage ${media ? "aspect-video" : "min-h-[15rem]"}`}>
       {media ? (
         media
       ) : (
-        <div className="relative grid h-full place-items-center px-4 text-center">
+        <div className="relative grid h-full place-items-center px-4 py-6 text-center sm:px-6 sm:py-7">
           <FaithIQTreeMark className="pointer-events-none absolute -right-8 -top-10 h-56 w-56 text-white/[0.04] sm:h-72 sm:w-72" />
 
           <div className="relative w-full max-w-2xl">
@@ -66,8 +73,9 @@ export function WatchStage({
               <p className="champ-eyebrow">FaithIQ Championship</p>
             </div>
 
-            <div className="mx-auto my-4 h-px max-w-[10rem] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent" />
+            <div className={`mx-auto h-px max-w-[10rem] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent ${showQuestion ? "my-3" : "my-4"}`} />
 
+            {!showQuestion && (
             <span
               className={`mx-auto grid h-14 w-14 place-items-center rounded-full border ${
                 status === "completed"
@@ -79,12 +87,15 @@ export function WatchStage({
             >
               {status === "completed" ? <Trophy className="h-6 w-6" /> : <Radio className="h-6 w-6" />}
             </span>
+            )}
 
+            {!showQuestion && (
             <h2 className="mt-4 text-xl font-black uppercase tracking-[0.14em] text-white sm:text-2xl">
               {heading}
             </h2>
+            )}
 
-            {status !== "upcoming" && (
+            {status !== "upcoming" && !showQuestion && (
               <div className="mt-5 flex items-center justify-center gap-3 sm:gap-6">
                 <span className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <span className="text-xl" aria-hidden="true">{teamAEmoticon ?? "🏳️"}</span>
@@ -126,7 +137,7 @@ export function WatchStage({
               rendering an empty frame or inventing a question.
             */}
             {status === "live" && (
-              <div className="mt-5">
+              <div className={showQuestion ? "mt-1" : "mt-5"}>
                 {questionPanel ?? (
                   liveQuestion ? (
                     <div className="mx-auto max-w-sm rounded-xl border border-[#d4af37]/30 bg-white/[0.04] px-5 py-4">

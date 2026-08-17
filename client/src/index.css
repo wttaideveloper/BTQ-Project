@@ -893,6 +893,32 @@ button span, .answer-button span {
 }
 .watch-support:active { transform: scale(0.94); }
 
+/* The answering team's pill: a gold breath, not a flash. */
+.watch-turn-live {
+  box-shadow: 0 0 22px -10px rgba(212, 175, 55, 0.85);
+}
+.watch-turn-pulse {
+  display: inline-block;
+  animation: watchTurnPulse 2.4s ease-in-out infinite;
+}
+@keyframes watchTurnPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(1.08); }
+}
+
+/* Newest commentary line reads one step louder than the ones below it. */
+.watch-commentary-latest {
+  border-color: rgba(212, 175, 55, 0.42) !important;
+  box-shadow: 0 0 18px -12px rgba(212, 175, 55, 0.9);
+}
+
+/* The side currently answering, on the scoreboard. */
+.watch-team-active {
+  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.3);
+  border-radius: 0.75rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .watch-ticker-track { animation: none; }
+  .watch-turn-pulse { animation: none; }
 }

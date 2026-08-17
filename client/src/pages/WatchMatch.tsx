@@ -12,6 +12,7 @@ import {
   type WatchQuestion,
   type WatchQuestionResult,
 } from "@/components/watch/WatchQuestionPanel";
+import { WatchTossPanel, type WatchToss, type WatchTossResult } from "@/components/watch/WatchTossPanel";
 import { WatchTicker } from "@/components/watch/WatchTicker";
 
 type MatchPayload = { match: any; teamA: any; teamB: any };
@@ -41,6 +42,9 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   // question.
   const [liveQuestionDetail, setLiveQuestionDetail] = useState<WatchQuestion | null>(null);
   const [questionResult, setQuestionResult] = useState<WatchQuestionResult | null>(null);
+  // Toss phase, from the same sanitised broadcast pair as the main question.
+  const [toss, setToss] = useState<WatchToss | null>(null);
+  const [tossResult, setTossResult] = useState<WatchTossResult | null>(null);
   const currentQuestionIdRef = useRef<string | null>(null);
   currentQuestionIdRef.current = liveQuestionDetail?.questionId ?? null;
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -170,6 +174,9 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
         });
       }
       setCurrentQuestion(e.questionNumber ?? null);
+      // The first fixture question ends the toss display for good.
+      setToss(null);
+      setTossResult(null);
       // A new question always clears the previous result, so a late result for
       // the question just finished can never paint over the new one.
       setQuestionResult(null);
@@ -187,6 +194,33 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
           : null,
       );
     });
+    const offTossStarted = onEvent("toss_started", (e) => {
+      if (e.matchId !== matchId) return;
+      setTossResult(null);
+      setToss({
+        questionId: e.questionId,
+        questionText: e.questionText,
+        options: Array.isArray(e.options) ? e.options : [],
+      });
+      logCommentary({ tone: "question", label: "Toss question", detail: "First correct answer wins the toss" });
+    });
+    // Sent only after finalizeTossWinner has committed the winner.
+    const offTossResolved = onEvent("toss_resolved", (e) => {
+      if (e.matchId !== matchId) return;
+      setTossResult({
+        questionId: e.questionId,
+        winnerTeamId: e.winnerTeamId,
+        winnerTeamName: e.winnerTeamName,
+        firstTurnTeamName: e.firstTurnTeamName,
+        correctAnswerId: e.correctAnswerId ?? null,
+      });
+      logCommentary({
+        tone: "final",
+        label: `${e.winnerTeamName ?? "Team"} won the toss`,
+        detail: e.firstTurnTeamName ? `${e.firstTurnTeamName} answers first` : undefined,
+      });
+    });
+
     // Resolution of the question above. The server only sends this once the
     // answer has been evaluated and the score committed, so correctness cannot
     // reach a spectator early.
@@ -212,6 +246,33 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
       if (e.matchId !== matchId) return;
       setCounts(e.reactionCounts ?? {});
       setCurrentQuestion(e.currentQuestion?.questionNumber ?? null);
+      // Rebuild the question panel after a refresh or a dropped connection. The
+      // server replays the same public question it already broadcast - never a
+      // result - so a reconnecting spectator sees the question in play without
+      // learning anything the live audience did not already have.
+      setQuestionResult(null);
+      // The cache holds whichever is in play; a resolved toss is dropped server
+      // side, so an entry marked isToss means the toss is still running.
+      const restored = e.currentQuestion;
+      setToss(
+        restored?.isToss && Array.isArray(restored.options)
+          ? { questionId: restored.questionId, questionText: restored.questionText, options: restored.options }
+          : null,
+      );
+      setTossResult(null);
+      setLiveQuestionDetail(
+        !restored?.isToss && e.currentQuestion?.questionId && Array.isArray(e.currentQuestion.options)
+          ? {
+              questionId: e.currentQuestion.questionId,
+              questionNumber: e.currentQuestion.questionNumber,
+              totalQuestions: e.currentQuestion.totalQuestions,
+              questionText: e.currentQuestion.questionText,
+              options: e.currentQuestion.options,
+              answeringTeamId: e.currentQuestion.answeringTeamId,
+              answeringTeamName: e.currentQuestion.answeringTeamName,
+            }
+          : null,
+      );
     });
     const offReaction = onEvent("team_reaction", (e) => {
       if (e.matchId !== matchId) return;
@@ -226,7 +287,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
       setReactions(r => [...r.slice(-35), { id, emoji: e.emoticon, side: e.teamId === data?.teamA?.id ? "left" : "right" }]);
       window.setTimeout(() => setReactions(r => r.filter(x => x.id !== id)), 2400);
     });
-    return () => { offConnected(); offUpdate(); offStart(); offEnd(); offQuestionStarted(); offQuestionAnswered(); offQuestionEnded(); offRestore(); offReaction(); };
+    return () => { offConnected(); offUpdate(); offStart(); offEnd(); offTossStarted(); offTossResolved(); offQuestionStarted(); offQuestionAnswered(); offQuestionEnded(); offRestore(); offReaction(); };
   }, [matchId, refetch, data?.teamA?.id, overlay]);
 
   const support = (team: any) => sendGameEvent({ type: "team_reaction", matchId, teamId: team.id, emoticon: team.emoticon });
@@ -328,7 +389,19 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               scheduledLabel={scheduledLabel}
               media={media}
               questionPanel={
-                status === "live" && liveQuestionDetail ? (
+                status === "live" && toss ? (
+                  <WatchTossPanel
+                    toss={toss}
+                    result={tossResult}
+                    winnerEmoticon={
+                      tossResult?.winnerTeamId === data.teamA?.id
+                        ? data.teamA?.emoticon
+                        : tossResult?.winnerTeamId === data.teamB?.id
+                          ? data.teamB?.emoticon
+                          : undefined
+                    }
+                  />
+                ) : status === "live" && liveQuestionDetail ? (
                   <WatchQuestionPanel
                     question={liveQuestionDetail}
                     result={questionResult}
@@ -370,6 +443,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               supporters={counts}
               winnerTeamId={data.match.winnerTeamId}
               liveQuestion={liveQuestion}
+              answeringTeamId={questionResult ? undefined : liveQuestionDetail?.answeringTeamId}
               onSupport={support}
             />
           </div>

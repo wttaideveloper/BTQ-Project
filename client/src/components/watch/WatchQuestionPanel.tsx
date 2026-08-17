@@ -25,6 +25,11 @@ export interface WatchQuestionResult {
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
+/** "Team A" -> "Team A's", "Faith Titans" -> "Faith Titans'". */
+function possessive(name: string): string {
+  return /s$/i.test(name) ? `${name}'` : `${name}'s`;
+}
+
 /**
  * The live question, as a spectator sees it.
  *
@@ -48,28 +53,43 @@ export function WatchQuestionPanel({
 
   return (
     <div className="champ-fade-in mx-auto w-full max-w-2xl text-left">
-      <div className="flex flex-wrap items-center justify-center gap-2 text-center">
-        {question.questionNumber && (
-          <span className="rounded-full border border-[#d4af37]/35 bg-[#d4af37]/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#f0d58a]">
-            Question {question.questionNumber}
-            {question.totalQuestions ? ` / ${question.totalQuestions}` : ""}
+      {question.questionNumber && (
+        <p className="text-center text-[10px] font-black uppercase tracking-[0.22em] text-white/35">
+          Question {question.questionNumber}
+          {question.totalQuestions ? ` / ${question.totalQuestions}` : ""}
+        </p>
+      )}
+
+      {/* Whose turn it is — the single most important line for a spectator.
+          Built as one string so the possessive never separates from the name. */}
+      {question.answeringTeamName && (
+        <div className="mt-1.5 flex justify-center">
+          <span
+            className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.16em] transition-colors sm:text-sm ${
+              resolved
+                ? "border-white/15 bg-white/[0.05] text-white/70"
+                : "watch-turn-live border-[#d4af37]/50 bg-[#d4af37]/12 text-[#f0d58a]"
+            }`}
+          >
+            {teamEmoticon && (
+              <span aria-hidden="true" className={resolved ? undefined : "watch-turn-pulse"}>
+                {teamEmoticon}
+              </span>
+            )}
+            {resolved
+              ? `${question.answeringTeamName} answered`
+              : `${possessive(question.answeringTeamName)} turn`}
           </span>
-        )}
-        {question.answeringTeamName && (
-          <span className="rounded-full border border-white/15 bg-white/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/70">
-            {teamEmoticon ? `${teamEmoticon} ` : ""}
-            {question.answeringTeamName} {resolved ? "answered" : "is answering"}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {question.questionText && (
-        <p className="mt-4 text-center text-base font-bold leading-snug text-white sm:text-lg">
+        <p className="mt-2.5 text-center text-base font-bold leading-snug text-white sm:text-lg">
           {question.questionText}
         </p>
       )}
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+      <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
         {question.options.map((option, index) => {
           const isSelected = resolved?.selectedAnswerId === option.id;
           const isCorrectAnswer = !!resolved && resolved.correctAnswerId === option.id;
@@ -78,7 +98,7 @@ export function WatchQuestionPanel({
           return (
             <div
               key={option.id}
-              className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-colors ${
+              className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors ${
                 isSelected && resolved?.isCorrect
                   ? "border-[#4fd1a5]/60 bg-[#4fd1a5]/12"
                   : isSelected
@@ -102,15 +122,17 @@ export function WatchQuestionPanel({
               <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white/90">{option.text}</span>
               {isSelected && (
                 <span
-                  className={`shrink-0 text-[9px] font-black uppercase tracking-[0.14em] ${
+                  className={`flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] ${
                     resolved?.isCorrect ? "text-[#7ee2be]" : "text-[#e2a3ad]"
                   }`}
                 >
+                  {resolved?.isCorrect ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <X className="h-3.5 w-3.5" strokeWidth={3} />}
                   Selected
                 </span>
               )}
               {!isSelected && isCorrectAnswer && (
-                <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.14em] text-[#f0d58a]">
+                <span className="flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#f0d58a]">
+                  <Check className="h-3.5 w-3.5" strokeWidth={3} />
                   Correct
                 </span>
               )}
@@ -121,7 +143,8 @@ export function WatchQuestionPanel({
 
       {resolved ? (
         <div
-          className={`champ-fade-in mt-4 rounded-xl border px-4 py-3 text-center ${
+          key={`${resolved.questionId}-result`}
+          className={`champ-fade-in mt-3 rounded-xl border px-4 py-2.5 text-center ${
             resolved.isCorrect ? "border-[#4fd1a5]/45 bg-[#4fd1a5]/10" : "border-[#c76a7a]/40 bg-[#c76a7a]/10"
           }`}
         >
@@ -133,12 +156,12 @@ export function WatchQuestionPanel({
             {resolved.isCorrect ? <Check className="h-4 w-4" strokeWidth={3} /> : <X className="h-4 w-4" strokeWidth={3} />}
             {resolved.isCorrect ? "Correct" : "Incorrect"}
           </p>
-          <p className="mt-1 text-lg font-black text-white tabular-nums">
+          <p className="mt-0.5 text-lg font-black text-white tabular-nums">
             +{resolved.pointsAwarded} <span className="text-xs font-bold text-white/45">points</span>
           </p>
         </div>
       ) : (
-        <p className="mt-4 text-center text-xs champ-meta">
+        <p className="mt-2.5 text-center text-xs champ-meta">
           {question.answeringTeamName ? `${question.answeringTeamName} is answering…` : "Waiting for the answer…"}
         </p>
       )}

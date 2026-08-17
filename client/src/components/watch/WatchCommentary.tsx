@@ -9,11 +9,11 @@ export interface CommentaryEntry {
   tone: "live" | "score" | "question" | "final";
 }
 
-const TONES: Record<CommentaryEntry["tone"], string> = {
-  live: "border-[#f0576a]/45 text-[#ff9aa6]",
-  score: "border-[#d4af37]/45 text-[#f0d58a]",
-  question: "border-white/20 text-white/70",
-  final: "border-[#4fd1a5]/40 text-[#7ee2be]",
+const TONES: Record<CommentaryEntry["tone"], { row: string; chip: string; label: string }> = {
+  live: { row: "border-[#f0576a]/40 text-[#ff9aa6]", chip: "bg-[#f0576a]/15 text-[#ff9aa6]", label: "Live" },
+  score: { row: "border-[#d4af37]/40 text-[#f0d58a]", chip: "bg-[#d4af37]/15 text-[#f0d58a]", label: "Score" },
+  question: { row: "border-white/15 text-white/75", chip: "bg-white/10 text-white/60", label: "Question" },
+  final: { row: "border-[#4fd1a5]/40 text-[#7ee2be]", chip: "bg-[#4fd1a5]/15 text-[#7ee2be]", label: "Result" },
 };
 
 /**
@@ -38,19 +38,28 @@ export function WatchCommentary({ entries }: { entries: CommentaryEntry[] }) {
           Live commentary will appear here as the match plays.
         </p>
       ) : (
-        <ul className="space-y-2.5">
-          {entries.map(entry => (
+        // Newest first, capped by the page - the rail stays short and scannable.
+        <ul className="space-y-2">
+          {entries.map((entry, index) => (
             <li
               key={entry.id}
-              className={`rounded-xl border bg-white/[0.03] px-3 py-2.5 ${TONES[entry.tone]}`}
+              // Only the newest line is emphasised; the rest are unchanged.
+              className={`champ-fade-in rounded-xl border bg-white/[0.03] px-3 py-2 ${TONES[entry.tone].row} ${
+                index === 0 ? "watch-commentary-latest" : ""
+              }`}
             >
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="text-xs font-bold uppercase tracking-[0.14em]">{entry.label}</p>
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${TONES[entry.tone].chip}`}
+                >
+                  {TONES[entry.tone].label}
+                </span>
                 <span className="shrink-0 text-[10px] tabular-nums champ-meta">
                   {new Date(entry.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
                 </span>
               </div>
-              {entry.detail && <p className="mt-1 text-sm text-white/80">{entry.detail}</p>}
+              <p className="mt-1.5 text-xs font-bold uppercase tracking-[0.1em]">{entry.label}</p>
+              {entry.detail && <p className="mt-0.5 text-sm text-white/75">{entry.detail}</p>}
             </li>
           ))}
         </ul>

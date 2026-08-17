@@ -15,6 +15,7 @@ export function WatchScoreboard({
   supporters,
   winnerTeamId,
   liveQuestion,
+  answeringTeamId,
   onSupport,
 }: {
   status: string;
@@ -25,12 +26,22 @@ export function WatchScoreboard({
   supporters: Record<string, number>;
   winnerTeamId?: string | null;
   liveQuestion: number | null;
+  /** The team on the clock, from the live question broadcast. Display only. */
+  answeringTeamId?: string;
   onSupport?: (team: { id: string; name: string; emoticon: string }) => void;
 }) {
   const side = (team: typeof teamA, fallback: string, align: "left" | "right") => {
     const isWinner = status === "completed" && !!winnerTeamId && team?.id === winnerTeamId;
+    // While a question is in play, the side answering it holds the eye and the
+    // other steps back. Purely visual - no score or team data changes.
+    const isAnswering = status === "live" && !!answeringTeamId && team?.id === answeringTeamId;
+    const isWaiting = status === "live" && !!answeringTeamId && !isAnswering;
     return (
-      <div className={`min-w-0 flex-1 ${align === "right" ? "text-right" : ""}`}>
+      <div
+        className={`min-w-0 flex-1 p-1.5 transition-opacity ${align === "right" ? "text-right" : ""} ${
+          isAnswering ? "watch-team-active" : ""
+        } ${isWaiting ? "opacity-70" : ""}`}
+      >
         <div className={`flex items-center gap-2.5 ${align === "right" ? "justify-end" : ""}`}>
           <span className="text-2xl leading-none sm:text-3xl" aria-hidden="true">
             {team?.emoticon ?? "🏳️"}

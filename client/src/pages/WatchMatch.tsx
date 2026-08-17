@@ -3,6 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { onEvent, sendGameEvent, setupGameSocket } from "@/lib/socket";
 import Hls from "hls.js";
+import { WatchHeader } from "@/components/watch/WatchHeader";
+import { WatchStage } from "@/components/watch/WatchStage";
+import { WatchScoreboard } from "@/components/watch/WatchScoreboard";
+import { WatchCommentary, type CommentaryEntry } from "@/components/watch/WatchCommentary";
+import { WatchTicker } from "@/components/watch/WatchTicker";
 
 type MatchPayload = { match: any; teamA: any; teamB: any };
 
@@ -18,6 +23,10 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   const [reactions, setReactions] = useState<Array<{ id: number; emoji: string; side: string }>>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [currentQuestion, setCurrentQuestion] = useState<number | null>(null);
+  // Commentary is a log of the championship events this page ALREADY receives -
+  // nothing is inferred and nothing is fetched for it. Newest first, capped so a
+  // broadcast left open all evening cannot grow without bound.
+  const [commentary, setCommentary] = useState<CommentaryEntry[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamError, setStreamError] = useState("");
 
@@ -62,6 +71,13 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     setStreamError("HLS playback is not supported by this browser.");
   }, [data?.match?.streamUrl, data?.match?.status]);
 
+  // Appends one line to the commentary log. Display only: it reads the event
+  // payloads the handlers below already receive and touches no game state.
+  const logCommentary = (entry: Omit<CommentaryEntry, "id" | "at">) => {
+    if (overlay) return; // the OBS overlay renders no commentary
+    setCommentary(current => [{ ...entry, id: Date.now() + Math.random(), at: Date.now() }, ...current].slice(0, 12));
+  };
+
   useEffect(() => {
     setupGameSocket();
     sendGameEvent({ type: "watch_match", matchId });
@@ -79,17 +95,38 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
       sendGameEvent({ type: "watch_match", matchId });
       refetch();
     });
-    const offUpdate = onEvent("match_updated", (e) => e.match?.id === matchId && refetch());
-    const offStart = onEvent("match_started", (e) => e.match?.id === matchId && refetch());
+    const offUpdate = onEvent("match_updated", (e) => {
+      if (e.match?.id !== matchId) return;
+      logCommentary({
+        tone: "score",
+        label: "Score update",
+        detail: `${e.match.teamAScore} – ${e.match.teamBScore}`,
+      });
+      refetch();
+    });
+    const offStart = onEvent("match_started", (e) => {
+      if (e.match?.id !== matchId) return;
+      logCommentary({ tone: "live", label: "Match started" });
+      refetch();
+    });
     // A finished match has no current question. question_ended is only emitted
     // by the manual admin control, so without this the watch page kept showing
     // "Question N" after the match was over.
     const offEnd = onEvent("match_ended", (e) => {
       if (e.match?.id !== matchId) return;
+      logCommentary({
+        tone: "final",
+        label: "Match complete",
+        detail: `Final score ${e.match.teamAScore} – ${e.match.teamBScore}`,
+      });
       setCurrentQuestion(null);
       refetch();
     });
-    const offQuestionStarted = onEvent("question_started", (e) => e.matchId === matchId && setCurrentQuestion(e.questionNumber ?? null));
+    const offQuestionStarted = onEvent("question_started", (e) => {
+      if (e.matchId !== matchId) return;
+      if (e.questionNumber) logCommentary({ tone: "question", label: `Question ${e.questionNumber}`, detail: "In play" });
+      setCurrentQuestion(e.questionNumber ?? null);
+    });
     const offQuestionEnded = onEvent("question_ended", (e) => e.matchId === matchId && setCurrentQuestion(null));
     const offRestore = onEvent("match_state_restored", (e) => {
       if (e.matchId !== matchId) return;
@@ -144,43 +181,111 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     </main>
   );
 
+  // Everything below is read from the match payload this page already loads.
+  // The winner is taken from match.winnerTeamId as recorded by the server - it
+  // is never recomputed here.
+  const winnerName =
+    data.match.winnerTeamId === data.teamA?.id
+      ? data.teamA?.name
+      : data.match.winnerTeamId === data.teamB?.id
+        ? data.teamB?.name
+        : null;
+  const isDraw = status === "completed" && !data.match.winnerTeamId;
+  const scheduledLabel = data.match.scheduledAt
+    ? new Date(data.match.scheduledAt).toLocaleString(undefined, {
+        weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      })
+    : null;
+
+  // Ticker lines, built only from facts already on screen.
+  const tickerItems = [
+    `${data.teamA?.name ?? "Team A"} vs ${data.teamB?.name ?? "Team B"}`,
+    status === "completed"
+      ? `Final score ${data.match.teamAScore} – ${data.match.teamBScore}`
+      : status === "live"
+        ? `Live score ${data.match.teamAScore} – ${data.match.teamBScore}`
+        : scheduledLabel
+          ? `Scheduled for ${scheduledLabel}`
+          : "Kick-off time to be announced",
+    ...(liveQuestion ? [`Question ${liveQuestion} in play`] : []),
+    ...(status === "completed" && winnerName ? [`Winner · ${winnerName}`] : []),
+    ...(isDraw ? ["Result · Draw"] : []),
+  ];
+
+  // The stream element is unchanged - same condition, same ref, same handlers -
+  // so the HLS effect above keeps driving it exactly as before.
+  const media =
+    status === "live" && data.match.streamUrl ? (
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        controls={false}
+        onPause={e => e.currentTarget.play().catch(() => undefined)}
+        className="h-full w-full bg-black object-contain"
+      />
+    ) : undefined;
+
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <header className="mb-6 flex justify-between items-center">
-          <div><p className="text-cyan-400 uppercase tracking-widest text-xs font-bold">FaithIQ Live</p><h1 className="text-3xl font-black">{data.teamA.name} vs {data.teamB.name}</h1></div>
-          <span className={`px-4 py-2 rounded-full font-bold uppercase text-xs ${status === "live" ? "bg-red-500 animate-pulse" : "bg-white/10"}`}>{status}</span>
-        </header>
-        <section className="relative aspect-video rounded-3xl overflow-hidden bg-black border border-white/10 shadow-2xl">
-          {status === "live" && data.match.streamUrl ? (
-            <video ref={videoRef} autoPlay muted playsInline controls={false}
-              onPause={e => e.currentTarget.play().catch(() => undefined)} className="w-full h-full object-contain" />
-          ) : <div className="h-full grid place-items-center text-center text-slate-400">
-            {/*
-              This placeholder shows whenever there is no video to play, which
-              includes a LIVE match that simply has no stream URL configured
-              (stream_url is optional). It used to special-case only "upcoming"
-              and let everything else fall through to "Match completed", so a
-              live, in-progress match displayed the words "Match completed"
-              while people were still answering questions. The match status was
-              never wrong - only this label was. Driven off status explicitly
-              now, so each of the three states says what it means.
-            */}
-            <div><p className="text-xl font-semibold">{status === "upcoming" ? "Stream begins soon" : status === "live" ? "Match in progress" : "Match completed"}</p>
-            {status === "live" && <p className="text-sm mt-1">No video stream for this match — live scores below.</p>}
-            {data.match.scheduledAt && <p>{new Date(data.match.scheduledAt).toLocaleString()}</p>}</div>
-          </div>}
-          {reactions.map(r => <span key={r.id} className={`absolute bottom-8 text-4xl animate-bounce ${r.side === "left" ? "left-[15%]" : "right-[15%]"}`}>{r.emoji}</span>)}
-          {streamError && <div className="absolute inset-x-4 bottom-4 rounded-xl bg-red-950/90 border border-red-400/30 p-3 text-center text-sm text-red-100">{streamError}</div>}
-        </section>
-        <section className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-4 bg-white/5 rounded-3xl p-6 border border-white/10">
-          {[data.teamA, data.teamB].map((team, i) => <div key={team.id} className={i ? "text-right" : ""}>
-            <h2 className="text-xl font-bold">{team.name}</h2><p className="text-sm text-slate-400">{counts[team.id] ?? 0} supporters</p>
-            {status === "live" && <button onClick={() => support(team)} className="mt-3 text-4xl bg-white/10 hover:bg-white/20 active:scale-90 transition rounded-2xl p-3">{team.emoticon}</button>}
-          </div>)}
-          <div className="text-center"><div className="text-6xl font-black">{data.match.teamAScore} <span className="text-slate-600">:</span> {data.match.teamBScore}</div><p className="text-xs uppercase tracking-widest text-slate-500 mt-2">{liveQuestion ? `Question ${liveQuestion}` : "Live score"}</p></div>
-        </section>
+    <main className="champ-portal flex min-h-screen flex-col font-heading">
+      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 sm:py-7">
+        <WatchHeader status={status} teamAName={data.teamA?.name} teamBName={data.teamB?.name} />
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="space-y-5">
+            <WatchStage
+              status={status}
+              teamAName={data.teamA?.name}
+              teamBName={data.teamB?.name}
+              teamAEmoticon={data.teamA?.emoticon}
+              teamBEmoticon={data.teamB?.emoticon}
+              teamAScore={data.match.teamAScore}
+              teamBScore={data.match.teamBScore}
+              winnerName={winnerName}
+              isDraw={isDraw}
+              liveQuestion={liveQuestion}
+              scheduledLabel={scheduledLabel}
+              media={media}
+              overlays={
+                <>
+                  {reactions.map(r => (
+                    <span
+                      key={r.id}
+                      className={`absolute bottom-8 animate-bounce text-4xl ${r.side === "left" ? "left-[15%]" : "right-[15%]"}`}
+                    >
+                      {r.emoji}
+                    </span>
+                  ))}
+                  {streamError && (
+                    <div className="absolute inset-x-4 bottom-4 rounded-xl border border-red-400/30 bg-red-950/90 p-3 text-center text-sm text-red-100">
+                      {streamError}
+                    </div>
+                  )}
+                </>
+              }
+            />
+
+            <WatchScoreboard
+              status={status}
+              teamA={data.teamA}
+              teamB={data.teamB}
+              teamAScore={data.match.teamAScore}
+              teamBScore={data.match.teamBScore}
+              supporters={counts}
+              winnerTeamId={data.match.winnerTeamId}
+              liveQuestion={liveQuestion}
+              onSupport={support}
+            />
+          </div>
+
+          <aside className="lg:sticky lg:top-5 lg:self-start">
+            <WatchCommentary entries={commentary} />
+          </aside>
+        </div>
       </div>
+
+      <WatchTicker items={tickerItems} />
     </main>
   );
 }

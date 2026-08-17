@@ -839,3 +839,60 @@ button span, .answer-button span {
   .champ-fade-in { animation: none; }
   .champ-fixture:hover { transform: none; }
 }
+
+/* ==========================================================================
+   FaithIQ Live — /watch broadcast viewer
+   --------------------------------------------------------------------------
+   Public spectator screen. It reuses the .champ-* tokens (the page root carries
+   .champ-portal) so the broadcast reads as the same championship system as
+   /my-championship and the match screen; only the stage frame and the ticker
+   are specific to it.
+   ========================================================================== */
+.watch-stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  background:
+    radial-gradient(80% 70% at 50% 0%, rgba(122, 84, 255, 0.28) 0%, transparent 60%),
+    linear-gradient(165deg, #1b1142 0%, #0d0a26 55%, #09061f 100%);
+  box-shadow: 0 30px 80px -50px rgba(0, 0, 0, 1), inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Status ribbon that sits over the stage. */
+.watch-ribbon {
+  background: linear-gradient(90deg, rgba(9, 6, 31, 0.92), rgba(9, 6, 31, 0.55) 70%, transparent);
+}
+
+/* Bottom broadcast ticker. */
+.watch-ticker {
+  border-top: 1px solid rgba(212, 175, 55, 0.28);
+  background: linear-gradient(90deg, #0d0a26 0%, #171238 50%, #0d0a26 100%);
+}
+.watch-ticker-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5rem;
+  white-space: nowrap;
+  animation: watchTicker 38s linear infinite;
+}
+@keyframes watchTicker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* A live tap-to-support crest. */
+.watch-support {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+.watch-support:hover {
+  background: rgba(212, 175, 55, 0.14);
+  border-color: rgba(212, 175, 55, 0.6);
+}
+.watch-support:active { transform: scale(0.94); }
+
+@media (prefers-reduced-motion: reduce) {
+  .watch-ticker-track { animation: none; }
+}

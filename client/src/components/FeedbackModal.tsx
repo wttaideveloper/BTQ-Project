@@ -4,6 +4,7 @@ import { CheckCircle2, XCircle } from 'lucide-react';
 import { isVoiceEnabled, playSound } from '@/lib/sounds';
 import { playBasicSound } from '@/lib/basic-sound';
 import { voiceService } from '@/lib/voice-service';
+import { ChampionshipAnswerResult } from '@/components/championship/game/ChampionshipAnswerResult';
 
 interface FeedbackModalProps {
   isCorrect: boolean;
@@ -13,6 +14,14 @@ interface FeedbackModalProps {
   onClose: (wasManualContinue?: boolean) => void;
   gameMode?: string; // Add gameMode to differentiate between Single/Multi player
   questionSessionId?: string; // Session ID for voice narration
+  /**
+   * Presentation skin. "championship" swaps ONLY the markup for the FaithIQ
+   * Championship look; the result values, the game-show sounds, the voice
+   * session and the continue handler above stay in this component, so both
+   * skins behave identically. Omitted everywhere else, so Team Battle, Rapid
+   * Fire, Solo and Challenges keep the existing popup unchanged.
+   */
+  variant?: 'default' | 'championship';
 }
 
 const FeedbackModal: React.FC<FeedbackModalProps> = ({
@@ -23,6 +32,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
   onClose,
   gameMode = 'single', // Default to single player
   questionSessionId, // Session ID for voice
+  variant = 'default',
 }) => {
   const [userClickedContinue, setUserClickedContinue] = useState(false);
   const [feedbackSessionId] = useState(() => `feedback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
@@ -102,6 +112,30 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
       };
     }
   }, [isCorrect, correctAnswer, avatarMessage, onClose, userClickedContinue, gameMode, feedbackSessionId]);
+
+  // The exact continue sequence both skins use: block any pending feedback
+  // voice, clear the session, then hand back to the caller as a manual continue.
+  const handleContinue = () => {
+    setUserClickedContinue(true); // Set flag immediately to prevent feedback voice
+    voiceService.clearSession(); // Clear feedback session
+    // Clear any pending voice timeouts by triggering useEffect cleanup
+    onClose(true); // Pass true to indicate manual continue
+  };
+
+  // Championship skin. Every effect above has already run - the sounds, the
+  // voice session and the values are the same; only the markup differs.
+  if (variant === 'championship') {
+    return (
+      <ChampionshipAnswerResult
+        isCorrect={isCorrect}
+        question={question}
+        correctAnswer={correctAnswer}
+        avatarMessage={avatarMessage}
+        onContinue={handleContinue}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4">
       <div className={`modal-animation w-full max-w-md p-0 rounded-2xl shadow-2xl overflow-hidden ${
@@ -160,13 +194,8 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
           
           {/* Action Button - Show for both correct and wrong answers */}
           <div className="flex justify-center">
-            <Button 
-              onClick={() => {
-                setUserClickedContinue(true); // Set flag immediately to prevent feedback voice
-                voiceService.clearSession(); // Clear feedback session
-                // Clear any pending voice timeouts by triggering useEffect cleanup
-                onClose(true); // Pass true to indicate manual continue
-              }}
+            <Button
+              onClick={handleContinue}
               size="sm"
               className={`px-4 sm:px-6 md:px-8 py-1.5 sm:py-2 md:py-3 rounded-xl font-bold text-sm sm:text-base md:text-lg shadow-glow ${
                 isCorrect 

@@ -192,8 +192,24 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
     }
   }, [question.id, question.text, currentQuestionIndex, isPaused, isReadOnly]);
 
-  // Timer effect - fixed to properly sync with server time
-  // This effect restarts when question.id, timeRemaining prop, or timer state changes
+  // Timer effect.
+  //
+  // THE COUNTDOWN IS THE SHARED QUESTION CLOCK, NOT A LOCAL ONE.
+  //
+  // The server broadcasts `team_battle_question` to BOTH teams in the same loop
+  // with the same `timeLimit`, and arms one authoritative deadline of its own
+  // (`gameSession.questionTimeout = setTimeout(processTeamBattleAnswers, timeLimitMs)`).
+  // This interval only renders that shared clock - it decides nothing.
+  //
+  // It used to bail out on `isReadOnly`, i.e. whenever it was not this client's
+  // team's turn, so the waiting team's board sat frozen at the opening value
+  // while the answering team counted down. Read-only means "you cannot answer",
+  // never "your clock stops", so it no longer gates the countdown.
+  //
+  // Ticks are derived from a wall-clock deadline instead of by subtracting one
+  // per interval firing: both clients anchor on the same broadcast and the same
+  // duration, so they show the same number, and a throttled background tab
+  // re-synchronises on its next tick instead of drifting permanently behind.
   useEffect(() => {
     // Clear any existing timer first
     if (timerRef.current) {
@@ -202,9 +218,10 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       isTimerRunningRef.current = false;
     }
 
-    // Stop timer if question is locked, paused, read-only, or time expired
-    // Use timeRemaining as source of truth, but also check displayTime for current state
-    if (timeRemaining <= 0 || isQuestionLocked || isPaused || isReadOnly || isToss) {
+    // Stop the clock only for reasons that apply to this client's own team:
+    // it has committed its answer, the board is paused, the countdown has
+    // finished, or this is the toss round (which has no timer by design).
+    if (timeRemaining <= 0 || isQuestionLocked || isPaused || isToss) {
       isTimerRunningRef.current = false;
       // Sync displayTime to match stopped state
       if (timeRemaining <= 0) {
@@ -220,26 +237,34 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       setDisplayTime(timeRemaining);
     }
 
-    // Start countdown timer
+    // Start countdown timer against a fixed deadline.
+    const deadline = Date.now() + timeRemaining * 1000;
     isTimerRunningRef.current = true;
     timerRef.current = setInterval(() => {
+      // Sampled faster than once a second so the displayed second turns over on
+      // time; the value itself still only changes on a whole-second boundary.
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+
       setDisplayTime((prev) => {
         // Safety check: if timer was stopped externally, don't continue
         if (!isTimerRunningRef.current) {
           return prev;
         }
 
-        // Additional safety: if paused, locked, or read-only, stop counting
-        if (isPaused || isQuestionLocked || isReadOnly) {
+        // Additional safety: if paused or locked, stop counting
+        if (isPaused || isQuestionLocked) {
           isTimerRunningRef.current = false;
           return prev;
         }
 
-        const newTime = Math.max(0, prev - 1);
+        if (remaining === prev) {
+          return prev;
+        }
 
-        // Only play timer sounds in the last 5 seconds
-        if (newTime <= 5 && newTime > 0) {
-          if (newTime <= 3) {
+        // Countdown audio belongs to the team that can still act, so the
+        // waiting team's client stays silent exactly as it does today.
+        if (!isReadOnly && remaining <= 5 && remaining > 0) {
+          if (remaining <= 3) {
             // Urgent countdown for final 3 seconds
             playSound("countdownAlert");
             playBasicSound("timeout");
@@ -250,25 +275,28 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
           }
         }
 
-        // Time expired
-        if (newTime <= 0) {
+        // Time expired. Display only - the server's own timeout is what ends
+        // the question and moves the match on.
+        if (remaining <= 0) {
           isTimerRunningRef.current = false;
           if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
           }
-          playSound("timeout");
-          playBasicSound("timeout");
-          setTimeout(() => {
-            playSound("buzzer");
-            playBasicSound("buzzer");
-          }, 300);
+          if (!isReadOnly) {
+            playSound("timeout");
+            playBasicSound("timeout");
+            setTimeout(() => {
+              playSound("buzzer");
+              playBasicSound("buzzer");
+            }, 300);
+          }
           return 0;
         }
 
-        return newTime;
+        return remaining;
       });
-    }, 1000);
+    }, 250);
 
     return () => {
       isTimerRunningRef.current = false;
@@ -277,7 +305,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
         timerRef.current = null;
       }
     };
-  }, [question.id, timeRemaining, isQuestionLocked, isPaused, isReadOnly]); // Restart when question, timeRemaining, or state changes
+  }, [question.id, timeRemaining, isQuestionLocked, isPaused, isReadOnly, isToss]); // Restart when question, timeRemaining, or state changes
 
   // Cleanup effect to clear intervals and voice session on unmount
   useEffect(() => {

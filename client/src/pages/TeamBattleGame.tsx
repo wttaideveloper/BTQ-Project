@@ -2671,6 +2671,7 @@ export default function TeamBattleGame() {
             setCorrectAnswerId(null);
           }}
           gameMode="team"
+          variant={isChampionshipMatch ? "championship" : "default"}
         />
       )}
 

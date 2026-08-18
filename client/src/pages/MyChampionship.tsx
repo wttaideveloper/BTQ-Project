@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { navigateToTeamBattleGame } from "@/lib/team-battle-navigation";
-import { sendGameEvent, setupGameSocket } from "@/lib/socket";
+import { setupGameSocket } from "@/lib/socket";
 import { cn } from "@/lib/utils";
 import {
   canJoinMatch,
@@ -393,17 +393,24 @@ export default function MyChampionship() {
   const captainMember = myTeam ? roster.find(member => member.id === myTeam.captainId) : undefined;
   const captainName = captainMember ? displayName(captainMember) : null;
 
-  // Join flow - unchanged. The captain starts the Team Battle over the socket
-  // and gets a longer hand-off delay so the session exists before teammates
-  // arrive.
+  // Join flow.
+  //
+  // Joining JOINS - it no longer starts the match. This used to send
+  // start_team_battle for whichever captain arrived, so the fixture began the
+  // moment a captain pressed Join (and, once the attendance guard landed, the
+  // moment the SECOND captain pressed it). Play now begins only when a captain
+  // presses Start Match on the game screen, which sends that same event.
+  //
+  // Membership, access and navigation are unchanged, as is every other mode:
+  // normal Team Battle and Rapid Fire start from their own setup flow and never
+  // came through here.
   const joinMatch = async (match: ChampionshipMatchSummary) => {
     setJoiningMatchId(match.id);
     try {
       const response = await apiRequest("POST", `/api/championship-matches/${match.id}/join`, {});
       const access = await response.json();
       setupGameSocket();
-      if (access.isCaptain) sendGameEvent({ type: "start_team_battle", gameSessionId: access.gameSessionId });
-      window.setTimeout(() => navigateToTeamBattleGame(setLocation, access.gameSessionId), access.isCaptain ? 900 : 100);
+      window.setTimeout(() => navigateToTeamBattleGame(setLocation, access.gameSessionId), 100);
     } catch (error) {
       setJoiningMatchId(null);
       toast({

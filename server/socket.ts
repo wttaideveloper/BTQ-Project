@@ -227,6 +227,13 @@ interface GameEvent {
   currentQuestion?: any;
   /** Spectator lifecycle: has play actually begun, as opposed to the fixture being open. */
   gameplayStarted?: boolean;
+  /** Spectator lifecycle: which side's captain has arrived. */
+  teamACaptainReady?: boolean;
+  teamBCaptainReady?: boolean;
+  bothCaptainsReady?: boolean;
+  /** Server-decided: may this recipient press Start Match? */
+  canStart?: boolean;
+  captains?: { teamACaptainReady: boolean; teamBCaptainReady: boolean } | null;
   removedMemberId?: number;
   disconnectedUserId?: number;
   inviteeId?: number;
@@ -252,6 +259,24 @@ const reactionWindows = new Map<string, { startedAt: number; count: number }>();
  * liveQuestionState cannot serve this purpose because it is emptied between
  * questions and after the toss resolves.
  */
+/**
+ * Championship captains who have arrived at a fixture, keyed by battle id.
+ *
+ * A championship battle is created by the admin's POST /:id/start with BOTH
+ * captain ids and both rosters already filled in from the fixture. Every
+ * roster-shaped check in handleStartTeamBattle therefore passes the instant the
+ * first captain appears - which is why one captain joining was enough to start
+ * the toss against an empty opposing bench.
+ *
+ * Arrival is recorded when a captain's client asks to start (the join flow
+ * sends start_team_battle for each captain), so this is presence, not a new
+ * lifecycle store: it holds user ids for a battle and nothing else.
+ */
+const championshipCaptainArrivals = new Map<string, Set<number>>();
+
+/** Latest captain readiness per match, so a reconnecting spectator sees it too. */
+const championshipCaptainReadiness = new Map<string, { teamACaptainReady: boolean; teamBCaptainReady: boolean }>();
+
 const championshipGameplayStarted = new Set<string>();
 
 const liveQuestionState = new Map<string, {
@@ -295,7 +320,16 @@ export function broadcastChampionshipEvent(event: Record<string, unknown>) {
   if (matchId && (event.type === "toss_started" || event.type === "question_started")) {
     championshipGameplayStarted.add(matchId);
   }
-  if (matchId && event.type === "match_ended") championshipGameplayStarted.delete(matchId);
+  if (matchId && event.type === "captains_ready") {
+    championshipCaptainReadiness.set(matchId, {
+      teamACaptainReady: !!event.teamACaptainReady,
+      teamBCaptainReady: !!event.teamBCaptainReady,
+    });
+  }
+  if (matchId && event.type === "match_ended") {
+    championshipGameplayStarted.delete(matchId);
+    championshipCaptainReadiness.delete(matchId);
+  }
   if (matchId && event.type === "toss_started") {
     liveQuestionState.set(matchId, {
       questionId: String(event.questionId),
@@ -378,6 +412,7 @@ async function handleWatchMatch(clientId: string, event: GameEvent) {
     // Survives the gaps between questions, so a spectator who joins or
     // reconnects mid-match is not told the game has yet to start.
     gameplayStarted: championshipGameplayStarted.has(matchId),
+    captains: championshipCaptainReadiness.get(matchId) ?? null,
   });
 }
 
@@ -513,6 +548,87 @@ async function broadcastChampionshipQuestion(
     answeringTeamId: championshipTeamIdForSessionTeam(match, answeringTeam),
     answeringTeamName: answeringTeam?.name,
   });
+}
+
+/**
+ * Captain readiness, for /watch spectators.
+ *
+ * Two booleans about the fixture: has each side's captain turned up. Nothing
+ * about who they are, what they see, or the session behind them.
+ */
+async function broadcastChampionshipCaptains(
+  gameSessionId: string,
+  teamACaptainReady: boolean,
+  teamBCaptainReady: boolean,
+  battle?: { teamACaptainId?: number | null; teamBCaptainId?: number | null },
+) {
+  const [match] = await database.db
+    .select()
+    .from(championshipMatches)
+    .where(eq(championshipMatches.gameSessionId, gameSessionId));
+  if (match?.status !== "live") return;
+
+  const payload = {
+    type: "captains_ready",
+    matchId: match.id,
+    gameSessionId,
+    teamACaptainReady,
+    teamBCaptainReady,
+    bothCaptainsReady: teamACaptainReady && teamBCaptainReady,
+  };
+
+  // Spectators (watch_match subscribers).
+  broadcastChampionshipEvent(payload);
+
+  // The two captains, addressed by user id because a captain waiting in the
+  // pre-game screen has no gameId yet. Same event, same two booleans - it is
+  // what drives their READY / START MATCH state without a poll or a refresh.
+  for (const captainId of [battle?.teamACaptainId, battle?.teamBCaptainId]) {
+    if (typeof captainId === "number") sendToUser(captainId, payload as GameEvent);
+  }
+}
+
+/**
+ * A championship captain has arrived at (or returned to) the pre-game screen.
+ *
+ * Arrival only - it starts nothing. Recording presence here is what lets the
+ * second captain's arrival mark the match READY instead of starting it, and
+ * what restores the ready state after a refresh. The authority to actually
+ * begin play stays entirely with handleStartTeamBattle and its guard.
+ */
+async function handleChampionshipCaptainPresence(clientId: string, event: GameEvent) {
+  const client = clients.get(clientId);
+  if (!client?.userId || !event.gameSessionId) return;
+
+  const battles = await database.getTeamBattlesByGameSession(event.gameSessionId);
+  const battle = battles.find((b) => isChampionshipBattle(b.id));
+  if (!battle) return;
+
+  const isCaptain = battle.teamACaptainId === client.userId || battle.teamBCaptainId === client.userId;
+  const arrived = championshipCaptainArrivals.get(battle.id) ?? new Set<number>();
+  if (isCaptain) {
+    arrived.add(client.userId);
+    championshipCaptainArrivals.set(battle.id, arrived);
+  }
+
+  const teamACaptainReady = !!battle.teamACaptainId && arrived.has(battle.teamACaptainId);
+  const teamBCaptainReady = !!battle.teamBCaptainId && arrived.has(battle.teamBCaptainId);
+
+  await broadcastChampionshipCaptains(event.gameSessionId, teamACaptainReady, teamBCaptainReady, battle);
+
+  // Answer the asker directly as well, so a team member sees the same readiness
+  // as their captain. `canStart` is decided here, on the server, from the
+  // battle's captain ids - the UI only reflects it, and handleStartTeamBattle
+  // re-checks it regardless.
+  sendToClient(clientId, {
+    type: "captains_ready",
+    matchId: undefined,
+    gameSessionId: event.gameSessionId,
+    teamACaptainReady,
+    teamBCaptainReady,
+    bothCaptainsReady: teamACaptainReady && teamBCaptainReady,
+    canStart: isCaptain,
+  } as GameEvent);
 }
 
 /**
@@ -2207,6 +2323,10 @@ function handleGameEvent(clientId: string, event: GameEvent) {
       break;
     case "team_ready":
       handleTeamReady(clientId, event);
+      break;
+    case "captains_ready":
+      // Client -> server: "I have arrived". Reply is the same event back.
+      handleChampionshipCaptainPresence(clientId, event);
       break;
     case "start_team_battle":
       handleStartTeamBattle(clientId, event);
@@ -6566,6 +6686,35 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
         message: "Only team captains can start battles",
       });
       return;
+    }
+
+    // BOTH CAPTAINS MUST BE PRESENT before a Championship fixture may start.
+    //
+    // Enforced here, on the server, rather than in the UI: the roster checks
+    // below cannot see who has actually turned up, because the admin's
+    // POST /api/championship-matches/:id/start writes both captains and both
+    // rosters when it opens the fixture. Scoped to championship battles by
+    // battle id, so normal Team Battle and Rapid Fire keep their existing
+    // start rules untouched.
+    if (isChampionshipBattle(battle.id)) {
+      const arrived = championshipCaptainArrivals.get(battle.id) ?? new Set<number>();
+      arrived.add(client.userId);
+      championshipCaptainArrivals.set(battle.id, arrived);
+
+      const teamACaptainHere = !!battle.teamACaptainId && arrived.has(battle.teamACaptainId);
+      const teamBCaptainHere = !!battle.teamBCaptainId && arrived.has(battle.teamBCaptainId);
+
+      // Tell spectators who is here. Two booleans about the fixture - no
+      // player, session or answer data.
+      void broadcastChampionshipCaptains(event.gameSessionId, teamACaptainHere, teamBCaptainHere, battle);
+
+      if (!teamACaptainHere || !teamBCaptainHere) {
+        sendToClient(clientId, {
+          type: "error",
+          message: "Waiting for both team captains to join before starting the match.",
+        });
+        return;
+      }
     }
 
     // Validate both teams exist and have at least 1 member

@@ -47,6 +47,9 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   // drive the stage. Set by the first gameplay broadcast and restored on
   // reconnect from match_state_restored.
   const [gameplayStarted, setGameplayStarted] = useState(false);
+  // Which side's captain has arrived. Two booleans from the server; the Watch
+  // page never infers readiness itself.
+  const [captains, setCaptains] = useState<{ teamACaptainReady: boolean; teamBCaptainReady: boolean } | null>(null);
   // Toss phase, from the same sanitised broadcast pair as the main question.
   const [toss, setToss] = useState<WatchToss | null>(null);
   const [tossResult, setTossResult] = useState<WatchTossResult | null>(null);
@@ -201,6 +204,15 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
           : null,
       );
     });
+    const offCaptains = onEvent("captains_ready", (e) => {
+      if (e.matchId !== matchId) return;
+      setCaptains({ teamACaptainReady: !!e.teamACaptainReady, teamBCaptainReady: !!e.teamBCaptainReady });
+      logCommentary({
+        tone: "question",
+        label: e.bothCaptainsReady ? "Both captains ready" : "Captain joined",
+        detail: e.bothCaptainsReady ? "Waiting for the match to start" : "Waiting for the other captain",
+      });
+    });
     const offTossStarted = onEvent("toss_started", (e) => {
       if (e.matchId !== matchId) return;
       setTossResult(null);
@@ -262,6 +274,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
       // The cache holds whichever is in play; a resolved toss is dropped server
       // side, so an entry marked isToss means the toss is still running.
       setGameplayStarted(!!e.gameplayStarted);
+      setCaptains(e.captains ?? null);
       const restored = e.currentQuestion;
       setToss(
         restored?.isToss && Array.isArray(restored.options)
@@ -296,7 +309,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
       setReactions(r => [...r.slice(-35), { id, emoji: e.emoticon, side: e.teamId === data?.teamA?.id ? "left" : "right" }]);
       window.setTimeout(() => setReactions(r => r.filter(x => x.id !== id)), 2400);
     });
-    return () => { offConnected(); offUpdate(); offStart(); offEnd(); offTossStarted(); offTossResolved(); offQuestionStarted(); offQuestionAnswered(); offQuestionEnded(); offRestore(); offReaction(); };
+    return () => { offConnected(); offUpdate(); offStart(); offEnd(); offCaptains(); offTossStarted(); offTossResolved(); offQuestionStarted(); offQuestionAnswered(); offQuestionEnded(); offRestore(); offReaction(); };
   }, [matchId, refetch, data?.teamA?.id, overlay]);
 
   const support = (team: any) => sendGameEvent({ type: "team_reaction", matchId, teamId: team.id, emoticon: team.emoticon });
@@ -394,6 +407,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
             <WatchStage
               status={status}
               gameplayStarted={gameplayStarted}
+              captains={captains}
               teamAName={data.teamA?.name}
               teamBName={data.teamB?.name}
               teamAEmoticon={data.teamA?.emoticon}

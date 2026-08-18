@@ -50,6 +50,7 @@ import BrandLogo from "@/components/BrandLogo";
 import { ChampionshipGameHeader } from "@/components/championship/game/ChampionshipGameHeader";
 import { ChampionshipScoreboard } from "@/components/championship/game/ChampionshipScoreboard";
 import { ChampionshipResult, ChampionshipStatusPanel } from "@/components/championship/game/ChampionshipResult";
+import { ChampionshipPreMatch, type CaptainReadiness } from "@/components/championship/game/ChampionshipPreMatch";
 
 interface TeamMember {
   userId: number;
@@ -191,6 +192,10 @@ export default function TeamBattleGame() {
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() =>
     isVoiceEnabled()
   );
+  // Championship pre-match lobby. Readiness is server-sent (captains_ready);
+  // this screen never decides who has arrived or who may start.
+  const [captainReadiness, setCaptainReadiness] = useState<CaptainReadiness | null>(null);
+  const [startingMatch, setStartingMatch] = useState(false);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [showConnectExit, setShowConnectExit] = useState(false);
   const [showRefreshLoader, setShowRefreshLoader] = useState(false);
@@ -1131,7 +1136,20 @@ export default function TeamBattleGame() {
             }
             break;
 
+          case "captains_ready":
+            // Arrival state for the Championship lobby. Starts nothing.
+            setCaptainReadiness({
+              teamACaptainReady: !!data.teamACaptainReady,
+              teamBCaptainReady: !!data.teamBCaptainReady,
+              bothCaptainsReady: !!data.bothCaptainsReady,
+              canStart: !!data.canStart,
+            });
+            break;
+
           case "error":
+            // A rejected start (opponent captain absent, not a captain) must
+            // leave the lobby exactly as it was.
+            setStartingMatch(false);
             toast({
               title: "Error",
               description: data.message,
@@ -1228,6 +1246,22 @@ export default function TeamBattleGame() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.phase, gameState.playerTeam, gameSessionId]);
+
+  // Announce arrival to the Championship lobby (and re-announce after a
+  // refresh). Reuses the captains_ready event; the server ignores it for any
+  // battle that is not a championship fixture.
+  useEffect(() => {
+    if (!isChampionshipMatch || !gameSessionId) return;
+    if (gameState.currentQuestion || gameState.phase === "finished") return;
+    sendGameEvent({ type: "captains_ready", gameSessionId });
+  }, [isChampionshipMatch, gameSessionId, gameState.phase]);
+
+  const startChampionshipMatch = () => {
+    if (!gameSessionId || startingMatch) return;
+    setStartingMatch(true);
+    // The EXISTING start event. The server re-checks attendance and captaincy.
+    sendGameEvent({ type: "start_team_battle", gameSessionId });
+  };
 
   const isSoloTeam = () => {
     const members = gameState.playerTeam?.members;
@@ -2572,10 +2606,20 @@ export default function TeamBattleGame() {
       {/* Preparing the match. Championship fixtures are always regular team
           battles, so the rapid-fire rules card below never applies to them. */}
       {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && isChampionshipMatch && (
-        <ChampionshipStatusPanel
-          title="Preparing the match"
-          description="Setting up the board and loading the first question…"
-        />
+        startingMatch && captainReadiness?.bothCaptainsReady ? (
+          <ChampionshipStatusPanel
+            title="Preparing the match"
+            description="Setting up the board and loading the first question…"
+          />
+        ) : (
+          <ChampionshipPreMatch
+            readiness={captainReadiness}
+            teamAName={gameState.playerTeam?.name}
+            teamBName={gameState.opposingTeam?.name}
+            starting={startingMatch}
+            onStart={startChampionshipMatch}
+          />
+        )
       )}
       {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && !isChampionshipMatch && (
         <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6">

@@ -17,6 +17,7 @@ import { FaithIQTreeMark } from "@/components/championship/game/FaithIQTreeMark"
 export function WatchStage({
   status,
   gameplayStarted,
+  captains,
   teamAName,
   teamBName,
   teamAEmoticon,
@@ -34,6 +35,8 @@ export function WatchStage({
   status: string;
   /** Has play actually begun? A fixture is "live" before any captain starts it. */
   gameplayStarted: boolean;
+  /** Which side's captain has arrived, from the server. Null before any has. */
+  captains?: { teamACaptainReady: boolean; teamBCaptainReady: boolean } | null;
   teamAName?: string;
   teamBName?: string;
   teamAEmoticon?: string;
@@ -64,11 +67,18 @@ export function WatchStage({
   const awaitingKickoff = status === "live" && !gameplayStarted;
   const showQuestion = status === "live" && gameplayStarted && !!questionPanel;
 
+  const bothCaptainsReady = !!captains?.teamACaptainReady && !!captains?.teamBCaptainReady;
+  const someCaptainHere = !!captains?.teamACaptainReady || !!captains?.teamBCaptainReady;
+
   const heading =
     status === "completed"
       ? "Match complete"
       : awaitingKickoff
-        ? "Match starting soon"
+        ? bothCaptainsReady
+          ? "Ready to start"
+          : someCaptainHere
+            ? "Waiting for both captains"
+            : "Match starting soon"
         : status === "live"
           ? "Match in progress"
           : "Stream begins soon";
@@ -154,9 +164,37 @@ export function WatchStage({
               rendering an empty frame or inventing a question.
             */}
             {awaitingKickoff && (
-              <p className="mt-4 text-xs champ-meta">
-                Waiting for the captains to start the match…
-              </p>
+              <div className="mt-4">
+                {someCaptainHere && (
+                  <ul className="mx-auto flex max-w-xs flex-col gap-1.5">
+                    {[
+                      { name: teamAName ?? "Team A", ready: !!captains?.teamACaptainReady },
+                      { name: teamBName ?? "Team B", ready: !!captains?.teamBCaptainReady },
+                    ].map(row => (
+                      <li
+                        key={row.name}
+                        className={`flex items-center justify-between rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                          row.ready
+                            ? "border-[#4fd1a5]/40 bg-[#4fd1a5]/10 text-[#7ee2be]"
+                            : "border-white/10 bg-white/[0.03] text-white/50"
+                        }`}
+                      >
+                        <span className="truncate">{row.name}</span>
+                        <span className="shrink-0 text-[10px] uppercase tracking-[0.14em]">
+                          {row.ready ? "✓ Ready" : "◌ Waiting for captain"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-3 text-xs champ-meta">
+                  {bothCaptainsReady
+                    ? "Both captains are ready. Waiting for the match to start…"
+                    : someCaptainHere
+                      ? "Waiting for the other team captain to join…"
+                      : "Waiting for the captains to start the match…"}
+                </p>
+              </div>
             )}
 
             {status === "live" && gameplayStarted && (

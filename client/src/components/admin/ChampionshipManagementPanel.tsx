@@ -4,6 +4,7 @@ import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, Clock3, Crown, Edit3,
   ExternalLink, Eye, Info, MonitorPlay, Play, Plus, Radio, Settings2, Smile, Sparkles,
   Search, Trash2, Trophy, Tv, UserPlus, Users,
+  Check, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,19 +112,68 @@ function LiveScoreCard({ team, value }: { team: any; value: number }) {
   </div>;
 }
 
+/**
+ * Broadcast tools for the live match.
+ *
+ * Watch Live opens the existing public spectator page in a new tab, exactly as
+ * before. The shareable link is the same `/watch/:matchId` URL built against
+ * the current origin - nothing is hardcoded and no endpoint is involved. The
+ * overlay shortcut lives on the match cards; it is not needed here.
+ */
 function BroadcastPanel({ matchId }: { matchId: string }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const watchPath = `/watch/${matchId}`;
+  const watchUrl = typeof window === "undefined" ? watchPath : `${window.location.origin}${watchPath}`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(watchUrl);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    window.setTimeout(() => setCopyState("idle"), 2000);
+  };
+
   return <div className="rounded-xl border bg-slate-50 p-4">
     <p className="flex items-center gap-2 text-sm font-bold text-slate-800"><Tv size={16} className="text-slate-500" /> Broadcast</p>
-    <p className="mt-1 text-xs text-slate-500">
-      Use Watch to monitor the public match screen. Use Overlay for the live score overlay.
-    </p>
-    <div className="mt-3 flex flex-wrap gap-2">
+    <p className="mt-1 text-xs text-slate-500">Share the live match with anyone. No login required.</p>
+
+    <div className="mt-3">
       <Button asChild size="sm" variant="outline">
-        <a href={`/watch/${matchId}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Live</a>
+        <a href={watchPath} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Live</a>
       </Button>
-      <Button asChild size="sm" variant="outline">
-        <a href={`/overlay/${matchId}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a>
-      </Button>
+    </div>
+
+    <div className="mt-4">
+      <label htmlFor="public-watch-link" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Public watch link
+      </label>
+      <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <input
+          id="public-watch-link"
+          readOnly
+          value={watchUrl}
+          onFocus={event => event.currentTarget.select()}
+          className="h-10 w-full min-w-0 flex-1 truncate rounded-md border bg-white px-3 text-sm text-slate-700"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={copy}
+          aria-label="Copy the public watch link"
+          className="w-full shrink-0 sm:w-auto"
+        >
+          {copyState === "copied" ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
+          {copyState === "copied" ? "Copied!" : copyState === "failed" ? "Copy failed" : "Copy"}
+        </Button>
+      </div>
+      <p className="mt-1.5 text-xs text-slate-500" role="status">
+        {copyState === "failed"
+          ? "Could not copy automatically — select the link and copy it manually."
+          : "Anyone with this link can watch the match live."}
+      </p>
     </div>
   </div>;
 }

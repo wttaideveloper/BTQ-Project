@@ -922,3 +922,61 @@ button span, .answer-button span {
   .watch-ticker-track { animation: none; }
   .watch-turn-pulse { animation: none; }
 }
+
+/* Hotstar-style audience reactions on the live scoreboard.
+   One system, CSS-only. Particles spawn already spread in lanes, then float
+   up with a light wave. Only transform and opacity animate. */
+.watch-burst-particle {
+  position: absolute;
+  display: block;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+  animation: watchCheerFloat var(--cheer-duration, 2.4s) cubic-bezier(0.25, 0.46, 0.45, 0.94) var(--cheer-delay, 0s) both;
+  will-change: transform, opacity;
+  font-size: 24px;
+}
+.watch-burst-support {
+  font-size: 22px;
+}
+.watch-burst-hero {
+  font-size: 30px;
+}
+.watch-burst-sparkle {
+  font-size: 12px;
+  color: #f0d58a;
+  filter: none;
+}
+@media (min-width: 640px) {
+  .watch-burst-particle { font-size: 28px; }
+  .watch-burst-support { font-size: 26px; }
+  .watch-burst-hero { font-size: 36px; }
+  .watch-burst-sparkle { font-size: 14px; }
+}
+@keyframes watchCheerFloat {
+  0%   { opacity: 0; transform: translate3d(calc(-50% + var(--cheer-x, 0px)), 10px, 0) scale(0.9) rotate(0deg); }
+  8%   { opacity: 1; transform: translate3d(calc(-50% + var(--cheer-x, 0px) + var(--cheer-wave, 0px) * 0.3), -2px, 0) scale(var(--cheer-scale, 1)) rotate(calc(var(--cheer-rot, 0deg) * 0.2)); }
+  32%  { opacity: 1; transform: translate3d(calc(-50% + var(--cheer-x, 0px) - var(--cheer-wave, 0px) * 0.35), calc(var(--cheer-rise, -80px) * 0.34), 0) scale(var(--cheer-scale, 1)) rotate(calc(var(--cheer-rot, 0deg) * 0.55)); }
+  58%  { opacity: 1; transform: translate3d(calc(-50% + var(--cheer-x, 0px) + var(--cheer-wave, 0px) * 0.75), calc(var(--cheer-rise, -80px) * 0.64), 0) scale(calc(var(--cheer-scale, 1) * 0.98)) rotate(var(--cheer-rot, 0deg)); }
+  82%  { opacity: 0.4; transform: translate3d(calc(-50% + var(--cheer-x, 0px) + var(--cheer-wave, 0px) * 0.35), calc(var(--cheer-rise, -80px) * 0.88), 0) scale(calc(var(--cheer-scale, 1) * 0.93)) rotate(var(--cheer-rot, 0deg)); }
+  100% { opacity: 0; transform: translate3d(calc(-50% + var(--cheer-x, 0px) + var(--cheer-wave, 0px) * 0.1), var(--cheer-rise, -80px), 0) scale(calc(var(--cheer-scale, 1) * 0.86)) rotate(var(--cheer-rot, 0deg)); }
+}
+@keyframes watchBurstFade {
+  0%   { opacity: 0; transform: translate3d(-50%, 0, 0) scale(0.96); }
+  35%  { opacity: 0.95; transform: translate3d(-50%, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(-50%, 0, 0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-burst-particle,
+  .watch-burst-particle.watch-burst-hero,
+  .watch-burst-particle.watch-burst-sparkle {
+    animation-name: watchBurstFade;
+    animation-duration: 900ms;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+    filter: none;
+  }
+}

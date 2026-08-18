@@ -227,6 +227,8 @@ interface GameEvent {
   currentQuestion?: any;
   /** Spectator lifecycle: has play actually begun, as opposed to the fixture being open. */
   gameplayStarted?: boolean;
+  /** Preset audience reaction id, resolved server-side against AUDIENCE_REACTIONS. */
+  reactionId?: string;
   /** Spectator lifecycle: which side's captain has arrived. */
   teamACaptainReady?: boolean;
   teamBCaptainReady?: boolean;
@@ -432,6 +434,22 @@ async function handleWatchMatch(clientId: string, event: GameEvent) {
  *   - support is accepted only while the match is live, matching the spectator
  *     UI, which renders the support button only for a live match
  */
+/**
+ * The only reactions a spectator may send besides a team's own crest.
+ *
+ * Server-owned so the set is fixed: viewers choose an id, never an emoji. This
+ * is presentation only - it changes which glyph floats on the watch page and
+ * nothing else. The supporter tally, the throttle, the live-match requirement
+ * and the match/team validation below are all unchanged.
+ */
+const AUDIENCE_REACTIONS: Record<string, string> = {
+  cheer: "👏",
+  fire: "🔥",
+  pray: "🙏",
+  celebrate: "🎉",
+  strong: "💪",
+};
+
 async function handleTeamReaction(clientId: string, event: GameEvent) {
   const client = clients.get(clientId);
   if (!client || !event.matchId || !event.teamId) return;
@@ -463,8 +481,15 @@ async function handleTeamReaction(clientId: string, event: GameEvent) {
   if (!targets) return;
   if (targets.status !== "live") return;
 
-  const emoticon = targets.teams.get(event.teamId);
-  if (!emoticon) return;
+  // The team's own crest is the default. A viewer may instead pick one of the
+  // fixed encouragement reactions below - and only those: the id is looked up
+  // in a server-owned table, so the client still cannot broadcast an arbitrary
+  // string to every spectator. That property is why the client's `emoticon`
+  // field has always been ignored here, and it stays ignored.
+  const teamCrest = targets.teams.get(event.teamId);
+  if (!teamCrest) return;
+  const preset = typeof event.reactionId === "string" ? AUDIENCE_REACTIONS[event.reactionId] : undefined;
+  const emoticon = preset ?? teamCrest;
 
   // Read-modify-write is safe: no await between the read and the write, so two
   // concurrent handlers cannot interleave and lose an increment.

@@ -13,9 +13,13 @@ import {
   type WatchQuestionResult,
 } from "@/components/watch/WatchQuestionPanel";
 import { WatchTossPanel, type WatchToss, type WatchTossResult } from "@/components/watch/WatchTossPanel";
+import { WatchSupport } from "@/components/watch/WatchSupport";
+import { appendBurst, buildBurst, burstTtlMs, dropParticles, type ReactionParticle } from "@/lib/watch-reactions";
 import { WatchTicker } from "@/components/watch/WatchTicker";
 
 type MatchPayload = { match: any; teamA: any; teamB: any };
+
+
 
 export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   const { matchId } = useParams<{ matchId: string }>();
@@ -26,7 +30,10 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     }),
     refetchInterval: 15000,
   });
-  const [reactions, setReactions] = useState<Array<{ id: number; emoji: string; side: string }>>([]);
+  // Reaction particles. ONE system: every particle comes from the existing
+  // server broadcast, so the viewer who clicked and everyone else see the same
+  // burst and a click can never render twice.
+  const [reactions, setReactions] = useState<ReactionParticle[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [currentQuestion, setCurrentQuestion] = useState<number | null>(null);
   // Commentary is a log of the championship events this page ALREADY receives -
@@ -57,6 +64,10 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   currentQuestionIdRef.current = liveQuestionDetail?.questionId ?? null;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamError, setStreamError] = useState("");
+  // Set when the server's existing reaction throttle kicks in; disables the
+  // controls briefly instead of silently dropping taps.
+  const [reactionCooldown, setReactionCooldown] = useState(false);
+  const reactionTimersRef = useRef<number[]>([]);
 
   // Overlay mode must not paint a page background. `body` is styled bg-black in
   // index.css, which propagates to the page canvas and would appear in OBS /
@@ -296,6 +307,10 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
           : null,
       );
     });
+    const offThrottled = onEvent("reaction_throttled", () => {
+      setReactionCooldown(true);
+      window.setTimeout(() => setReactionCooldown(false), 1500);
+    });
     const offReaction = onEvent("team_reaction", (e) => {
       if (e.matchId !== matchId) return;
       // The overlay renders no reactions. Without this guard it still queued a
@@ -305,14 +320,29 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
       // spectator page is unchanged (overlay is false there).
       if (overlay) return;
       setCounts(c => ({ ...c, [e.teamId]: e.count }));
-      const id = Date.now() + Math.random();
-      setReactions(r => [...r.slice(-35), { id, emoji: e.emoticon, side: e.teamId === data?.teamA?.id ? "left" : "right" }]);
-      window.setTimeout(() => setReactions(r => r.filter(x => x.id !== id)), 2400);
+
+      // One burst per broadcast reaction, composed by buildBurst. Bounded by
+      // burst count and particle count so a fast-reacting crowd cannot grow the
+      // DOM without limit. Each burst clears itself when its animation is done.
+      const particles = buildBurst(e.emoticon, e.teamId);
+      setReactions(current => appendBurst(current, particles));
+      const timer = window.setTimeout(() => {
+        setReactions(current => dropParticles(current, particles.map(particle => particle.id)));
+        reactionTimersRef.current = reactionTimersRef.current.filter(id => id !== timer);
+      }, burstTtlMs(particles));
+      reactionTimersRef.current.push(timer);
     });
-    return () => { offConnected(); offUpdate(); offStart(); offEnd(); offCaptains(); offTossStarted(); offTossResolved(); offQuestionStarted(); offQuestionAnswered(); offQuestionEnded(); offRestore(); offReaction(); };
+    return () => {
+      offConnected(); offUpdate(); offStart(); offEnd(); offCaptains(); offTossStarted(); offTossResolved(); offQuestionStarted(); offQuestionAnswered(); offQuestionEnded(); offRestore(); offReaction(); offThrottled();
+      for (const timer of reactionTimersRef.current) window.clearTimeout(timer);
+      reactionTimersRef.current = [];
+    };
   }, [matchId, refetch, data?.teamA?.id, overlay]);
 
-  const support = (team: any) => sendGameEvent({ type: "team_reaction", matchId, teamId: team.id, emoticon: team.emoticon });
+  // The existing reaction event. `reactionId` is optional and resolved against
+  // the server's whitelist; omitting it keeps the original crest behaviour.
+  const support = (team: any, reactionId?: string) =>
+    sendGameEvent({ type: "team_reaction", matchId, teamId: team.id, emoticon: team.emoticon, reactionId });
   const status = data?.match?.status ?? "upcoming";
   // Only a live match has a current question, so a stale number can never leak
   // past the end of a match even if a question_ended event is missed.
@@ -448,14 +478,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               }
               overlays={
                 <>
-                  {reactions.map(r => (
-                    <span
-                      key={r.id}
-                      className={`absolute bottom-8 animate-bounce text-4xl ${r.side === "left" ? "left-[15%]" : "right-[15%]"}`}
-                    >
-                      {r.emoji}
-                    </span>
-                  ))}
                   {streamError && (
                     <div className="absolute inset-x-4 bottom-4 rounded-xl border border-red-400/30 bg-red-950/90 p-3 text-center text-sm text-red-100">
                       {streamError}
@@ -475,8 +497,20 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               winnerTeamId={data.match.winnerTeamId}
               liveQuestion={liveQuestion}
               answeringTeamId={questionResult ? undefined : liveQuestionDetail?.answeringTeamId}
-              onSupport={support}
+              particles={reactions}
             />
+
+            {/* Audience support. Live only - the server accepts reactions for a
+                live match only, so the controls follow the same rule. */}
+            {status === "live" && (
+              <WatchSupport
+                teamA={data.teamA}
+                teamB={data.teamB}
+                supporters={counts}
+                cooldown={reactionCooldown}
+                onSupport={support}
+              />
+            )}
           </div>
 
           <aside className="lg:sticky lg:top-5 lg:self-start">

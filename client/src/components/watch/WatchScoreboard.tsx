@@ -1,10 +1,15 @@
+import type { ReactionParticle } from "@/lib/watch-reactions";
+
 /**
- * Broadcast scoreboard and the tap-to-support crests.
+ * Broadcast scoreboard — and the single canvas for audience reactions.
  *
  * Scores, teams and the winner all arrive as props from the match payload; the
  * supporter numbers are the live reaction counts the page already tracks. The
  * only interaction is the existing tap-to-support, which the page owns and
- * which stays live-only exactly as before - this screen remains read-only.
+ * which stays live-only exactly as before — this screen remains read-only.
+ *
+ * Particles are decorative: they live in an absolutely positioned layer that
+ * cannot affect layout, height, or the score readout.
  */
 export function WatchScoreboard({
   status,
@@ -16,7 +21,7 @@ export function WatchScoreboard({
   winnerTeamId,
   liveQuestion,
   answeringTeamId,
-  onSupport,
+  particles = [],
 }: {
   status: string;
   teamA?: { id: string; name: string; emoticon: string };
@@ -28,17 +33,22 @@ export function WatchScoreboard({
   liveQuestion: number | null;
   /** The team on the clock, from the live question broadcast. Display only. */
   answeringTeamId?: string;
-  onSupport?: (team: { id: string; name: string; emoticon: string }) => void;
+  /**
+   * Audience reaction particles, built from the server broadcast by the page.
+   * Decorative only — they are drawn in an absolutely positioned layer that
+   * cannot affect this component's layout or height.
+   */
+  particles?: ReactionParticle[];
 }) {
   const side = (team: typeof teamA, fallback: string, align: "left" | "right") => {
     const isWinner = status === "completed" && !!winnerTeamId && team?.id === winnerTeamId;
     // While a question is in play, the side answering it holds the eye and the
-    // other steps back. Purely visual - no score or team data changes.
+    // other steps back. Purely visual — no score or team data changes.
     const isAnswering = status === "live" && !!answeringTeamId && team?.id === answeringTeamId;
     const isWaiting = status === "live" && !!answeringTeamId && !isAnswering;
     return (
       <div
-        className={`min-w-0 flex-1 p-1.5 transition-opacity ${align === "right" ? "text-right" : ""} ${
+        className={`relative z-[1] min-w-0 flex-1 p-1.5 transition-opacity ${align === "right" ? "text-right" : ""} ${
           isAnswering ? "watch-team-active" : ""
         } ${isWaiting ? "opacity-70" : ""}`}
       >
@@ -60,26 +70,19 @@ export function WatchScoreboard({
             Winner
           </span>
         )}
-        {status === "live" && team && onSupport && (
-          <button
-            type="button"
-            onClick={() => onSupport(team)}
-            aria-label={`Support ${team.name}`}
-            className={`watch-support mt-3 rounded-2xl px-3 py-2 text-3xl ${align === "right" ? "ml-auto" : ""} block`}
-          >
-            {team.emoticon}
-          </button>
-        )}
       </div>
     );
   };
 
   return (
-    <section className="champ-panel rounded-2xl p-4 sm:p-6" aria-label="Match scoreboard">
-      <div className="flex items-start gap-3 sm:gap-6">
+    <section
+      className="champ-panel relative overflow-hidden rounded-2xl p-4 sm:p-6"
+      aria-label="Match scoreboard"
+    >
+      <div className="relative flex items-start gap-3 sm:gap-6">
         {side(teamA, "Team A", "left")}
 
-        <div className="shrink-0 text-center">
+        <div className="relative z-[3] shrink-0 text-center">
           <p className="champ-scoreline text-4xl font-black text-white sm:text-6xl">
             {teamAScore}
             <span className="mx-2 align-middle text-2xl text-white/20 sm:mx-3 sm:text-3xl">:</span>
@@ -97,6 +100,53 @@ export function WatchScoreboard({
         </div>
 
         {side(teamB, "Team B", "right")}
+      </div>
+
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-[2] overflow-hidden"
+        data-watch-reaction-layer=""
+      >
+        {particles.map(particle => {
+          const teamSide =
+            particle.teamId === teamA?.id ? "left" : particle.teamId === teamB?.id ? "right" : null;
+          if (!teamSide) return null;
+          return (
+            <span
+              key={particle.id}
+              aria-hidden="true"
+              data-watch-particle=""
+              data-watch-burst=""
+              data-team-side={teamSide}
+              data-hero={particle.hero ? "true" : undefined}
+              data-sparkle={particle.sparkle ? "true" : undefined}
+              className={`watch-burst-particle ${
+                particle.hero
+                  ? "watch-burst-hero"
+                  : particle.sparkle
+                    ? "watch-burst-sparkle"
+                    : "watch-burst-support"
+              }`}
+              style={
+                {
+                  ...(teamSide === "left"
+                    ? { left: `${particle.originX}%` }
+                    : { right: `${particle.originX}%` }),
+                  bottom: `${particle.originY}%`,
+                  "--cheer-x": `${particle.dx}px`,
+                  "--cheer-wave": `${particle.wave}px`,
+                  "--cheer-rise": `${particle.rise}px`,
+                  "--cheer-rot": `${particle.rot}deg`,
+                  "--cheer-scale": String(particle.scale),
+                  "--cheer-duration": `${particle.duration}s`,
+                  "--cheer-delay": `${particle.delay}s`,
+                } as React.CSSProperties
+              }
+            >
+              {particle.emoji}
+            </span>
+          );
+        })}
       </div>
     </section>
   );

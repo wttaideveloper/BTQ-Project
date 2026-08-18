@@ -50,7 +50,7 @@ export function WatchStage({
   scheduledLabel?: string | null;
   /** The page's <video> element, when a stream is playing. */
   media?: ReactNode;
-  /** Floating reactions and the stream error notice, positioned over the stage. */
+  /** Stream error notice, positioned over the stage. */
   overlays?: ReactNode;
   /** The live question broadcast, when the page has received one. */
   questionPanel?: ReactNode;

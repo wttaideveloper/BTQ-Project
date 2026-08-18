@@ -22,6 +22,8 @@ export interface GameEvent {
   gameSessionId?: string;
   teamId?: string;
   teamBattleId?: string;
+  /** Preset audience reaction id, resolved server-side against its whitelist. */
+  reactionId?: string;
   teamSide?: "A" | "B";
   teamName?: string;
   matchId?: string;

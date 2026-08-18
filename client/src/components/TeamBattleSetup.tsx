@@ -2260,9 +2260,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       setSelectedOpponentId(null);
       setPendingInviteId(null);
 
-      if (variables.invitationType === "opponent") {
-        setSentOpponentInviteIds((prev) => new Set(prev).add(variables.inviteeId));
-      } else {
+      if (variables.invitationType !== "opponent") {
         setSentTeammateInviteIds((prev) => new Set(prev).add(variables.inviteeId));
       }
 
@@ -2270,7 +2268,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
         ["/api/team-invitations"],
         (old = []) => {
           const exists = old.some((inv) => inv.id === invitation.id);
-          return exists ? old : [...old, invitation];
+          const persistedInvitation: TeamInvitation = {
+            ...invitation,
+            gameSessionId: invitation.gameSessionId ?? gameSessionId,
+            teamId: invitation.teamId ?? variables.teamId,
+            teamBattleId:
+              invitation.teamBattleId ?? userTeam?.teamBattleId ?? null,
+          };
+          return exists ? old : [...old, persistedInvitation];
         }
       );
 
@@ -2484,6 +2489,33 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     createTeamMutation.mutate({ name: teamName });
   };
 
+  const currentLobbySessionId =
+    userTeam?.gameSessionId || gameSessionId || null;
+
+  const isCurrentLobbyOpponentInvitation = (inv: TeamInvitation) => {
+    if (inv.invitationType !== "opponent" || inv.inviterId !== user?.id) {
+      return false;
+    }
+
+    const sessionMatches = !!(
+      inv.gameSessionId &&
+      currentLobbySessionId &&
+      inv.gameSessionId === currentLobbySessionId
+    );
+    const battleMatches = !!(
+      inv.teamBattleId &&
+      userTeam?.teamBattleId &&
+      inv.teamBattleId === userTeam.teamBattleId
+    );
+    const teamMatches = !!(
+      inv.teamId &&
+      userTeam?.id &&
+      inv.teamId === userTeam.id
+    );
+
+    return sessionMatches || battleMatches || teamMatches;
+  };
+
   const handleInviteOpponent = (userId: number, event?: React.MouseEvent) => {
     event?.preventDefault();
     event?.stopPropagation();
@@ -2501,9 +2533,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     const alreadySentInvitation = invitations.some(
       (inv: TeamInvitation) =>
         inv.inviteeId === userId &&
-        inv.inviterId === user?.id &&
         inv.status === "pending" &&
-        inv.invitationType === "opponent"
+        isCurrentLobbyOpponentInvitation(inv)
     );
 
     if (alreadySentInvitation) {
@@ -2519,7 +2550,6 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       return; // Prevent multiple simultaneous invitations
     }
 
-    setSentOpponentInviteIds((prev) => new Set(prev).add(userId));
     setPendingInviteId(userId);
     sendInvitationMutation.mutate({
       teamId: userTeam.id,
@@ -2530,13 +2560,14 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   };
 
   const hasPendingOpponentInviteTo = (playerId: number) =>
-    sentOpponentInviteIds.has(playerId) ||
+    (pendingInviteId === playerId &&
+      sendInvitationMutation.isPending &&
+      sendInvitationMutation.variables?.invitationType === "opponent") ||
     invitations.some(
       (inv: TeamInvitation) =>
         inv.inviteeId === playerId &&
-        inv.inviterId === user?.id &&
         inv.status === "pending" &&
-        inv.invitationType === "opponent"
+        isCurrentLobbyOpponentInvitation(inv)
     );
 
   const hasPendingTeammateInviteTo = (playerId: number) =>
@@ -4049,7 +4080,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                         const invitationCount = invitations.filter(
                           (inv: TeamInvitation) =>
                             inv.inviteeId === player.id &&
-                            inv.status === "pending"
+                            inv.status === "pending" &&
+                            isCurrentLobbyOpponentInvitation(inv)
                         ).length;
                         return (
                           <div

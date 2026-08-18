@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, Clock3, Crown, Edit3,
   ExternalLink, Eye, Info, MonitorPlay, Play, Plus, Radio, Settings2, Smile, Sparkles,
-  Trash2, Trophy, Tv, UserPlus, Users,
+  Search, Trash2, Trophy, Tv, UserPlus, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { TeamIconPicker } from "@/components/admin/championship/TeamIconPicker";
+import { PlayerSearchSelect, PlayerMultiSelect, playerLabel } from "@/components/admin/championship/PlayerPickers";
 
 type ChampionshipForm = { name: string; description: string; startDate: string; endDate: string };
 const emptyForm: ChampionshipForm = { name: "", description: "", startDate: "", endDate: "" };
@@ -266,22 +268,32 @@ export function ChampionshipManagementPanel() {
   const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
   const [createForm, setCreateForm] = useState<ChampionshipForm>(emptyForm);
   const [editForm, setEditForm] = useState<ChampionshipForm>(emptyForm);
+  // The last saved values, so Save details can be disabled until something
+  // actually differs. Comparison only - no new request, no new endpoint.
+  const [savedForm, setSavedForm] = useState<ChampionshipForm>(emptyForm);
   const [teamName, setTeamName] = useState("");
   const [captainId, setCaptainId] = useState("");
   const [memberIds, setMemberIds] = useState<number[]>([]);
   const [emoticon, setEmoticon] = useState("👏");
+  // Inline validation only after the field has been left, so it never nags
+  // while the admin is still typing.
+  const [teamNameTouched, setTeamNameTouched] = useState(false);
   const [teamAId, setTeamAId] = useState("");
   const [teamBId, setTeamBId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [streamUrl, setStreamUrl] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [editingTeam, setEditingTeam] = useState<any>(null);
+  // Snapshot of the team as opened, so Save changes stays disabled until the
+  // admin actually modifies something.
+  const [editingTeamOriginal, setEditingTeamOriginal] = useState<string>("");
   const [editingMatch, setEditingMatch] = useState<any>(null);
   const [winnerOverrides, setWinnerOverrides] = useState<Record<string, string>>({});
   const [showCreatePlayer, setShowCreatePlayer] = useState(false);
   const [playerForm, setPlayerForm] = useState({ fullName: "", username: "", email: "", password: "" });
   const [creatingPlayer, setCreatingPlayer] = useState(false);
   const [showCreateChampionship, setShowCreateChampionship] = useState(false);
+  const [completedSearch, setCompletedSearch] = useState("");
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showScheduleMatch, setShowScheduleMatch] = useState(false);
   const [deleteTeamTarget, setDeleteTeamTarget] = useState<any>(null);
@@ -298,7 +310,9 @@ export function ChampionshipManagementPanel() {
   useEffect(() => {
     if (!detail?.championship) return;
     const value = detail.championship;
-    setEditForm({ name: value.name, description: value.description ?? "", startDate: value.startDate?.slice(0, 10) ?? "", endDate: value.endDate?.slice(0, 10) ?? "" });
+    const loaded = { name: value.name, description: value.description ?? "", startDate: value.startDate?.slice(0, 10) ?? "", endDate: value.endDate?.slice(0, 10) ?? "" };
+    setEditForm(loaded);
+    setSavedForm(loaded);
   }, [detail]);
 
   // Switching championship hands the Setup panel back to its automatic state:
@@ -326,6 +340,22 @@ export function ChampionshipManagementPanel() {
   });
   const setCreate = (field: keyof ChampionshipForm, value: string) => setCreateForm(current => ({ ...current, [field]: value }));
   const setEdit = (field: keyof ChampionshipForm, value: string) => setEditForm(current => ({ ...current, [field]: value }));
+  // Trimmed text, dates already normalised to YYYY-MM-DD by the loader above.
+  const teamSignature = (team: any) =>
+    team
+      ? JSON.stringify({
+          name: (team.name ?? "").trim(),
+          emoticon: team.emoticon ?? "",
+          captainId: team.captainId ?? null,
+          memberIds: [...(team.memberIds ?? [])].sort((x: number, y: number) => x - y),
+        })
+      : "";
+  const editTeamDirty = !!editingTeam && teamSignature(editingTeam) !== editingTeamOriginal;
+
+  const setupDirty = (["name", "description", "startDate", "endDate"] as const).some(
+    field => editForm[field].trim() !== savedForm[field].trim(),
+  );
+
   const assignedPlayerIds = new Set<number>((detail?.teams ?? []).flatMap((team: any) => team.memberIds ?? []));
   const availablePlayers = eligiblePlayers.filter(user => !assignedPlayerIds.has(user.id));
   const additionalCandidates = availablePlayers.filter(user => String(user.id) !== captainId);
@@ -404,7 +434,23 @@ export function ChampionshipManagementPanel() {
   // Grouping and every action stay driven by match.status; this only decides
   // what the summary line talks about first.
   const readyMatches = upcomingMatches.filter(match => isMatchReadyToStart(match));
-  const completedMatches = matches.filter(match => match.status === "completed");
+  // Newest completed first, from the real timestamps - completedAt is the
+  // authoritative field, with scheduledAt as a fallback for older rows that
+  // predate it. Never from formatted strings.
+  const matchTime = (match: any) =>
+    new Date(match.completedAt ?? match.scheduledAt ?? 0).getTime() || 0;
+  const completedMatches = matches
+    .filter(match => match.status === "completed")
+    .sort((a, b) => matchTime(b) - matchTime(a));
+  // Local filter over data already in memory; no request is made for search.
+  const completedQuery = completedSearch.trim().toLowerCase();
+  const visibleCompletedMatches = completedQuery
+    ? completedMatches.filter(match =>
+        [teamById(match.teamAId)?.name, teamById(match.teamBId)?.name]
+          .filter(Boolean)
+          .some(name => String(name).toLowerCase().includes(completedQuery)),
+      )
+    : completedMatches;
   const championshipStatus: string = detail?.championship?.status ?? "draft";
   const teamById = (id: string) => teams.find(team => team.id === id);
 
@@ -479,7 +525,9 @@ export function ChampionshipManagementPanel() {
             <MatchStatusBadge status={matchDisplayState(match)} />
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            {scheduleLine}
+            {match.status === "completed" && match.completedAt
+              ? `Completed ${formatDateTime(match.completedAt)}`
+              : scheduleLine}
             {match.status === "completed" && ` · Final score ${match.teamAScore} – ${match.teamBScore}`}
           </p>
           {match.status === "completed" && <p className="mt-1 text-xs font-semibold text-emerald-700">
@@ -503,10 +551,12 @@ export function ChampionshipManagementPanel() {
             <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Live</a></Button>
             <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
           </>}
+          {/* Completed fixtures offer results only. The overlay route and the
+              OBS browser source are untouched - this drops the admin shortcut,
+              which is not useful once a match is over. */}
           {match.status === "completed" && <>
             {!options?.hideResultLink && <Button size="sm" variant="outline" onClick={() => scrollToSection(SECTION.results)}><Trophy size={15} /> View Result</Button>}
             <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Result</a></Button>
-            <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
           </>}
         </div>
       </div>
@@ -582,8 +632,11 @@ export function ChampionshipManagementPanel() {
             </Button>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-3 border-t pt-4">
-          {[{ label: "Teams", value: teams.length }, { label: "Matches", value: matches.length }, { label: "Completed", value: completedMatches.length }].map(stat =>
+        {/* Counts derived from the championship payload already loaded - no extra
+            request. "Live" is 0 or 1 because the API allows one live match per
+            championship. */}
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 sm:grid-cols-4">
+          {[{ label: "Teams", value: teams.length }, { label: "Matches", value: matches.length }, { label: "Completed", value: completedMatches.length }, { label: "Live", value: liveMatch ? 1 : 0 }].map(stat =>
             <div key={stat.label} className="rounded-xl bg-slate-50 px-4 py-3 text-center sm:text-left">
               <div className="text-2xl font-black text-slate-900">{stat.value}</div>
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stat.label}</div>
@@ -631,7 +684,15 @@ export function ChampionshipManagementPanel() {
           </label>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-3 border-t pt-4">
-          <Button onClick={() => action.mutate({ method: "PATCH", url: `/api/championships/${selected}`, body: { ...editForm, startDate: editForm.startDate || null, endDate: editForm.endDate || null }, success: "Championship details updated" })}>Save details</Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              disabled={!setupDirty || action.isPending}
+              onClick={() => action.mutate({ method: "PATCH", url: `/api/championships/${selected}`, body: { ...editForm, startDate: editForm.startDate || null, endDate: editForm.endDate || null }, success: "Championship details updated" })}
+            >
+              {action.isPending ? "Saving…" : "Save details"}
+            </Button>
+            <span className="text-xs text-slate-500">{setupDirty ? "Unsaved changes" : "All changes saved"}</span>
+          </div>
           <Button variant="outline" className="ml-auto border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => setDeleteTarget(detail.championship)}>
             <Trash2 size={16} /> Delete championship
           </Button>
@@ -657,7 +718,7 @@ export function ChampionshipManagementPanel() {
                 </div>
                 <div className="mt-3 flex items-center gap-1 border-t pt-3">
                   <Button asChild size="sm" variant="ghost"><a href={`/championship-teams/${team.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> View</a></Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditingTeam({ ...team })}><Edit3 size={15} /> Edit</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setEditingTeam({ ...team }); setEditingTeamOriginal(teamSignature(team)); }}><Edit3 size={15} /> Edit</Button>
                   <Button size="sm" variant="ghost" className="ml-auto text-red-600 hover:bg-red-50 hover:text-red-700" aria-label={`Delete ${team.name}`} onClick={() => setDeleteTeamTarget(team)}><Trash2 size={15} /></Button>
                 </div>
               </div>)}
@@ -754,10 +815,25 @@ export function ChampionshipManagementPanel() {
                 <p className="mt-3 text-xs text-slate-500">Standings are updated automatically when matches are completed. 2 points per win.</p>
               </div>}
         </SectionCard>
-        <SectionCard icon={CheckCircle2} title={`Completed matches (${completedMatches.length})`} description="Final scores for every match that has been played.">
+        <SectionCard icon={CheckCircle2} title={`Completed matches (${completedMatches.length})`} description="Newest first. Final scores for every match that has been played.">
           {completedMatches.length === 0
             ? <EmptyState icon={CheckCircle2} title="No completed matches yet." description="Results appear here as soon as a match ends." />
-            : <div className="space-y-3">{completedMatches.map(match => renderMatchCard(match, { hideResultLink: true }))}</div>}
+            : <div className="space-y-3">
+                <div className="relative max-w-sm">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <Input
+                    className="h-10 pl-9"
+                    type="search"
+                    aria-label="Search completed matches by team"
+                    placeholder="Search teams…"
+                    value={completedSearch}
+                    onChange={event => setCompletedSearch(event.target.value)}
+                  />
+                </div>
+                {visibleCompletedMatches.length === 0
+                  ? <EmptyState icon={Search} title="No completed matches found" description="Try another team name or search term." />
+                  : visibleCompletedMatches.map(match => renderMatchCard(match, { hideResultLink: true }))}
+              </div>}
         </SectionCard>
       </div>
     </>}
@@ -794,21 +870,27 @@ export function ChampionshipManagementPanel() {
         <div className="space-y-5">
           <div>
             <div className="mb-2 flex items-center gap-2"><span className="grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-xs font-bold text-white">1</span><label className="font-semibold">Team name and icon</label></div>
-            <div className="grid gap-3 sm:grid-cols-[1fr_170px]">
-              <Input className="h-11" placeholder="Enter a unique team name" value={teamName} onChange={event => setTeamName(event.target.value)} />
-              <div className="relative"><Smile className="absolute left-3 top-3 text-slate-400" size={18} /><Input className="h-11 pl-10 text-xl" aria-label="Team emoji" value={emoticon} onChange={event => setEmoticon(event.target.value)} maxLength={8} /></div>
+            <Input
+              className="h-11"
+              aria-label="Team name"
+              placeholder="Enter a unique team name"
+              value={teamName}
+              onChange={event => setTeamName(event.target.value)}
+              onBlur={() => setTeamNameTouched(true)}
+            />
+            {teamNameTouched && !teamName.trim() && (
+              <p className="mt-1.5 text-xs font-medium text-red-600">Team name is required</p>
+            )}
+            <div className="mt-3">
+              <TeamIconPicker value={emoticon} onChange={setEmoticon} />
             </div>
-            <div className="mt-2 flex gap-2">{["👏", "🔥", "❤️", "👍", "🦁", "🦅"].map(emoji => <button key={emoji} type="button" onClick={() => setEmoticon(emoji)} className={`h-9 w-9 rounded-lg border text-lg hover:bg-slate-50 ${emoticon === emoji ? "border-blue-500 bg-blue-50" : ""}`}>{emoji}</button>)}</div>
           </div>
           <div>
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2"><span className="grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-xs font-bold text-white">2</span><label className="flex items-center gap-1 font-semibold"><Crown size={16} className="text-amber-500" />Choose captain</label></div>
               <Button type="button" size="sm" variant="outline" onClick={() => setShowCreatePlayer(true)}><UserPlus size={15} />Create new player</Button>
             </div>
-            <select className="h-11 w-full rounded-md border bg-white px-3" value={captainId} onChange={event => handleCaptainChange(event.target.value)}>
-              <option value="">Select a registered player</option>
-              {availablePlayers.map(user => <option key={user.id} value={user.id}>{user.fullName || user.username}</option>)}
-            </select>
+            <PlayerSearchSelect players={availablePlayers} value={captainId} onChange={handleCaptainChange} />
             <p className="mt-2 text-xs text-slate-500">Captains are normal player accounts. Create one here if the person has not registered yet.</p>
             {availablePlayers.length === 0 && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">All registered players are already assigned. Create a new player to continue.</p>}
           </div>
@@ -818,12 +900,11 @@ export function ChampionshipManagementPanel() {
               ? <div className="rounded-xl border border-dashed p-4 text-center text-sm text-slate-500">Choose a captain first. The captain is added automatically and will not appear here.</div>
               : additionalCandidates.length === 0
                 ? <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">No other unassigned players are available.</div>
-                : <div className="grid max-h-44 gap-2 overflow-auto rounded-xl border p-3 sm:grid-cols-2">
-                    {additionalCandidates.map(user => <label key={user.id} className={`flex cursor-pointer items-center gap-3 rounded-lg p-2 text-sm ${memberIds.includes(user.id) ? "bg-blue-50 text-blue-800" : "hover:bg-slate-50"}`}>
-                      <input className="h-4 w-4" type="checkbox" checked={memberIds.includes(user.id)} onChange={event => setMemberIds(current => event.target.checked ? [...current, user.id] : current.filter(id => id !== user.id))} />
-                      <span>{user.fullName || user.username}</span>
-                    </label>)}
-                  </div>}
+                : <PlayerMultiSelect
+                    players={additionalCandidates}
+                    selectedIds={memberIds}
+                    onToggle={(id, next) => setMemberIds(current => (next ? [...current, id] : current.filter(existing => existing !== id)))}
+                  />}
           </div>
           <p className="text-xs text-slate-500">Captain + {memberIds.length} additional member{memberIds.length === 1 ? "" : "s"}</p>
         </div>
@@ -842,30 +923,64 @@ export function ChampionshipManagementPanel() {
           <DialogDescription>Update the team name, icon, captain and members.</DialogDescription>
         </DialogHeader>
         {editingTeam && <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="text-sm font-semibold sm:col-span-2">Team name<Input className="mt-1 font-normal" value={editingTeam.name} onChange={event => setEditingTeam({ ...editingTeam, name: event.target.value })} /></label>
-            <label className="text-sm font-semibold">Icon<Input className="mt-1 text-xl font-normal" value={editingTeam.emoticon} onChange={event => setEditingTeam({ ...editingTeam, emoticon: event.target.value })} /></label>
+          <div className="grid gap-3">
+            <label className="text-sm font-semibold">Team name<Input className="mt-1 font-normal" value={editingTeam.name} onChange={event => setEditingTeam({ ...editingTeam, name: event.target.value })} /></label>
           </div>
-          <label className="block text-sm font-semibold">Captain
-            <select className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm font-normal" value={editingTeam.captainId}
-              onChange={event => setEditingTeam({ ...editingTeam, captainId: Number(event.target.value), memberIds: [...new Set([...(editingTeam.memberIds ?? []), Number(event.target.value)])] })}>
-              {eligiblePlayers.map(user => <option key={user.id} value={user.id}>{user.fullName || user.username}</option>)}
-            </select>
-          </label>
           <div>
-            <p className="text-sm font-semibold">Members</p>
-            <div className="mt-1 grid max-h-52 gap-1 overflow-auto rounded-xl border p-2 sm:grid-cols-2">
-              {eligiblePlayers.filter(user => user.id !== editingTeam.captainId).map(user => <label key={user.id} className="flex items-center gap-2 rounded-lg p-2 text-sm hover:bg-slate-50">
-                <input type="checkbox" checked={(editingTeam.memberIds ?? []).includes(user.id)}
-                  onChange={event => setEditingTeam({ ...editingTeam, memberIds: event.target.checked ? [...editingTeam.memberIds, user.id] : editingTeam.memberIds.filter((id: number) => id !== user.id) })} />
-                {user.fullName || user.username}
-              </label>)}
+            <p className="text-sm font-semibold">Team icon</p>
+            <div className="mt-1">
+              <TeamIconPicker
+                id="edit-team-icon"
+                value={editingTeam.emoticon}
+                onChange={icon => setEditingTeam({ ...editingTeam, emoticon: icon })}
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Captain</p>
+            <div className="mt-1">
+              {/* Same rule as before: promoting a captain also guarantees their
+                  membership. Only the picker changed. */}
+              <PlayerSearchSelect
+                players={eligiblePlayers}
+                value={String(editingTeam.captainId ?? "")}
+                onChange={id => setEditingTeam({ ...editingTeam, captainId: Number(id), memberIds: [...new Set([...(editingTeam.memberIds ?? []), Number(id)])] })}
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-semibold">
+              Members
+              <span className="ml-2 font-normal text-slate-500">
+                Captain + {(editingTeam.memberIds ?? []).filter((id: number) => id !== editingTeam.captainId).length} additional
+              </span>
+            </p>
+            <div className="mt-1">
+              {/* Only the members the admin toggles change; the captain is kept
+                  out of this list and never removed by editing here. */}
+              <PlayerMultiSelect
+                players={eligiblePlayers.filter(user => user.id !== editingTeam.captainId)}
+                selectedIds={(editingTeam.memberIds ?? []).filter((id: number) => id !== editingTeam.captainId)}
+                onToggle={(id, next) =>
+                  setEditingTeam({
+                    ...editingTeam,
+                    memberIds: next
+                      ? [...new Set([...(editingTeam.memberIds ?? []), id])]
+                      : (editingTeam.memberIds ?? []).filter((existing: number) => existing !== id),
+                  })
+                }
+              />
             </div>
           </div>
         </div>}
         <DialogFooter>
           <Button variant="outline" onClick={() => setEditingTeam(null)}>Cancel</Button>
-          <Button onClick={() => { action.mutate({ method: "PATCH", url: `/api/championship-teams/${editingTeam.id}`, body: { name: editingTeam.name, captainId: editingTeam.captainId, memberIds: editingTeam.memberIds, emoticon: editingTeam.emoticon }, success: "Team updated" }); setEditingTeam(null); }}>Save changes</Button>
+          <Button
+            disabled={!editingTeam?.name?.trim() || !editTeamDirty || action.isPending}
+            onClick={() => { action.mutate({ method: "PATCH", url: `/api/championship-teams/${editingTeam.id}`, body: { name: editingTeam.name, captainId: editingTeam.captainId, memberIds: editingTeam.memberIds, emoticon: editingTeam.emoticon }, success: "Team updated" }); setEditingTeam(null); }}
+          >
+            {action.isPending ? "Saving…" : "Save changes"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

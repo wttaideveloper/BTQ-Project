@@ -1171,12 +1171,13 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 return next;
               });
             }
-            toast({
-              title: "Member Removed",
-              description:
-                data.message || `You have removed ${data.removedMemberName || "the member"} from ${data.teamName || "your team"}.`,
-              variant: "default",
-            });
+            // Captain-side removal success toast intentionally disabled; the updated team UI already confirms removal.
+            // toast({
+            //   title: "Member Removed",
+            //   description:
+            //     data.message || `You have removed ${data.removedMemberName || "the member"} from ${data.teamName || "your team"}.`,
+            //   variant: "default",
+            // });
             queryClient.invalidateQueries({
               queryKey: ["/api/team-invitations"],
             });
@@ -1808,6 +1809,8 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pendingInvitationsRef = useRef<HTMLDivElement>(null);
   const teamsOverviewRef = useRef<HTMLDivElement>(null);
+  const userTeamCardRef = useRef<HTMLDivElement>(null);
+  const shouldScrollToCreatedTeamRef = useRef(false);
   const prevPendingInviteCountRef = useRef(0);
   const prevCaptainJoinRequestCountRef = useRef(0);
   const prevTeamMemberIdsRef = useRef<Set<number>>(new Set());
@@ -1923,6 +1926,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     refetchInterval: 5000, // Refresh every 5 seconds
     staleTime: 2000, // Consider data stale after 2 seconds
   });
+  const [isRefreshingPlayers, setIsRefreshingPlayers] = useState(false);
 
   // NOTE: Fresh data fetching is now handled in Phase 3
   // Queries are blocked until cleanup completes (enabled: cleanupComplete)
@@ -2204,6 +2208,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       return await res.json();
     },
     onSuccess: (createdTeam: Team) => {
+      shouldScrollToCreatedTeamRef.current = true;
       if (createdTeam?.gameSessionId) {
         setGameSessionId(createdTeam.gameSessionId);
       }
@@ -2854,6 +2859,23 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
     scrollToRefWithRetry(teamsOverviewRef);
   }, [scrollToRefWithRetry]);
 
+  const scrollToUserTeamCard = useCallback(() => {
+    scrollToRefWithRetry(userTeamCardRef);
+  }, [scrollToRefWithRetry]);
+
+  useEffect(() => {
+    if (
+      !shouldScrollToCreatedTeamRef.current ||
+      !userTeam ||
+      currentStage !== "invite-opponent"
+    ) {
+      return;
+    }
+
+    shouldScrollToCreatedTeamRef.current = false;
+    scrollToUserTeamCard();
+  }, [currentStage, scrollToUserTeamCard, userTeam]);
+
   // Auto-scroll when new team invitations arrive (captain or member)
   useEffect(() => {
     if (!open) return;
@@ -3030,10 +3052,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       return data;
     },
     onSuccess: (data, variables) => {
-      toast({
-        title: "Member Removed",
-        description: "Member removed from team.",
-      });
+      // Captain-side removal success toast intentionally disabled; the updated team UI already confirms removal.
+      // toast({
+      //   title: "Member Removed",
+      //   description: "Member removed from team.",
+      // });
       // Invalidate teams data to force fresh fetch
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
       // Refresh available teams list so removed spots appear in join-as-member
@@ -3118,6 +3141,22 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       manualStageRef.current = false;
       setCurrentStage("enter");
     }
+  };
+
+  const handleReturnToSetup = () => {
+    setShowMemberRemovedDialog(false);
+    setMemberRemovedInfo(null);
+    setGameSessionId(null);
+    setReadyStatus(null);
+    setCountdown(null);
+    setIsReady(false);
+    setIsReadyLoading(false);
+    currentSessionIdRef.current = null;
+    sessionStartedAtRef.current = null;
+    manualStageRef.current = false;
+    setCurrentStage("enter");
+    queryClient.removeQueries({ queryKey: ["/api/teams", gameSessionId] });
+    queryClient.removeQueries({ queryKey: ["/api/team-battle/state", gameSessionId] });
   };
 
   const visiblePlayers = (onlineUsers || []).filter(
@@ -3516,8 +3555,11 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                       : false
                   : false;
                 return (
-                  <TeamDisplay
+                  <div
                     key={`${team.id}-${team.members.length}`}
+                    ref={isUserTeam ? userTeamCardRef : undefined}
+                  >
+                  <TeamDisplay
                     team={team}
                     currentUserId={user?.id || 0}
                     onReady={isUserTeam ? handleReadyToPlay : undefined}
@@ -3574,6 +3616,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                           : "Opponent Team"
                     }
                   />
+                  </div>
                 );
               })}
 
@@ -3938,28 +3981,28 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
+                      onClick={async () => {
                         // Invalidate and refetch with proper error handling
                         queryClient.invalidateQueries({ queryKey: ["/api/users/team-battle-available"] });
                         queryClient.invalidateQueries({ queryKey: ["/api/teams", gameSessionId] });
 
                         // Force refetch with a small delay to ensure server state is ready
-                        setTimeout(() => {
-                          refetchOnlineUsers();
+                        setIsRefreshingPlayers(true);
+                        try {
+                          await new Promise((resolve) => setTimeout(resolve, 100));
+                          await refetchOnlineUsers();
                           if (gameSessionId) {
-                            queryClient.refetchQueries({ queryKey: ["/api/teams", gameSessionId] });
+                            await queryClient.refetchQueries({ queryKey: ["/api/teams", gameSessionId] });
                           }
-                        }, 100);
-
-                        toast({
-                          title: "Refreshing...",
-                          description: "Looking for players in the lobby",
-                        });
+                        } finally {
+                          setIsRefreshingPlayers(false);
+                        }
                       }}
+                      disabled={isRefreshingPlayers}
                       className="h-7 w-7 sm:h-8 sm:w-8 p-0 hover:bg-green-100"
                       title="Refresh player list"
                     >
-                      <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-600" />
+                      <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-600 ${isRefreshingPlayers ? "animate-spin" : ""}`} />
                     </Button>
                   </div>
                 </div>
@@ -4542,13 +4585,22 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
           </div>
           <DialogFooter>
             <Button
+              onClick={handleReturnToSetup}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isRapidFire
+                ? "Return to Rapid Fire Setup"
+                : "Return to Team Battle Setup"}
+            </Button>
+            <Button
               onClick={() => {
                 setShowMemberRemovedDialog(false);
                 setMemberRemovedInfo(null);
                 onClose();
                 setLocation("/");
               }}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              variant="outline"
+              className="w-full"
             >
               Return Home
             </Button>

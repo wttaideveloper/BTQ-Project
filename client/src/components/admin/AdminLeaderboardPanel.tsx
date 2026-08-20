@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Trophy,
 } from "lucide-react";
+import { adminFetch } from "@/lib/queryClient";
 import { buildLeaderboardCsv, downloadCsv } from "@/lib/csv-export";
 
 interface LeaderboardPlayer {
@@ -59,7 +60,7 @@ export function AdminLeaderboardPanel() {
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["/api/leaderboard", gameType],
     queryFn: async () => {
-      const res = await fetch(`/api/leaderboard?gameType=${gameType}`);
+      const res = await adminFetch(`/api/leaderboard?gameType=${gameType}`);
       if (!res.ok) throw new Error("Failed to fetch leaderboard");
       return res.json();
     },
@@ -82,10 +83,11 @@ export function AdminLeaderboardPanel() {
     const fallbackFilename = `faithiq-leaderboard-${gameType}-${dateStamp}.csv`;
 
     try {
-      const res = await fetch(
-        `/api/admin/leaderboard/export?gameType=${gameType}`,
-        { credentials: "include" }
-      );
+      const res = await adminFetch(`/api/admin/leaderboard/export?gameType=${gameType}`);
+
+      if (res.status === 401) {
+        return;
+      }
 
       if (res.ok) {
         const csv = await res.text();

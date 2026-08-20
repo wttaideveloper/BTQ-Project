@@ -1,4 +1,4 @@
-import { apiRequest } from './queryClient';
+import { adminFetch, apiRequest } from './queryClient';
 
 // Fetch a list of questions
 export async function fetchQuestions(
@@ -18,9 +18,8 @@ export async function fetchQuestions(
     }
     if (searchQuery) params.append('search', searchQuery);
     
-    const res = await fetch(`/api/questions?${params.toString()}`, {
+    const res = await adminFetch(`/api/questions?${params.toString()}`, {
       method: 'GET',
-      credentials: 'include',
       cache: 'no-store',
     });
     if (!res.ok) {

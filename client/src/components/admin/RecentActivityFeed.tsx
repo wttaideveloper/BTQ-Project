@@ -16,6 +16,7 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
+import { adminFetch } from "@/lib/queryClient";
 
 type ActivityType = "signup" | "solo_game" | "multi_game" | "team_battle";
 
@@ -319,13 +320,9 @@ export function RecentActivityFeed() {
     useQuery<ActivityResponse & { range?: ActivityTimeRange }>({
       queryKey: ["/api/admin/recent-activity", timeRange],
       queryFn: async () => {
-        const res = await fetch(
-          `/api/admin/recent-activity?range=${timeRange}`,
-          {
-            credentials: "include",
-            cache: "no-store",
-          }
-        );
+        const res = await adminFetch(`/api/admin/recent-activity?range=${timeRange}`, {
+          cache: "no-store",
+        });
         if (!res.ok) throw new Error("Failed to fetch activity");
         return res.json();
       },

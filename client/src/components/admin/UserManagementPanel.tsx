@@ -12,7 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { getQueryFn } from "@/lib/queryClient";
+import { adminFetch, getQueryFn } from "@/lib/queryClient";
 import { RefreshCw, Search, Users, Download } from "lucide-react";
 import { buildUsersCsv, downloadCsv } from "@/lib/csv-export";
 
@@ -103,9 +103,11 @@ export function UserManagementPanel() {
     const fallbackFilename = `faithiq-users-${dateStamp}.csv`;
 
     try {
-      const res = await fetch("/api/admin/users/export", {
-        credentials: "include",
-      });
+      const res = await adminFetch("/api/admin/users/export");
+
+      if (res.status === 401) {
+        return;
+      }
 
       if (res.ok) {
         const csv = await res.text();

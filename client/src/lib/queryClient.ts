@@ -20,6 +20,41 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function isAdminRoute(pathname = typeof window !== "undefined" ? window.location.pathname : "") {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
+function clearStaleAdminAuthState() {
+  queryClient.setQueryData(["/api/user"], null);
+  queryClient.setQueryData(["/api/profile"], null);
+}
+
+function handleAdminSessionExpiry(res: Response) {
+  if (res.status !== 401 || typeof window === "undefined") {
+    return false;
+  }
+
+  if (!isAdminRoute() || window.location.pathname === "/admin/login") {
+    return false;
+  }
+
+  clearStaleAdminAuthState();
+  window.location.replace("/admin/login");
+  return true;
+}
+
+export async function adminFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const res = await fetch(input, {
+    ...init,
+    credentials: init?.credentials ?? "include",
+  });
+  handleAdminSessionExpiry(res);
+  return res;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -32,6 +67,7 @@ export async function apiRequest(
     credentials: "include",
   });
 
+  handleAdminSessionExpiry(res);
   await throwIfResNotOk(res);
   return res;
 }
@@ -45,6 +81,8 @@ export const getQueryFn: <T>(options: {
     const res = await fetch(queryKey[0] as string, {
       credentials: "include",
     });
+
+    handleAdminSessionExpiry(res);
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

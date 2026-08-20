@@ -87,6 +87,11 @@ function ensureAdmin(req: Request, res: Response, next: NextFunction) {
   if (req.isAuthenticated() && req.user && req.user.isAdmin) {
     return next();
   }
+  if (!req.isAuthenticated() || !req.user) {
+    return res
+      .status(401)
+      .json({ message: "Authentication required" });
+  }
   res
     .status(403)
     .json({ message: "You do not have permission to access this resource" });

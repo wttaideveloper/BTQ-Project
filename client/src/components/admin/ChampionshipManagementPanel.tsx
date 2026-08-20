@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { apiRequest } from "@/lib/queryClient";
+import { adminFetch, apiRequest } from "@/lib/queryClient";
 import { formatKickoff, isMatchReadyToStart, matchDisplayState } from "@/lib/championship";
 import { onEvent, sendGameEvent, setupGameSocket } from "@/lib/socket";
 import { useToast } from "@/hooks/use-toast";
@@ -354,7 +354,7 @@ export function ChampionshipManagementPanel() {
   const eligiblePlayers = users.filter(user => !user.isAdmin);
   const { data: detail } = useQuery<any>({
     queryKey: ["/api/championships", selected], enabled: !!selected,
-    queryFn: async () => { const response = await fetch(`/api/championships/${selected}`); if (!response.ok) throw new Error("Could not load championship"); return response.json(); },
+    queryFn: async () => { const response = await adminFetch(`/api/championships/${selected}`); if (!response.ok) throw new Error("Could not load championship"); return response.json(); },
   });
 
   useEffect(() => {

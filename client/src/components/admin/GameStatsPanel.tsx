@@ -18,7 +18,7 @@ import {
   Trophy,
   Users,
 } from "lucide-react";
-import { getQueryFn } from "@/lib/queryClient";
+import { adminFetch, getQueryFn } from "@/lib/queryClient";
 import { RecentActivityFeed } from "@/components/admin/RecentActivityFeed";
 import { buildGameStatsCsv, downloadCsv } from "@/lib/csv-export";
 
@@ -100,9 +100,7 @@ export function GameStatsPanel() {
   const { data: activityData } = useQuery<ActivityResponse>({
     queryKey: ["/api/admin/recent-activity", "30d"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/recent-activity?range=30d", {
-        credentials: "include",
-      });
+      const res = await adminFetch("/api/admin/recent-activity?range=30d");
       if (!res.ok) throw new Error("Failed to fetch activity");
       return res.json();
     },
@@ -119,9 +117,11 @@ export function GameStatsPanel() {
     const fallbackFilename = `faithiq-game-stats-${dateStamp}.csv`;
 
     try {
-      const res = await fetch("/api/admin/game-stats/export?limit=100", {
-        credentials: "include",
-      });
+      const res = await adminFetch("/api/admin/game-stats/export?limit=100");
+
+      if (res.status === 401) {
+        return;
+      }
 
       if (res.ok) {
         const csv = await res.text();

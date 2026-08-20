@@ -60,7 +60,7 @@ import {
   Volume2
 } from 'lucide-react';
 import { ChampionshipManagementPanel } from '@/components/admin/ChampionshipManagementPanel';
-import { apiRequest } from '@/lib/queryClient';
+import { adminFetch, apiRequest } from '@/lib/queryClient';
 import { 
   fetchQuestions, 
   createQuestion, 
@@ -289,9 +289,11 @@ const AdminPanel: React.FC = () => {
     });
 
     try {
-      const res = await fetch(`/api/admin/questions/export?${params}`, {
-        credentials: "include",
-      });
+      const res = await adminFetch(`/api/admin/questions/export?${params}`);
+
+      if (res.status === 401) {
+        return;
+      }
 
       if (res.ok) {
         const csv = await res.text();
@@ -320,7 +322,10 @@ const AdminPanel: React.FC = () => {
   } = useQuery({
     queryKey: ['/api/voice/status'],
     queryFn: async () => {
-      const response = await fetch('/api/voice/status');
+      const response = await adminFetch('/api/voice/status');
+      if (!response.ok) {
+        throw new Error('Failed to fetch voice status');
+      }
       return response.json();
     },
   });
@@ -333,7 +338,10 @@ const AdminPanel: React.FC = () => {
   } = useQuery({
     queryKey: ['/api/voice/list'],
     queryFn: async () => {
-      const response = await fetch('/api/voice/list');
+      const response = await adminFetch('/api/voice/list');
+      if (!response.ok) {
+        throw new Error('Failed to fetch voices');
+      }
       return response.json();
     },
     enabled: false, // Only fetch when needed
@@ -347,7 +355,10 @@ const AdminPanel: React.FC = () => {
   } = useQuery({
     queryKey: ['/api/voice/usage'],
     queryFn: async () => {
-      const response = await fetch('/api/voice/usage');
+      const response = await adminFetch('/api/voice/usage');
+      if (!response.ok) {
+        throw new Error('Failed to fetch voice usage');
+      }
       return response.json();
     },
     enabled: false, // Only fetch when needed
@@ -450,7 +461,7 @@ const AdminPanel: React.FC = () => {
       formData.append('description', data.description);
       formData.append('audio', data.audioFile);
       
-      const response = await fetch('/api/voice/upload', {
+      const response = await adminFetch('/api/voice/upload', {
         method: 'POST',
         body: formData,
       });
@@ -493,7 +504,7 @@ const AdminPanel: React.FC = () => {
 
   const setActiveVoiceMutation = useMutation({
     mutationFn: async (voiceId: string) => {
-      const response = await fetch('/api/voice/set-active', {
+      const response = await adminFetch('/api/voice/set-active', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

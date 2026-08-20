@@ -70,6 +70,7 @@ export default function AdminLoginPage() {
               Faith<span className="text-accent">IQ</span>
             </span>
           </div>
+          {/*
           <Button
             variant="ghost"
             className="text-white/70 hover:text-white hover:bg-white/10"
@@ -78,6 +79,7 @@ export default function AdminLoginPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Player site
           </Button>
+          */}
         </div>
       </header>
 

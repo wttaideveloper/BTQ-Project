@@ -230,6 +230,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
   // Ref for tracking previous ready status (used in effect below, after userTeam is defined)
   const prevReadyStatusRef = useRef<{ teamAReady: boolean; teamBReady: boolean } | null>(null);
+  const acceptedJoinRequestSessionRef = useRef<string | null>(null);
   const manualStageRef = useRef(false);
 
   const createGameSession = useCallback(() => {
@@ -282,6 +283,7 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
       // Dialog states
       setShowTeamNameDialog(false);
       setExitConfirmationMode(null);
+      acceptedJoinRequestSessionRef.current = null;
       manualStageRef.current = false;
       setShowOpponentDisconnectedDialog(false);
       setDisconnectedPlayerInfo(null);
@@ -755,6 +757,10 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
 
             // If accepted, show success message and update session
             if (data.status === "accepted" && data.gameSessionId) {
+              if (data.requesterId === user?.id) {
+                acceptedJoinRequestSessionRef.current = data.gameSessionId;
+              }
+
               toast({
                 title: "Join Request Accepted!",
                 description:
@@ -862,12 +868,19 @@ const TeamBattleSetup: React.FC<TeamBattleSetupProps> = ({
                 setGameSessionId(wsSessionId);
               }
 
-              // Show notification toast if message provided
-              if (data.message) {
+              const isAcceptedRequesterRosterUpdate =
+                data.message === "Team roster updated." &&
+                acceptedJoinRequestSessionRef.current === wsSessionId;
+
+              // The accepted requester already receives a specific acceptance toast.
+              if (data.message && !isAcceptedRequesterRosterUpdate) {
                 toast({
                   title: "Team Update",
                   description: data.message,
                 });
+              }
+              if (isAcceptedRequesterRosterUpdate) {
+                acceptedJoinRequestSessionRef.current = null;
               }
 
               // Always invalidate to ensure all clients refetch fresh data

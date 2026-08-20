@@ -1,7 +1,7 @@
 import express, { type Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { database } from "./database";
-import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser, expireJoinRequestsForUserOnTeamAndNotify, hasPlayerLeftAnyActiveGame, isChampionshipBattle } from "./socket";
+import { setupWebSocketServer, sendToUser, getOnlineUserIds, debugForceEndTeamBattle, listActiveGameSessions, expireAllPendingRequestsAndInvitationsForUser, expireJoinRequestsForUserOnTeamAndNotify, cancelPendingJoinRequestsForTeamAndNotify, hasPlayerLeftAnyActiveGame, isChampionshipBattle } from "./socket";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { generateQuestions } from "./openai";
@@ -3121,6 +3121,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const oldTeamAName = battle.teamAName || "Team A";
           const captainName = req.user?.username || "The captain";
 
+          await cancelPendingJoinRequestsForTeamAndNotify(
+            `${battleId}-team-a`,
+            battle.gameSessionId,
+            oldTeamAName
+          );
           await database.deleteTeamBattle(battleId);
 
           // Notify all participants
@@ -3180,6 +3185,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // IMPORTANT: capture existing Team B teammates BEFORE clearing them, so we can notify them
           const oldTeamBTeammateIds = extractTeammateIds(battle.teamBTeammates);
           const oldTeamBName = battle.teamBName || "Team B";
+          await cancelPendingJoinRequestsForTeamAndNotify(
+            `${battleId}-team-b`,
+            battle.gameSessionId,
+            oldTeamBName
+          );
           const updates: any = {
             teamBCaptainId: null,
             teamBName: null,

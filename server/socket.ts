@@ -980,6 +980,21 @@ export async function resetBattleState(options: BattleResetOptions): Promise<voi
         // proceed even if fetch fails
       }
 
+      if (battleRecord) {
+        await cancelPendingJoinRequestsForTeamAndNotify(
+          `${battleId}-team-a`,
+          battleRecord.gameSessionId,
+          battleRecord.teamAName
+        );
+        if (battleRecord.teamBCaptainId) {
+          await cancelPendingJoinRequestsForTeamAndNotify(
+            `${battleId}-team-b`,
+            battleRecord.gameSessionId,
+            battleRecord.teamBName
+          );
+        }
+      }
+
       await database.deleteTeamBattle(battleId);
 
       // If we have battle participants, clear their team battle status/mode
@@ -1671,6 +1686,42 @@ export async function expireJoinRequestsForUserOnTeamAndNotify(
   }
 }
 
+export async function cancelPendingJoinRequestsForTeamAndNotify(
+  teamId: string,
+  gameSessionId?: string,
+  teamName?: string | null
+): Promise<void> {
+  try {
+    const teamRequests = await database.getJoinRequestsByTeam(teamId);
+
+    for (const jr of teamRequests) {
+      if (jr.status !== "pending") continue;
+
+      await database.updateJoinRequestStatus(jr.id, "cancelled");
+      const requesterId = Number(jr.requester_id ?? jr.requesterId);
+      if (!Number.isFinite(requesterId)) continue;
+
+      const joinUpdatePayload = {
+        type: "join_request_updated",
+        joinRequestId: jr.id,
+        status: "cancelled" as const,
+        teamId,
+        requesterId,
+        teamName: teamName || undefined,
+        gameSessionId,
+        message:
+          "The team captain left the lobby, so your request to join this team was cancelled.",
+      };
+      sendToUser(requesterId, joinUpdatePayload);
+    }
+  } catch (error) {
+    console.error(
+      "[cancelPendingJoinRequestsForTeamAndNotify] Error cancelling join requests:",
+      error
+    );
+  }
+}
+
 /**
  * Expires all pending join requests and invitations for a user when they join a team.
  * This ensures a member can only be in one team at a time.
@@ -1991,6 +2042,12 @@ export function setupWebSocketServer(server: Server) {
                     // IMPORTANT: capture Team B teammates BEFORE clearing them, otherwise they won't receive any updates
                     const oldTeamBTeammateIds = extractTeammateIds(battle.teamBTeammates);
                     const oldTeamBName = battle.teamBName || "Team B";
+
+                    await cancelPendingJoinRequestsForTeamAndNotify(
+                      `${battle.id}-team-b`,
+                      disconnectGameSessionId,
+                      oldTeamBName
+                    );
 
                     // Clear Team B data from battle (this is specific to Team B leave)
                     updatedBattle = await database.updateTeamBattle(battle.id, {
@@ -4911,6 +4968,12 @@ async function handlePlayerLeavingTeamSetup(clientId: string, event: GameEvent) 
             : [];
           const oldTeamBName =
             battleForNotification?.teamBName || leavingTeam.name || "Team B";
+
+          await cancelPendingJoinRequestsForTeamAndNotify(
+            `${leavingTeam.teamBattleId}-team-b`,
+            gameSessionId,
+            oldTeamBName
+          );
 
           // Clear Team B data from battle (this is specific to Team B leave)
           await database.updateTeamBattle(leavingTeam.teamBattleId, {

@@ -179,6 +179,7 @@ export default function TeamBattleGame() {
   const confirmResolverRef = useRef<((value: boolean) => void) | null>(null);
   const [connected, setConnected] = useState(false);
   const connectedRef = useRef<boolean>(false); // Track connection state for beforeunload handler
+  const sawSocketDisconnectRef = useRef(false);
   const [suggestions, setSuggestions] = useState<SuggestionsByAnswerId>({});
   const [waitingForResults, setWaitingForResults] = useState(false);
   const [correctAnswerId, setCorrectAnswerId] = useState<string | null>(null);
@@ -570,10 +571,13 @@ export default function TeamBattleGame() {
                   playerTeam: data.team,
                   phase: prev.phase === "waiting" ? "ready" : prev.phase,
                 }));
-                toast({
-                  title: "Reconnected",
-                  description: data.message || "Successfully reconnected to your team",
-                });
+                if (sawSocketDisconnectRef.current) {
+                  toast({
+                    title: "Reconnected",
+                    description: data.message || "Successfully reconnected to your team",
+                  });
+                  sawSocketDisconnectRef.current = false;
+                }
               }
             }
             break;
@@ -1159,11 +1163,19 @@ export default function TeamBattleGame() {
       }
     };
 
+    const handleSocketClose = () => {
+      if (!isExitingRef.current) {
+        sawSocketDisconnectRef.current = true;
+      }
+    };
+
     socket.addEventListener("message", handleMessage);
+    socket.addEventListener("close", handleSocketClose);
 
     // Cleanup
     return () => {
       socket.removeEventListener("message", handleMessage);
+      socket.removeEventListener("close", handleSocketClose);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pageshow", resetLoaderIfNavigationCancelled);
       window.removeEventListener("focus", resetLoaderIfNavigationCancelled);

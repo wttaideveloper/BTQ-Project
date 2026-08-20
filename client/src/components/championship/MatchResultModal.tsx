@@ -70,6 +70,13 @@ export function MatchResultModal({
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#1b2559]/45">Your team</span>
           )}
         </span>
+        {isMine && verdict && (
+          <span
+            className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${verdict.className}`}
+          >
+            {verdict.label.toUpperCase()}
+          </span>
+        )}
         <span
           className={`shrink-0 text-2xl font-black tabular-nums ${
             isWinner ? "text-[#1b2559]" : "text-[#1b2559]/55"
@@ -117,14 +124,6 @@ export function MatchResultModal({
                   {winner?.emoticon} {winner?.name ?? "—"}
                 </p>
               </>
-            )}
-
-            {verdict && (
-              <span
-                className={`mt-3 inline-block rounded-full border px-3 py-1 text-xs font-black uppercase tracking-widest ${verdict.className}`}
-              >
-                {verdict.label}
-              </span>
             )}
 
             {playedOn && <p className="mt-3 text-xs text-[#1b2559]/50">Played {playedOn}</p>}

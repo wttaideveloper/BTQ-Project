@@ -311,7 +311,7 @@ function LiveMatchControl({
   </section>;
 }
 
-export function ChampionshipManagementPanel() {
+export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [selected, setSelected] = useState("");
@@ -348,6 +348,10 @@ export function ChampionshipManagementPanel() {
   const [showScheduleMatch, setShowScheduleMatch] = useState(false);
   const [deleteTeamTarget, setDeleteTeamTarget] = useState<any>(null);
   const [endMatchTarget, setEndMatchTarget] = useState<any>(null);
+
+  useEffect(() => {
+    setSelected("");
+  }, [resetSignal]);
 
   const { data: championships = [] } = useQuery<any[]>({ queryKey: ["/api/championships"] });
   const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });

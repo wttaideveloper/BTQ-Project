@@ -157,6 +157,7 @@ const AdminPanel: React.FC = () => {
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [showQuestionReview, setShowQuestionReview] = useState<boolean>(false);
   const [reviewQuestions, setReviewQuestions] = useState<Question[]>([]);
+  const [championshipsResetSignal, setChampionshipsResetSignal] = useState(0);
   
   // Helpers: dedupe and shuffle for safe downloads
   const normalizeQuestionKey = (text: string) =>
@@ -746,7 +747,10 @@ const AdminPanel: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setActiveTab("championships")}
+              onClick={() => {
+                setActiveTab("championships");
+                setChampionshipsResetSignal(signal => signal + 1);
+              }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${activeTab === "championships" ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}
             >
               <Trophy size={20} /><span className="font-medium">Championships</span>
@@ -1097,7 +1101,7 @@ const AdminPanel: React.FC = () => {
                 <AdminLeaderboardPanel />
               </div>
             )}
-            {activeTab === "championships" && <ChampionshipManagementPanel />}
+            {activeTab === "championships" && <ChampionshipManagementPanel resetSignal={championshipsResetSignal} />}
 
             {/* Voices Tab Content */}
             {activeTab === "voices" && (

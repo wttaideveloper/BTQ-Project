@@ -8,6 +8,14 @@ export default function Championship() {
   return <main className="min-h-screen bg-slate-950 text-white p-6"><div className="max-w-6xl mx-auto">
     <p className="text-amber-400 uppercase tracking-widest font-bold text-xs">FaithIQ Championship</p>
     <h1 className="text-4xl font-black mt-2">{data.championship.name}</h1><p className="text-slate-400 mt-2">{data.championship.description}</p>
+    <div className="mt-4">
+      <Link
+        href="/my-championship"
+        className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 hover:border-white/20"
+      >
+        Back to My Championship
+      </Link>
+    </div>
     {data.champion && <div className="my-6 p-5 rounded-2xl bg-amber-400 text-slate-950 text-xl font-black">🏆 Champion: {data.champion.name}</div>}
     <div className="grid lg:grid-cols-2 gap-6 mt-8">
       <section className="bg-white/5 rounded-2xl p-5"><h2 className="text-xl font-bold mb-4">Standings</h2>

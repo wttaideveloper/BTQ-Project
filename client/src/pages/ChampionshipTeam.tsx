@@ -14,7 +14,20 @@ export default function ChampionshipTeam() {
   if (isLoading) return <main className="min-h-screen bg-slate-950 text-white grid place-items-center">Loading team...</main>;
   if (error || !data) return <main className="min-h-screen bg-slate-950 text-white grid place-items-center">Team not found</main>;
   return <main className="min-h-screen bg-slate-950 text-white p-6"><div className="max-w-4xl mx-auto">
-    <Link href={`/championships/${data.team.championshipId}`} className="text-cyan-400">Back to championship</Link>
+    <div className="flex flex-wrap items-center gap-3">
+      <Link
+        href="/my-championship"
+        className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 hover:border-white/20"
+      >
+        Back to My Championship
+      </Link>
+      <Link
+        href={`/championships/${data.team.championshipId}`}
+        className="inline-flex items-center rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition-colors hover:bg-cyan-400/15 hover:border-cyan-400/50"
+      >
+        View Championship Details
+      </Link>
+    </div>
     <header className="mt-6 rounded-3xl bg-gradient-to-r from-cyan-500/20 to-violet-500/20 border border-white/10 p-8">
       <div className="text-6xl">{data.team.emoticon}</div><h1 className="text-4xl font-black mt-3">{data.team.name}</h1>
       <p className="text-slate-400 mt-2">Championship team</p>

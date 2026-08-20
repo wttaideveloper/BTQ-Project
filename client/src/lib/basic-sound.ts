@@ -48,6 +48,10 @@ export function playBasicSound(soundName: SoundName) {
     
     const audioElement = audioCache[soundName];
     if (audioElement) {
+      if (soundName === 'timeout') {
+        audioElement.volume = 0.10;
+      }
+
       // Reset and play
       audioElement.currentTime = 0;
       

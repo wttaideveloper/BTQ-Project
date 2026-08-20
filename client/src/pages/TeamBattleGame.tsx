@@ -1047,9 +1047,6 @@ export default function TeamBattleGame() {
             setShowRoundFeedback(false);
             toast({
               title: "Battle Finished!",
-              description: data.winner
-                ? `Strong finish by ${data.winner.name}!`
-                : "What a close battle — it's a draw!",
             });
             break;
 

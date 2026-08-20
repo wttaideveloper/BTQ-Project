@@ -140,8 +140,10 @@ function FocusMatchPanel({
   const teamSide = (team: ChampionshipTeamSummary | undefined, fallback: string, isMine: boolean) => (
     <div
       className={cn(
-        "flex min-w-0 flex-1 items-center",
-        compact ? "gap-2" : "flex-col gap-2 text-center",
+        "min-w-0",
+        compact
+          ? "flex w-fit flex-wrap items-center gap-x-2 gap-y-0.5"
+          : "flex flex-col items-center gap-2 text-center",
       )}
     >
       <span className={cn("shrink-0 leading-none", compact ? "text-xl" : "text-3xl sm:text-4xl")} aria-hidden="true">
@@ -156,6 +158,11 @@ function FocusMatchPanel({
       >
         {team?.name ?? fallback}
       </span>
+      {isMine && (
+        <span className="shrink-0 whitespace-nowrap text-[10px] font-black uppercase tracking-[0.16em] text-[#d4af37]/75">
+          (Your Team)
+        </span>
+      )}
     </div>
   );
 
@@ -196,8 +203,8 @@ function FocusMatchPanel({
 
         {compact ? (
           /* One balanced row: team · score · team. */
-          <div className="mt-3 flex items-center justify-center gap-3 sm:gap-5">
-            <div className="flex min-w-0 flex-1 justify-end">
+          <div className="mt-3 grid w-full items-center gap-x-8 gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-10">
+            <div className="justify-self-start text-left">
               {teamSide(teamA, "Team A", match.teamAId === myTeamId)}
             </div>
             <p className="champ-scoreline shrink-0 text-2xl font-black text-white sm:text-3xl">
@@ -205,7 +212,7 @@ function FocusMatchPanel({
               <span className="mx-1.5 align-middle text-base text-white/25">:</span>
               {match.teamBScore}
             </p>
-            <div className="flex min-w-0 flex-1 justify-start">
+            <div className="justify-self-end text-right">
               {teamSide(teamB, "Team B", match.teamBId === myTeamId)}
             </div>
           </div>
@@ -632,7 +639,6 @@ export default function MyChampionship() {
             )}
           </button>
         )}
-
 
         {/* 4 — Everything the player's own team plays, grouped by state. */}
         {myTeam && (

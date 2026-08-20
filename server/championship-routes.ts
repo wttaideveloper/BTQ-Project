@@ -28,6 +28,11 @@ const matchInput = z.object({
   championshipId: z.string().min(1), teamAId: z.string().min(1), teamBId: z.string().min(1),
   scheduledAt: z.coerce.date().nullish(), streamUrl: z.string().url().nullish(),
 });
+const normalizeChampionshipName = (value: string) => value.trim().toLowerCase();
+const localDateString = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const localDateTimeString = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 
 export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHandler) {
   const db = database.db;
@@ -106,6 +111,14 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
   app.post("/api/championships", ensureAdmin, async (req, res) => {
     try {
       const data = championshipInput.parse(req.body);
+      if (data.startDate && localDateString(data.startDate) < localDateString(new Date())) {
+        return res.status(400).json({ message: "Start date cannot be in the past" });
+      }
+      const normalizedName = normalizeChampionshipName(data.name);
+      const existing = await db.select({ id: championships.id, name: championships.name }).from(championships);
+      if (existing.some(championship => normalizeChampionshipName(championship.name) === normalizedName)) {
+        return res.status(409).json({ message: "A championship with this name already exists." });
+      }
       // "active" denotes the single current championship: /me/dashboard takes
       // active[0], and POST /api/championship-matches/:id/start refuses any
       // championship that is not active. PATCH already demotes every other
@@ -129,6 +142,13 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       const data = championshipFields.partial().refine(value => !value.startDate || !value.endDate || value.endDate >= value.startDate, {
         message: "End date must be on or after the start date",
       }).parse(req.body);
+      if (data.name !== undefined) {
+        const normalizedName = normalizeChampionshipName(data.name);
+        const existing = await db.select({ id: championships.id, name: championships.name }).from(championships);
+        if (existing.some(championship => championship.id !== req.params.id && normalizeChampionshipName(championship.name) === normalizedName)) {
+          return res.status(409).json({ message: "A championship with this name already exists." });
+        }
+      }
       if (data.status === "active") {
         await db.update(championships).set({ status: "draft", updatedAt: new Date() })
           .where(and(eq(championships.status, "active"), ne(championships.id, req.params.id)));
@@ -346,6 +366,9 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
   app.post("/api/championship-matches", ensureAdmin, async (req, res) => {
     try {
       const data = matchInput.parse(req.body);
+      if (data.scheduledAt && localDateTimeString(data.scheduledAt) < localDateTimeString(new Date())) {
+        return res.status(400).json({ message: "Match date and time cannot be in the past" });
+      }
       if (data.teamAId === data.teamBId) throw new Error("A team cannot play itself");
       const selected = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, data.championshipId));
       if (!selected.some(t => t.id === data.teamAId) || !selected.some(t => t.id === data.teamBId))
@@ -363,6 +386,14 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       const [existing] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
       if (!existing) return res.status(404).json({ message: "Match not found" });
       if (existing.status === "completed") throw new Error("Completed matches cannot be edited");
+      if (data.scheduledAt) {
+        const submittedAt = localDateTimeString(data.scheduledAt);
+        const nowLocalDateTime = localDateTimeString(new Date());
+        const existingAt = existing.scheduledAt ? localDateTimeString(new Date(existing.scheduledAt)) : null;
+        if (submittedAt < nowLocalDateTime && submittedAt !== existingAt) {
+          return res.status(400).json({ message: "Match date and time cannot be in the past" });
+        }
+      }
       const teamAId = data.teamAId ?? existing.teamAId;
       const teamBId = data.teamBId ?? existing.teamBId;
       // Team A/B are snapshotted into the team_battles row the moment a match

@@ -338,6 +338,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   // admin actually modifies something.
   const [editingTeamOriginal, setEditingTeamOriginal] = useState<string>("");
   const [editingMatch, setEditingMatch] = useState<any>(null);
+  const [editingMatchInitialScheduledAt, setEditingMatchInitialScheduledAt] = useState("");
   const [winnerOverrides, setWinnerOverrides] = useState<Record<string, string>>({});
   const [showCreatePlayer, setShowCreatePlayer] = useState(false);
   const [playerForm, setPlayerForm] = useState({ fullName: "", username: "", email: "", password: "" });
@@ -348,6 +349,12 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   const [showScheduleMatch, setShowScheduleMatch] = useState(false);
   const [deleteTeamTarget, setDeleteTeamTarget] = useState<any>(null);
   const [endMatchTarget, setEndMatchTarget] = useState<any>(null);
+  const normalizeChampionshipName = (value: string) => value.trim().toLowerCase();
+  const formatLocalDateTime = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const todayLocalDate = new Date();
+  const createToday = `${todayLocalDate.getFullYear()}-${String(todayLocalDate.getMonth() + 1).padStart(2, "0")}-${String(todayLocalDate.getDate()).padStart(2, "0")}`;
+  const createMatchMinDateTime = formatLocalDateTime(new Date());
 
   useEffect(() => {
     setSelected("");
@@ -386,6 +393,9 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   });
   const createChampionship = useMutation({
     mutationFn: async () => {
+      if (createChampionshipNameTaken) {
+        throw new Error("A championship with this name already exists.");
+      }
       const response = await apiRequest("POST", "/api/championships", { ...createForm, description: createForm.description || null, startDate: createForm.startDate || null, endDate: createForm.endDate || null, status: "draft" });
       return response.json();
     },
@@ -409,6 +419,18 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   const setupDirty = (["name", "description", "startDate", "endDate"] as const).some(
     field => editForm[field].trim() !== savedForm[field].trim(),
   );
+  const createChampionshipNameTaken =
+    !!createForm.name.trim() &&
+    championships.some(championship => normalizeChampionshipName(championship.name) === normalizeChampionshipName(createForm.name));
+  const editChampionshipNameTaken =
+    !!selected &&
+    !!editForm.name.trim() &&
+    championships.some(championship =>
+      championship.id !== selected &&
+      normalizeChampionshipName(championship.name) === normalizeChampionshipName(editForm.name),
+    );
+  const createStartDateInvalid = !!createForm.startDate && createForm.startDate < createToday;
+  const createEndDateInvalid = !!createForm.startDate && !!createForm.endDate && createForm.endDate < createForm.startDate;
 
   const assignedPlayerIds = new Set<number>((detail?.teams ?? []).flatMap((team: any) => team.memberIds ?? []));
   const availablePlayers = eligiblePlayers.filter(user => !assignedPlayerIds.has(user.id));
@@ -452,12 +474,36 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   };
   const handleScheduleMatch = async () => {
     try {
+      const nowLocalDateTime = formatLocalDateTime(new Date());
+      if (scheduledAt && scheduledAt < nowLocalDateTime) throw new Error("Scheduled time cannot be in the past");
       await apiRequest("POST", "/api/championship-matches", { championshipId: selected, teamAId, teamBId, scheduledAt: scheduledAt || null, streamUrl: streamUrl.trim() || null });
       setTeamAId(""); setTeamBId(""); setScheduledAt(""); setStreamUrl("");
       setShowScheduleMatch(false);
       await refresh();
       toast({ title: "Match scheduled", description: "The fixture is ready in Upcoming matches." });
     } catch (error) { toast({ title: "Could not schedule match", description: error instanceof Error ? error.message : "Please check the match details", variant: "destructive" }); }
+  };
+  const handleSaveMatch = async () => {
+    if (!editingMatch) return;
+    try {
+      const nowLocalDateTime = formatLocalDateTime(new Date());
+      const nextScheduledAt = editingMatch.scheduledAt || "";
+      if (nextScheduledAt && nextScheduledAt < nowLocalDateTime && nextScheduledAt !== editingMatchInitialScheduledAt) {
+        throw new Error("Scheduled time cannot be in the past");
+      }
+      await apiRequest("PATCH", `/api/championship-matches/${editingMatch.id}`, {
+        teamAId: editingMatch.teamAId,
+        teamBId: editingMatch.teamBId,
+        scheduledAt: nextScheduledAt || null,
+        streamUrl: editingMatch.streamUrl || null,
+      });
+      await refresh();
+      setEditingMatch(null);
+      setEditingMatchInitialScheduledAt("");
+      toast({ title: "Match updated" });
+    } catch (error) {
+      toast({ title: "Could not update match", description: error instanceof Error ? error.message : "Please check the match details", variant: "destructive" });
+    }
   };
 
   const counts = {
@@ -594,7 +640,11 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
               onClick={() => action.mutate({ url: `/api/championship-matches/${match.id}/start`, body: {}, success: "Match is live" }, { onSuccess: () => scrollToSection(SECTION.live) })}>
               <Play size={15} /> Start Match
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setEditingMatch({ ...match, scheduledAt: match.scheduledAt ? new Date(match.scheduledAt).toISOString().slice(0, 16) : "" })}>
+            <Button size="sm" variant="outline" onClick={() => {
+              const initialScheduledAt = match.scheduledAt ? new Date(match.scheduledAt).toISOString().slice(0, 16) : "";
+              setEditingMatch({ ...match, scheduledAt: initialScheduledAt });
+              setEditingMatchInitialScheduledAt(initialScheduledAt);
+            }}>
               <Edit3 size={15} /> Edit
             </Button>
             {/* Available before kick-off so the operator can load the overlay into OBS in advance. */}
@@ -725,6 +775,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
           <label className="text-sm font-semibold text-slate-700">Championship name
             <Input className="mt-1 font-normal" value={editForm.name} onChange={event => setEdit("name", event.target.value)} />
           </label>
+          {editChampionshipNameTaken && <p className="text-xs font-medium text-red-600 lg:col-span-2">A championship with this name already exists.</p>}
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm font-semibold text-slate-700">Start date
               <Input className="mt-1 font-normal" type="date" value={editForm.startDate} onChange={event => setEdit("startDate", event.target.value)} />
@@ -740,7 +791,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
         <div className="mt-5 flex flex-wrap items-center gap-3 border-t pt-4">
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              disabled={!setupDirty || action.isPending}
+              disabled={!setupDirty || editChampionshipNameTaken || action.isPending}
               onClick={() => action.mutate({ method: "PATCH", url: `/api/championships/${selected}`, body: { ...editForm, startDate: editForm.startDate || null, endDate: editForm.endDate || null }, success: "Championship details updated" })}
             >
               {action.isPending ? "Saving…" : "Save details"}
@@ -901,15 +952,16 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
         </DialogHeader>
         <div className="space-y-3">
           <label className="text-sm font-semibold">Championship name<Input className="mt-1 font-normal" placeholder="e.g. Summer League" value={createForm.name} onChange={event => setCreate("name", event.target.value)} /></label>
+          {createChampionshipNameTaken && <p className="text-xs font-medium text-red-600">A championship with this name already exists.</p>}
           <label className="text-sm font-semibold">Description <span className="font-normal text-slate-400">(optional)</span><Textarea className="mt-1 font-normal" rows={3} value={createForm.description} onChange={event => setCreate("description", event.target.value)} /></label>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm font-semibold">Start date<Input className="mt-1 font-normal" type="date" value={createForm.startDate} onChange={event => setCreate("startDate", event.target.value)} /></label>
-            <label className="text-sm font-semibold">End date<Input className="mt-1 font-normal" type="date" value={createForm.endDate} onChange={event => setCreate("endDate", event.target.value)} /></label>
+            <label className="text-sm font-semibold">Start date<Input className="mt-1 font-normal" type="date" min={createToday} value={createForm.startDate} onChange={event => setCreate("startDate", event.target.value)} />{createStartDateInvalid && <p className="mt-1 text-xs font-medium text-red-600">Start date cannot be in the past.</p>}</label>
+            <label className="text-sm font-semibold">End date<Input className="mt-1 font-normal" type="date" min={createForm.startDate || undefined} value={createForm.endDate} onChange={event => setCreate("endDate", event.target.value)} />{createEndDateInvalid && <p className="mt-1 text-xs font-medium text-red-600">End date cannot be before the start date.</p>}</label>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowCreateChampionship(false)}>Cancel</Button>
-          <Button disabled={!createForm.name.trim() || createChampionship.isPending} onClick={() => createChampionship.mutate()}>{createChampionship.isPending ? "Creating..." : "Create championship"}</Button>
+          <Button disabled={!createForm.name.trim() || createChampionshipNameTaken || createStartDateInvalid || createEndDateInvalid || createChampionship.isPending} onClick={() => createChampionship.mutate()}>{createChampionship.isPending ? "Creating..." : "Create championship"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1064,7 +1116,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold">Match date and time <span className="font-normal text-slate-400">(optional)</span></label>
-            <Input className="h-11" type="datetime-local" value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} />
+            <Input className="h-11" type="datetime-local" min={createMatchMinDateTime} value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} />
             <p className="mt-1 text-xs text-slate-500">The date is informational. The match only starts when an admin clicks Start Match.</p>
           </div>
           <div>
@@ -1081,7 +1133,12 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
     </Dialog>
 
     {/* Edit match */}
-    <Dialog open={!!editingMatch} onOpenChange={open => !open && setEditingMatch(null)}>
+    <Dialog open={!!editingMatch} onOpenChange={open => {
+      if (!open) {
+        setEditingMatch(null);
+        setEditingMatchInitialScheduledAt("");
+      }
+    }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit match</DialogTitle>
@@ -1098,7 +1155,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
             </select>
           </div>
           <label className="block text-sm font-semibold">Match date and time
-            <Input className="mt-1 font-normal" type="datetime-local" value={editingMatch.scheduledAt ?? ""} onChange={event => setEditingMatch({ ...editingMatch, scheduledAt: event.target.value })} />
+            <Input className="mt-1 font-normal" type="datetime-local" min={createMatchMinDateTime} value={editingMatch.scheduledAt ?? ""} onChange={event => setEditingMatch({ ...editingMatch, scheduledAt: event.target.value })} />
           </label>
           <label className="block text-sm font-semibold">Live stream link
             <Input className="mt-1 font-normal" placeholder="https://stream.example.com/live.m3u8" value={editingMatch.streamUrl ?? ""} onChange={event => setEditingMatch({ ...editingMatch, streamUrl: event.target.value })} />
@@ -1106,7 +1163,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
         </div>}
         <DialogFooter>
           <Button variant="outline" onClick={() => setEditingMatch(null)}>Cancel</Button>
-          <Button onClick={() => { action.mutate({ method: "PATCH", url: `/api/championship-matches/${editingMatch.id}`, body: { teamAId: editingMatch.teamAId, teamBId: editingMatch.teamBId, scheduledAt: editingMatch.scheduledAt || null, streamUrl: editingMatch.streamUrl || null }, success: "Match updated" }); setEditingMatch(null); }}>Save match</Button>
+          <Button onClick={handleSaveMatch}>Save match</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

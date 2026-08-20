@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
@@ -292,6 +292,15 @@ function FocusMatchPanel({
 }
 
 export default function MyChampionship() {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+  }, []);
+
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();

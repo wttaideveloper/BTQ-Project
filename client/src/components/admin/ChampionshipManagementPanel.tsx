@@ -641,7 +641,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
               <Play size={15} /> Start Match
             </Button>
             <Button size="sm" variant="outline" onClick={() => {
-              const initialScheduledAt = match.scheduledAt ? new Date(match.scheduledAt).toISOString().slice(0, 16) : "";
+              const initialScheduledAt = match.scheduledAt ? formatLocalDateTime(new Date(match.scheduledAt)) : "";
               setEditingMatch({ ...match, scheduledAt: initialScheduledAt });
               setEditingMatchInitialScheduledAt(initialScheduledAt);
             }}>

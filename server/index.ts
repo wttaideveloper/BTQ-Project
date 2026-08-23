@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
 import { log } from "./logger";
+import { completeExpiredChampionships, startChampionshipLifecycle } from "./championship-lifecycle";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -151,6 +152,8 @@ app.use((req, res, next) => {
 
   // Run passive cleanup of clearly abandoned team_battles before starting the server.
   await cleanupVeryOldBattles();
+  await completeExpiredChampionships();
+  startChampionshipLifecycle();
 
   server.listen(port, "localhost", () => {
     log(`serving on port ${port}`);

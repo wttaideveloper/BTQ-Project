@@ -3,6 +3,7 @@ import { and, eq, inArray, ne, or } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { database } from "./database";
+import { completeExpiredChampionships, hasChampionshipEndDatePassed } from "./championship-lifecycle";
 import {
   championships, championshipMatches, championshipTeams, users,
 } from "@shared/schema";
@@ -92,10 +93,13 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     }
   };
 
-  app.get("/api/championships", async (_req, res) =>
-    res.json(await db.select().from(championships)));
+  app.get("/api/championships", async (_req, res) => {
+    await completeExpiredChampionships();
+    res.json(await db.select().from(championships));
+  });
   app.get("/api/championships/me/dashboard", async (req, res) => {
     if (!req.isAuthenticated() || !req.user?.id) return res.status(401).json({ message: "Authentication required" });
+    await completeExpiredChampionships();
     const active = await db.select().from(championships).where(eq(championships.status, "active"));
     const championship = active[0] ?? null;
     if (!championship) return res.json({ championship: null, team: null, matches: [] });
@@ -142,6 +146,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       const data = championshipFields.partial().refine(value => !value.startDate || !value.endDate || value.endDate >= value.startDate, {
         message: "End date must be on or after the start date",
       }).parse(req.body);
+      await completeExpiredChampionships();
       if (data.name !== undefined) {
         const normalizedName = normalizeChampionshipName(data.name);
         const existing = await db.select({ id: championships.id, name: championships.name }).from(championships);
@@ -150,6 +155,12 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
         }
       }
       if (data.status === "active") {
+        const [existing] = await db.select({ endDate: championships.endDate }).from(championships)
+          .where(eq(championships.id, req.params.id));
+        const effectiveEndDate = data.endDate === undefined ? existing?.endDate : data.endDate;
+        if (hasChampionshipEndDatePassed(effectiveEndDate)) {
+          return res.status(400).json({ message: "An ended championship cannot be activated." });
+        }
         await db.update(championships).set({ status: "draft", updatedAt: new Date() })
           .where(and(eq(championships.status, "active"), ne(championships.id, req.params.id)));
       }
@@ -176,6 +187,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
   });
 
   app.get("/api/championships/:id", async (req, res) => {
+    await completeExpiredChampionships();
     const [championship] = await db.select().from(championships).where(eq(championships.id, req.params.id));
     if (!championship) return res.status(404).json({ message: "Championship not found" });
     const teams = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, req.params.id));
@@ -429,6 +441,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     // Previously this route had no try/catch, so any driver error (see the
     // duplicate-key case below) surfaced as an opaque 500.
     try {
+      await completeExpiredChampionships();
       const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
       if (!match) return res.status(404).json({ message: "Match not found" });
       const [championship] = await db.select().from(championships).where(eq(championships.id, match.championshipId));

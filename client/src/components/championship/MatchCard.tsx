@@ -9,6 +9,7 @@ import {
   type ChampionshipTeamSummary,
 } from "@/lib/championship";
 import { MatchOutcomeBadge, MatchStatusBadge } from "./StatusBadges";
+import { TeamAvatar } from "./TeamAvatar";
 
 function TeamLine({
   team,
@@ -29,9 +30,7 @@ function TeamLine({
 }) {
   return (
     <div className="flex items-center gap-2.5 py-0.5">
-      <span className="text-lg leading-none shrink-0" aria-hidden="true">
-        {team?.emoticon ?? "🏳️"}
-      </span>
+      <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallbackLabel} logo`} className="h-5 w-5 shrink-0 text-lg" />
       <span
         className={cn(
           "min-w-0 flex-1 truncate font-semibold",

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS championships (
 CREATE TABLE IF NOT EXISTS championship_teams (
   id text PRIMARY KEY, championship_id text NOT NULL REFERENCES championships(id) ON DELETE CASCADE,
   name text NOT NULL, captain_id integer NOT NULL REFERENCES users(id),
-  member_ids json NOT NULL DEFAULT '[]', emoticon text NOT NULL DEFAULT '👏',
+  member_ids json NOT NULL DEFAULT '[]', emoticon text NOT NULL DEFAULT '👏', logo_url text,
   created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now(),
   UNIQUE (championship_id, name)
 );

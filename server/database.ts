@@ -4047,6 +4047,7 @@ class PostgreSQLDatabase implements IDatabase {
             captain_id INTEGER NOT NULL REFERENCES users(id),
             member_ids JSON NOT NULL DEFAULT '[]',
             emoticon TEXT NOT NULL DEFAULT '👏',
+            logo_url TEXT,
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW(),
             UNIQUE (championship_id, name)

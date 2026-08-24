@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Radio, Trophy } from "lucide-react";
 import { FaithIQTreeMark } from "@/components/championship/game/FaithIQTreeMark";
+import { TeamAvatar } from "@/components/championship/TeamAvatar";
 
 /**
  * The broadcast stage.
@@ -22,6 +23,8 @@ export function WatchStage({
   teamBName,
   teamAEmoticon,
   teamBEmoticon,
+  teamALogoUrl,
+  teamBLogoUrl,
   teamAScore,
   teamBScore,
   winnerName,
@@ -41,6 +44,8 @@ export function WatchStage({
   teamBName?: string;
   teamAEmoticon?: string;
   teamBEmoticon?: string;
+  teamALogoUrl?: string | null;
+  teamBLogoUrl?: string | null;
   teamAScore: number;
   teamBScore: number;
   /** From match.winnerTeamId, resolved by the page. Null for a draw or an unfinished match. */
@@ -125,7 +130,7 @@ export function WatchStage({
             {status !== "upcoming" && !showQuestion && (
               <div className="mt-5 flex items-center justify-center gap-3 sm:gap-6">
                 <span className="flex min-w-0 flex-1 items-center justify-end gap-2">
-                  <span className="text-xl" aria-hidden="true">{teamAEmoticon ?? "🏳️"}</span>
+                  <TeamAvatar logoUrl={teamALogoUrl} emoticon={teamAEmoticon} alt={`${teamAName ?? "Team A"} logo`} className="h-6 w-6 text-xl" />
                   <span className="truncate text-sm font-bold text-white/85 sm:text-base">{teamAName ?? "Team A"}</span>
                 </span>
                 <span className="champ-scoreline shrink-0 text-3xl font-black text-white sm:text-4xl">
@@ -134,7 +139,7 @@ export function WatchStage({
                   {teamBScore}
                 </span>
                 <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="text-xl" aria-hidden="true">{teamBEmoticon ?? "🏳️"}</span>
+                  <TeamAvatar logoUrl={teamBLogoUrl} emoticon={teamBEmoticon} alt={`${teamBName ?? "Team B"} logo`} className="h-6 w-6 text-xl" />
                   <span className="truncate text-sm font-bold text-white/85 sm:text-base">{teamBName ?? "Team B"}</span>
                 </span>
               </div>

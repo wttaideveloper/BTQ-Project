@@ -46,6 +46,7 @@ export interface ChampionshipTeamSummary {
   captainId: number;
   memberIds?: number[] | null;
   emoticon: string;
+  logoUrl?: string | null;
 }
 
 export interface ChampionshipMatchSummary {

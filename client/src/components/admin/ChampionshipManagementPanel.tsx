@@ -4,7 +4,7 @@ import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, Clock3, Crown, Edit3,
   ExternalLink, Eye, Info, MonitorPlay, Play, Plus, Radio, Settings2, Smile, Sparkles,
   Search, Trash2, Trophy, Tv, UserPlus, Users,
-  Check, Copy,
+  Check, Copy, ImagePlus, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { TeamIconPicker } from "@/components/admin/championship/TeamIconPicker";
+import { TeamAvatar } from "@/components/championship/TeamAvatar";
 import { PlayerSearchSelect, PlayerMultiSelect, playerLabel } from "@/components/admin/championship/PlayerPickers";
 
 type ChampionshipForm = { name: string; description: string; startDate: string; endDate: string };
@@ -108,7 +109,7 @@ function SectionCard({ id, title, description, icon: Icon, action, children }: {
  */
 function LiveScoreCard({ team, value }: { team: any; value: number }) {
   return <div className="rounded-xl border bg-slate-50 p-4 text-center">
-    <p className="truncate text-sm font-bold text-slate-800">{team?.emoticon} {team?.name ?? "Team"}</p>
+    <p className="flex items-center justify-center gap-1.5 truncate text-sm font-bold text-slate-800"><TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? "Team"} logo`} className="h-5 w-5 shrink-0 text-base" />{team?.name ?? "Team"}</p>
     <p className="mt-2 text-4xl font-black tabular-nums text-slate-900" aria-label={`${team?.name ?? "Team"} score`}>{value}</p>
     <p className="mt-1 text-xs text-slate-500">Score</p>
   </div>;
@@ -327,6 +328,11 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   const [captainId, setCaptainId] = useState("");
   const [memberIds, setMemberIds] = useState<number[]>([]);
   const [emoticon, setEmoticon] = useState("👏");
+  const [teamLogoFile, setTeamLogoFile] = useState<File | null>(null);
+  const [teamLogoPreview, setTeamLogoPreview] = useState<string | null>(null);
+  const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
+  const [editLogoPreview, setEditLogoPreview] = useState<string | null>(null);
+  const [editLogoRemoved, setEditLogoRemoved] = useState(false);
   // Inline validation only after the field has been left, so it never nags
   // while the admin is still typing.
   const [teamNameTouched, setTeamNameTouched] = useState(false);
@@ -412,11 +418,29 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       ? JSON.stringify({
           name: (team.name ?? "").trim(),
           emoticon: team.emoticon ?? "",
+          logoUrl: team.logoUrl ?? null,
           captainId: team.captainId ?? null,
           memberIds: [...(team.memberIds ?? [])].sort((x: number, y: number) => x - y),
         })
       : "";
-  const editTeamDirty = !!editingTeam && teamSignature(editingTeam) !== editingTeamOriginal;
+  const editTeamDirty = !!editingTeam && (teamSignature(editingTeam) !== editingTeamOriginal || !!editLogoFile || editLogoRemoved);
+
+  useEffect(() => () => { if (teamLogoPreview) URL.revokeObjectURL(teamLogoPreview); }, [teamLogoPreview]);
+  useEffect(() => () => { if (editLogoPreview) URL.revokeObjectURL(editLogoPreview); }, [editLogoPreview]);
+
+  const readUploadError = async (response: Response) => {
+    const text = await response.text();
+    try { return JSON.parse(text).message || text; } catch { return text || response.statusText; }
+  };
+  const chooseCreateLogo = (file?: File) => {
+    setTeamLogoFile(file ?? null);
+    setTeamLogoPreview(file ? URL.createObjectURL(file) : null);
+  };
+  const chooseEditLogo = (file?: File) => {
+    setEditLogoFile(file ?? null);
+    setEditLogoPreview(file ? URL.createObjectURL(file) : null);
+    if (file) setEditLogoRemoved(false);
+  };
 
   const setupDirty = (["name", "description", "startDate", "endDate"] as const).some(
     field => editForm[field].trim() !== savedForm[field].trim(),
@@ -447,8 +471,16 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   };
   const handleCreateTeam = async () => {
     try {
-      await apiRequest("POST", "/api/championship-teams", { championshipId: selected, name: teamName.trim(), captainId: Number(captainId), memberIds, emoticon });
-      setTeamName(""); setCaptainId(""); setMemberIds([]); setEmoticon("👏");
+      const body = { championshipId: selected, name: teamName.trim(), captainId: Number(captainId), memberIds, emoticon };
+      if (teamLogoFile) {
+        const form = new FormData();
+        form.set("championshipId", body.championshipId); form.set("name", body.name);
+        form.set("captainId", String(body.captainId)); form.set("memberIds", JSON.stringify(body.memberIds)); form.set("emoticon", body.emoticon);
+        form.set("logo", teamLogoFile);
+        const response = await adminFetch("/api/championship-teams", { method: "POST", body: form });
+        if (!response.ok) throw new Error(await readUploadError(response));
+      } else await apiRequest("POST", "/api/championship-teams", body);
+      setTeamName(""); setCaptainId(""); setMemberIds([]); setEmoticon("👏"); chooseCreateLogo();
       setShowAddTeam(false);
       await refresh();
       toast({ title: "Team created", description: "The captain and members are now assigned." });
@@ -505,6 +537,24 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       toast({ title: "Match updated" });
     } catch (error) {
       toast({ title: "Could not update match", description: error instanceof Error ? error.message : "Please check the match details", variant: "destructive" });
+    }
+  };
+  const handleEditTeam = async () => {
+    if (!editingTeam) return;
+    try {
+      const body = { name: editingTeam.name, captainId: editingTeam.captainId, memberIds: editingTeam.memberIds, emoticon: editingTeam.emoticon, ...(editLogoRemoved ? { logoUrl: null } : {}) };
+      if (editLogoFile) {
+        const form = new FormData();
+        form.set("name", body.name); form.set("captainId", String(body.captainId));
+        form.set("memberIds", JSON.stringify(body.memberIds)); form.set("emoticon", body.emoticon); form.set("logo", editLogoFile);
+        const response = await adminFetch(`/api/championship-teams/${editingTeam.id}`, { method: "PATCH", body: form });
+        if (!response.ok) throw new Error(await readUploadError(response));
+      } else await apiRequest("PATCH", `/api/championship-teams/${editingTeam.id}`, body);
+      setEditingTeam(null); setEditLogoFile(null); setEditLogoPreview(null); setEditLogoRemoved(false);
+      await refresh();
+      toast({ title: "Team updated" });
+    } catch (error) {
+      toast({ title: "Could not update team", description: error instanceof Error ? error.message : "Please try again", variant: "destructive" });
     }
   };
 
@@ -623,7 +673,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <b className="text-base text-slate-900">{teamA?.emoticon} {teamA?.name ?? "Team A"} <span className="text-slate-400">vs</span> {teamB?.emoticon} {teamB?.name ?? "Team B"}</b>
+            <b className="flex items-center gap-1.5 text-base text-slate-900"><TeamAvatar logoUrl={teamA?.logoUrl} emoticon={teamA?.emoticon} alt={`${teamA?.name ?? "Team A"} logo`} className="h-5 w-5" />{teamA?.name ?? "Team A"} <span className="text-slate-400">vs</span> <TeamAvatar logoUrl={teamB?.logoUrl} emoticon={teamB?.emoticon} alt={`${teamB?.name ?? "Team B"} logo`} className="h-5 w-5" />{teamB?.name ?? "Team B"}</b>
             <MatchStatusBadge status={matchDisplayState(match)} />
           </div>
           <p className="mt-1 text-xs text-slate-500">
@@ -818,7 +868,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
           : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {teams.map((team: any) => <div key={team.id} className="rounded-xl border bg-white p-4">
                 <div className="flex items-start gap-3">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-blue-50 text-2xl">{team.emoticon}</div>
+                  <TeamAvatar logoUrl={team.logoUrl} emoticon={team.emoticon} alt={`${team.name} logo`} className="h-12 w-12 shrink-0 rounded-xl bg-blue-50 p-1 text-2xl" />
                   <div className="min-w-0 flex-1">
                     <b className="block truncate text-base text-slate-900">{team.name}</b>
                     <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500"><Crown size={12} className="shrink-0 text-amber-500" /> {playerName(team.captainId)}</p>
@@ -827,7 +877,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
                 </div>
                 <div className="mt-3 flex items-center gap-1 border-t pt-3">
                   <Button asChild size="sm" variant="ghost"><a href={`/championship-teams/${team.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> View</a></Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setEditingTeam({ ...team }); setEditingTeamOriginal(teamSignature(team)); }}><Edit3 size={15} /> Edit</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setEditingTeam({ ...team }); setEditingTeamOriginal(teamSignature(team)); setEditLogoFile(null); setEditLogoPreview(null); setEditLogoRemoved(false); }}><Edit3 size={15} /> Edit</Button>
                   <Button size="sm" variant="ghost" className="ml-auto text-red-600 hover:bg-red-50 hover:text-red-700" aria-label={`Delete ${team.name}`} onClick={() => setDeleteTeamTarget(team)}><Trash2 size={15} /></Button>
                 </div>
               </div>)}
@@ -893,12 +943,12 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
         {championshipStatus === "completed" && detail.champion
           ? <div className="rounded-2xl bg-gradient-to-r from-amber-400 to-orange-400 p-5 text-slate-950 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-widest">🏆 Championship Winner</p>
-              <p className="mt-1 text-2xl font-black">{detail.champion.emoticon} {detail.champion.name}</p>
+              <p className="mt-1 flex items-center gap-2 text-2xl font-black"><TeamAvatar logoUrl={detail.champion.logoUrl} emoticon={detail.champion.emoticon} alt={`${detail.champion.name} logo`} className="h-7 w-7" />{detail.champion.name}</p>
               <p className="mt-1 text-sm font-semibold opacity-80">{detail.champion.points} points from {detail.champion.played} match{detail.champion.played === 1 ? "" : "es"}</p>
             </div>
           : leader && completedMatches.length > 0 && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
               <p className="text-xs font-bold uppercase tracking-widest text-amber-700">Current Leader</p>
-              <p className="mt-1 text-2xl font-black text-slate-900">{leader.emoticon} {leader.name}</p>
+              <p className="mt-1 flex items-center gap-2 text-2xl font-black text-slate-900"><TeamAvatar logoUrl={leader.logoUrl} emoticon={leader.emoticon} alt={`${leader.name} logo`} className="h-7 w-7" />{leader.name}</p>
               <p className="mt-1 text-sm text-amber-800">{leader.points} points from {leader.played} match{leader.played === 1 ? "" : "es"} · positions can still change while matches are being played.</p>
             </div>}
         <SectionCard icon={Trophy} title="Results & Standings" description="Review completed matches and current championship standings.">
@@ -915,7 +965,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
                   </tr></thead>
                   <tbody>{detail.standings.map((team: any, index: number) => <tr key={team.id} className="border-b last:border-0">
                     <td className="p-2 font-bold text-slate-500">{index + 1}</td>
-                    <td className="p-2 font-semibold text-slate-900">{team.emoticon} {team.name}</td>
+                    <td className="p-2 font-semibold text-slate-900"><span className="flex items-center gap-2"><TeamAvatar logoUrl={team.logoUrl} emoticon={team.emoticon} alt={`${team.name} logo`} className="h-5 w-5" />{team.name}</span></td>
                     <td className="p-2">{team.played}</td><td className="p-2">{team.wins}</td>
                     <td className="p-2">{team.draws ?? 0}</td><td className="p-2">{team.losses}</td>
                     <td className="p-2 font-black text-slate-900">{team.points}</td>
@@ -991,7 +1041,19 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
             {teamNameTouched && !teamName.trim() && (
               <p className="mt-1.5 text-xs font-medium text-red-600">Team name is required</p>
             )}
+            <div className="mt-4">
+              <p className="text-sm font-semibold">Team logo <span className="font-normal text-slate-500">(optional)</span></p>
+              <div className="mt-2 flex items-center gap-3">
+                {teamLogoPreview ? <img src={teamLogoPreview} alt="Selected team logo" className="h-14 w-14 rounded-xl border object-contain p-1" /> : <div className="grid h-14 w-14 place-items-center rounded-xl border border-dashed bg-slate-50 text-slate-400"><ImagePlus size={20} /></div>}
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex h-9 cursor-pointer items-center rounded-md border px-3 text-sm font-medium hover:bg-slate-50">Choose image<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" className="sr-only" onChange={event => chooseCreateLogo(event.target.files?.[0])} /></label>
+                  {teamLogoPreview && <Button type="button" size="sm" variant="ghost" onClick={() => chooseCreateLogo()}><X size={15} />Clear</Button>}
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">JPEG, PNG, WebP, or AVIF, up to 5 MB.</p>
+            </div>
             <div className="mt-3">
+              <p className="mb-2 text-sm font-semibold">Choose emoji</p>
               <TeamIconPicker value={emoticon} onChange={setEmoticon} />
             </div>
           </div>
@@ -1037,7 +1099,20 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
             <label className="text-sm font-semibold">Team name<Input className="mt-1 font-normal" value={editingTeam.name} onChange={event => setEditingTeam({ ...editingTeam, name: event.target.value })} /></label>
           </div>
           <div>
-            <p className="text-sm font-semibold">Team icon</p>
+            <p className="text-sm font-semibold">Team logo <span className="font-normal text-slate-500">(optional)</span></p>
+            <div className="mt-2 flex items-center gap-3">
+              {editLogoPreview || (!editLogoRemoved && editingTeam.logoUrl)
+                ? <img src={editLogoPreview ?? editingTeam.logoUrl} alt={`${editingTeam.name} logo`} className="h-14 w-14 rounded-xl border object-contain p-1" />
+                : <div className="grid h-14 w-14 place-items-center rounded-xl border border-dashed bg-slate-50 text-slate-400"><ImagePlus size={20} /></div>}
+              <div className="flex flex-wrap gap-2">
+                <label className="inline-flex h-9 cursor-pointer items-center rounded-md border px-3 text-sm font-medium hover:bg-slate-50">Choose image<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" className="sr-only" onChange={event => chooseEditLogo(event.target.files?.[0])} /></label>
+                {(editLogoPreview || (!editLogoRemoved && editingTeam.logoUrl)) && <Button type="button" size="sm" variant="ghost" onClick={() => { chooseEditLogo(); setEditLogoRemoved(true); }}><X size={15} />Remove</Button>}
+              </div>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">JPEG, PNG, WebP, or AVIF, up to 5 MB.</p>
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Choose emoji</p>
             <div className="mt-1">
               <TeamIconPicker
                 id="edit-team-icon"
@@ -1087,7 +1162,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
           <Button variant="outline" onClick={() => setEditingTeam(null)}>Cancel</Button>
           <Button
             disabled={!editingTeam?.name?.trim() || !editTeamDirty || action.isPending}
-            onClick={() => { action.mutate({ method: "PATCH", url: `/api/championship-teams/${editingTeam.id}`, body: { name: editingTeam.name, captainId: editingTeam.captainId, memberIds: editingTeam.memberIds, emoticon: editingTeam.emoticon }, success: "Team updated" }); setEditingTeam(null); }}
+            onClick={handleEditTeam}
           >
             {action.isPending ? "Saving…" : "Save changes"}
           </Button>

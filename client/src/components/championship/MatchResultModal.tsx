@@ -7,6 +7,7 @@ import {
   type ChampionshipMatchSummary,
   type ChampionshipTeamSummary,
 } from "@/lib/championship";
+import { TeamAvatar } from "./TeamAvatar";
 
 /**
  * Result of one completed Championship match, shown in place on
@@ -61,9 +62,7 @@ export function MatchResultModal({
           isWinner ? "border-[#d8b25f] bg-[#d8b25f]/15" : "border-[#1b2559]/10 bg-white/50"
         }`}
       >
-        <span className="text-2xl leading-none" aria-hidden="true">
-          {team?.emoticon ?? "🏳️"}
-        </span>
+        <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallback} logo`} className="h-7 w-7 shrink-0 text-2xl" />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-bold text-[#1b2559]">{team?.name ?? fallback}</span>
           {isMine && (
@@ -121,7 +120,7 @@ export function MatchResultModal({
                   <Trophy className="h-3.5 w-3.5 text-[#b78e3c]" /> Winner
                 </p>
                 <p className="mt-1 text-2xl font-black text-[#1b2559]">
-                  {winner?.emoticon} {winner?.name ?? "—"}
+                  {winner && <TeamAvatar logoUrl={winner.logoUrl} emoticon={winner.emoticon} alt={`${winner.name} logo`} className="mr-1 inline-grid h-6 w-6 align-middle text-xl" />}{winner?.name ?? "—"}
                 </p>
               </>
             )}

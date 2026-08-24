@@ -1,4 +1,5 @@
 import { Check, X } from "lucide-react";
+import { TeamAvatar } from "@/components/championship/TeamAvatar";
 
 export interface WatchQuestionOption {
   id: string;
@@ -43,11 +44,13 @@ export function WatchQuestionPanel({
   question,
   result,
   teamEmoticon,
+  teamLogoUrl,
 }: {
   question: WatchQuestion;
   /** Null while the team is still answering. */
   result: WatchQuestionResult | null;
   teamEmoticon?: string;
+  teamLogoUrl?: string | null;
 }) {
   const resolved = result?.questionId === question.questionId ? result : null;
 
@@ -72,8 +75,8 @@ export function WatchQuestionPanel({
             }`}
           >
             {teamEmoticon && (
-              <span aria-hidden="true" className={resolved ? undefined : "watch-turn-pulse"}>
-                {teamEmoticon}
+              <span className={resolved ? undefined : "watch-turn-pulse"}>
+                <TeamAvatar logoUrl={teamLogoUrl} emoticon={teamEmoticon} alt={`${question.answeringTeamName} logo`} className="h-5 w-5 text-base" />
               </span>
             )}
             {resolved

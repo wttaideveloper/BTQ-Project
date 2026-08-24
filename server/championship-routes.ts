@@ -1,5 +1,5 @@
 import type { Express, RequestHandler } from "express";
-import { and, eq, inArray, ne, or } from "drizzle-orm";
+import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { database } from "./database";
@@ -8,6 +8,12 @@ import {
   championships, championshipMatches, championshipTeams, users,
 } from "@shared/schema";
 import { broadcastChampionshipEvent } from "./socket";
+import {
+  buildRoundRobinSchedule,
+  localDateString,
+  localDateTimeString,
+  possibleMatchCount,
+} from "./championship-schedule";
 
 const championshipFields = z.object({
   name: z.string().trim().min(1).max(120),
@@ -29,17 +35,65 @@ const matchInput = z.object({
   championshipId: z.string().min(1), teamAId: z.string().min(1), teamBId: z.string().min(1),
   scheduledAt: z.coerce.date().nullish(), streamUrl: z.string().url().nullish(),
 });
+const autoScheduleInput = z.object({
+  startAt: z.coerce.date(),
+  durationMinutes: z.coerce.number().int().min(1).max(1440),
+  breakMinutes: z.coerce.number().int().min(0).max(1440),
+  matchesPerDay: z.coerce.number().int().min(1).max(48),
+});
+const COMPLETED_CHAMPIONSHIP_MESSAGE = "Auto Schedule is not available for a completed championship.";
 const normalizeChampionshipName = (value: string) => value.trim().toLowerCase();
-const localDateString = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-const localDateTimeString = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 
 export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHandler) {
   const db = database.db;
   const fail = (res: any, error: unknown) => {
     console.error("[Championship]", error);
     return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
+  };
+
+  const assertTeamsPlayable = (teamAId: string, teamBId: string, roster: { id: string }[]) => {
+    if (teamAId === teamBId) throw new Error("A team cannot play itself");
+    if (!roster.some(team => team.id === teamAId) || !roster.some(team => team.id === teamBId)) {
+      throw new Error("Both teams must belong to the championship");
+    }
+  };
+
+  const loadChampionshipScheduleContext = async (championshipId: string, client: typeof db | { select: typeof db.select } = db) => {
+    const [championship] = await client.select().from(championships).where(eq(championships.id, championshipId));
+    if (!championship) return null;
+    const teams = await client.select().from(championshipTeams).where(eq(championshipTeams.championshipId, championshipId));
+    const matches = await client.select().from(championshipMatches).where(eq(championshipMatches.championshipId, championshipId));
+    return { championship, teams, matches };
+  };
+
+  const planAutoSchedule = (
+    ctx: NonNullable<Awaited<ReturnType<typeof loadChampionshipScheduleContext>>>,
+    settings: z.infer<typeof autoScheduleInput>,
+  ) => {
+    if (ctx.championship.status === "completed") {
+      return {
+        summary: {
+          teamCount: ctx.teams.length,
+          possibleMatches: possibleMatchCount(ctx.teams.length),
+          newMatches: 0,
+          skippedMatches: 0,
+        },
+        matches: [],
+        skipped: [],
+        errors: [COMPLETED_CHAMPIONSHIP_MESSAGE],
+      };
+    }
+    return buildRoundRobinSchedule(
+      ctx.teams.map(team => ({ id: team.id, name: team.name, createdAt: team.createdAt })),
+      ctx.matches.map(match => ({ teamAId: match.teamAId, teamBId: match.teamBId })),
+      {
+        startAt: settings.startAt,
+        durationMinutes: settings.durationMinutes,
+        breakMinutes: settings.breakMinutes,
+        matchesPerDay: settings.matchesPerDay,
+        endDate: ctx.championship.endDate,
+      },
+    );
   };
 
   /**
@@ -236,6 +290,43 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       champion: hasMatches && championshipFinished ? standings[0] ?? null : null });
   });
 
+  app.post("/api/championships/:id/auto-schedule/preview", ensureAdmin, async (req, res) => {
+    try {
+      const settings = autoScheduleInput.parse(req.body);
+      const ctx = await loadChampionshipScheduleContext(req.params.id);
+      if (!ctx) return res.status(404).json({ message: "Championship not found" });
+      res.json(planAutoSchedule(ctx, settings));
+    } catch (error) { fail(res, error); }
+  });
+
+  app.post("/api/championships/:id/auto-schedule", ensureAdmin, async (req, res) => {
+    try {
+      const settings = autoScheduleInput.parse(req.body);
+      const result = await db.transaction(async tx => {
+        await tx.execute(sql`select id from championships where id = ${req.params.id} for update`);
+        const ctx = await loadChampionshipScheduleContext(req.params.id, tx);
+        if (!ctx) return { status: 404 as const, message: "Championship not found" };
+        const plan = planAutoSchedule(ctx, settings);
+        if (plan.errors.length) return { status: 400 as const, message: plan.errors[0], plan };
+        if (!plan.matches.length) return { status: 200 as const, plan, created: [] };
+        for (const match of plan.matches) assertTeamsPlayable(match.teamAId, match.teamBId, ctx.teams);
+        const created = await tx.insert(championshipMatches).values(
+          plan.matches.map(match => ({
+            id: uuid(),
+            championshipId: ctx.championship.id,
+            teamAId: match.teamAId,
+            teamBId: match.teamBId,
+            scheduledAt: match.scheduledAt,
+          })),
+        ).returning();
+        return { status: 201 as const, plan, created };
+      });
+      if (result.status === 404) return res.status(404).json({ message: result.message });
+      if (result.status === 400) return res.status(400).json({ message: result.message, ...result.plan });
+      res.status(result.status).json({ ...result.plan, created: result.created });
+    } catch (error) { fail(res, error); }
+  });
+
   /**
    * Championship teams are created by an administrator only.
    *
@@ -381,10 +472,8 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       if (data.scheduledAt && localDateTimeString(data.scheduledAt) < localDateTimeString(new Date())) {
         return res.status(400).json({ message: "Match date and time cannot be in the past" });
       }
-      if (data.teamAId === data.teamBId) throw new Error("A team cannot play itself");
       const selected = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, data.championshipId));
-      if (!selected.some(t => t.id === data.teamAId) || !selected.some(t => t.id === data.teamBId))
-        throw new Error("Both teams must belong to the championship");
+      assertTeamsPlayable(data.teamAId, data.teamBId, selected);
       const [row] = await db.insert(championshipMatches).values({ id: uuid(), ...data }).returning();
       res.status(201).json(row);
     } catch (e) { fail(res, e); }

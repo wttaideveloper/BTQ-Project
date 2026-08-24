@@ -4,7 +4,7 @@ import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, Clock3, Crown, Edit3,
   ExternalLink, Eye, Info, MonitorPlay, Play, Plus, Radio, Settings2, Smile, Sparkles,
   Search, Trash2, Trophy, Tv, UserPlus, Users,
-  Check, Copy,
+  Check, Copy, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { TeamIconPicker } from "@/components/admin/championship/TeamIconPicker";
 import { PlayerSearchSelect, PlayerMultiSelect, playerLabel } from "@/components/admin/championship/PlayerPickers";
+import { AutoScheduleDialog } from "@/components/admin/championship/AutoScheduleDialog";
 
 type ChampionshipForm = { name: string; description: string; startDate: string; endDate: string };
 const emptyForm: ChampionshipForm = { name: "", description: "", startDate: "", endDate: "" };
@@ -349,6 +350,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   const [completedSearch, setCompletedSearch] = useState("");
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showScheduleMatch, setShowScheduleMatch] = useState(false);
+  const [showAutoSchedule, setShowAutoSchedule] = useState(false);
   const [deleteTeamTarget, setDeleteTeamTarget] = useState<any>(null);
   const [endMatchTarget, setEndMatchTarget] = useState<any>(null);
   const normalizeChampionshipName = (value: string) => value.trim().toLowerCase();
@@ -839,13 +841,32 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
 
       {/* 4 — Matches & schedule */}
       <SectionCard id={SECTION.matches} icon={CalendarDays} title="Matches & Schedule" description="Create fixtures and manage scheduled matches."
-        action={teams.length >= 2 ? <Button onClick={() => setShowScheduleMatch(true)}><Plus size={16} /> Schedule Match</Button> : undefined}>
+        action={teams.length >= 2 ? (
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button onClick={() => setShowScheduleMatch(true)}><Plus size={16} /> Schedule Match</Button>
+            <Button
+              variant="outline"
+              disabled={championshipStatus === "completed"}
+              title={championshipStatus === "completed" ? "Auto Schedule is not available for a completed championship." : undefined}
+              onClick={() => setShowAutoSchedule(true)}
+            >
+              <Zap size={16} /> Auto Schedule
+            </Button>
+          </div>
+        ) : undefined}>
         {teams.length < 2
           ? <EmptyState icon={Users} title="Add at least two teams first." description="A match is played between two different teams in this championship."
               action={<Button onClick={() => scrollToSection(SECTION.teams)}><Users size={16} /> Go to Teams</Button>} />
           : matches.length === 0
-            ? <EmptyState icon={CalendarDays} title="No matches scheduled yet." description="Create a match between two teams."
-                action={<Button onClick={() => setShowScheduleMatch(true)}><Plus size={16} /> Schedule your first match</Button>} />
+            ? <EmptyState icon={CalendarDays} title="No matches scheduled yet." description="Create a match between two teams, or generate a Round Robin schedule."
+                action={
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:justify-center">
+                    <Button onClick={() => setShowScheduleMatch(true)}><Plus size={16} /> Schedule your first match</Button>
+                    <Button variant="outline" disabled={championshipStatus === "completed"} onClick={() => setShowAutoSchedule(true)}>
+                      <Zap size={16} /> Auto Schedule
+                    </Button>
+                  </div>
+                } />
             : <div className="space-y-6">
                 {liveMatch && <div>
                   <h4 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-red-600"><span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" /> Live now</h4>
@@ -1135,6 +1156,16 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <AutoScheduleDialog
+      open={showAutoSchedule}
+      onOpenChange={setShowAutoSchedule}
+      championshipId={selected}
+      championshipStatus={championshipStatus}
+      teamCount={teams.length}
+      endDate={detail?.championship?.endDate}
+      onCreated={refresh}
+    />
 
     {/* Edit match */}
     <Dialog open={!!editingMatch} onOpenChange={open => {

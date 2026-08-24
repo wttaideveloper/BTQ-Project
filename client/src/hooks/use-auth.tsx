@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { User as SelectUser } from "@shared/schema";
 import { UpdateProfileData } from "@shared/user-validation";
-import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
+import { getQueryFn, apiRequest, handleSessionExpiry, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { setupGameSocket, closeGameSocket } from "@/lib/socket";
 import { useTeamInvitationToasts } from "@/hooks/useTeamInvitationToasts";
@@ -196,6 +196,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           credentials: "include",
         });
       }
+
+      handleSessionExpiry(res);
 
       if (!res.ok) {
         const text = await res.text();

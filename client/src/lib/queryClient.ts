@@ -24,22 +24,34 @@ function isAdminRoute(pathname = typeof window !== "undefined" ? window.location
   return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
-function clearStaleAdminAuthState() {
+function isPublicRoute(pathname: string) {
+  return (
+    pathname === "/auth" ||
+    pathname === "/admin/login" ||
+    pathname.startsWith("/watch/") ||
+    pathname.startsWith("/overlay/") ||
+    pathname.startsWith("/championships/") ||
+    pathname.startsWith("/championship-teams/")
+  );
+}
+
+function clearStaleAuthState() {
   queryClient.setQueryData(["/api/user"], null);
   queryClient.setQueryData(["/api/profile"], null);
 }
 
-function handleAdminSessionExpiry(res: Response) {
+export function handleSessionExpiry(res: Response) {
   if (res.status !== 401 || typeof window === "undefined") {
     return false;
   }
 
-  if (!isAdminRoute() || window.location.pathname === "/admin/login") {
+  const { pathname } = window.location;
+  if (isPublicRoute(pathname)) {
     return false;
   }
 
-  clearStaleAdminAuthState();
-  window.location.replace("/admin/login");
+  clearStaleAuthState();
+  window.location.replace(isAdminRoute(pathname) ? "/admin/login" : "/auth");
   return true;
 }
 
@@ -51,7 +63,7 @@ export async function adminFetch(
     ...init,
     credentials: init?.credentials ?? "include",
   });
-  handleAdminSessionExpiry(res);
+  handleSessionExpiry(res);
   return res;
 }
 
@@ -67,7 +79,7 @@ export async function apiRequest(
     credentials: "include",
   });
 
-  handleAdminSessionExpiry(res);
+  handleSessionExpiry(res);
   await throwIfResNotOk(res);
   return res;
 }
@@ -82,7 +94,7 @@ export const getQueryFn: <T>(options: {
       credentials: "include",
     });
 
-    handleAdminSessionExpiry(res);
+    handleSessionExpiry(res);
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

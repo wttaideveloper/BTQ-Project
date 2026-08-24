@@ -10,6 +10,7 @@ import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { CheckCircle, XCircle, AlertTriangle, Edit3, Save, Trash2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { adminFetch } from '@/lib/queryClient';
 
 interface QuestionValidationResult {
   isValid: boolean;
@@ -39,7 +40,7 @@ export function QuestionReviewPanel({ questions, onQuestionsStored, onClose }: Q
   const validateQuestions = async () => {
     setIsValidating(true);
     try {
-      const response = await fetch('/api/questions/validate', {
+      const response = await adminFetch('/api/questions/validate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +73,7 @@ export function QuestionReviewPanel({ questions, onQuestionsStored, onClose }: Q
   const storeQuestions = async () => {
     setIsStoring(true);
     try {
-      const response = await fetch('/api/questions/store', {
+      const response = await adminFetch('/api/questions/store', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

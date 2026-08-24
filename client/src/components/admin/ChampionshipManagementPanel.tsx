@@ -87,13 +87,15 @@ function EmptyState({ icon: Icon, title, description, action }: { icon: any; tit
 
 function SectionCard({ id, title, description, icon: Icon, action, children }: { id?: string; title: string; description: string; icon: any; action?: ReactNode; children: ReactNode }) {
   return <section id={id} className="scroll-mt-4 rounded-2xl border bg-white shadow-sm">
-    <div className="flex flex-wrap items-start gap-3 border-b p-5">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><Icon size={20} /></span>
-      <div className="min-w-0 flex-1">
-        <h3 className="text-lg font-bold text-slate-900">{title}</h3>
-        <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+    <div className="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-start">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><Icon size={20} /></span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+          <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+        </div>
       </div>
-      {action}
+      {action && <div className="sm:shrink-0">{action}</div>}
     </div>
     <div className="p-5">{children}</div>
   </section>;
@@ -680,8 +682,8 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
         <div className="absolute -right-12 -top-16 h-56 w-56 rounded-full bg-cyan-400/20 blur-3xl" /><div className="absolute left-1/3 -bottom-24 h-56 w-56 rounded-full bg-fuchsia-500/20 blur-3xl" />
         <div className="relative">
           <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.25em] text-cyan-300"><Sparkles size={14} /> Live event control center</p>
-          <h2 className="mt-2 text-3xl font-black">Championship Operations</h2>
-          <p className="mt-2 max-w-2xl text-indigo-200">Pick a championship to manage it step by step: setup, teams, matches, live control and results.</p>
+          <h2 className="mt-2 min-w-0 text-xl font-black sm:text-2xl lg:text-3xl">Championship Operations</h2>
+          <p className="mt-2 max-w-2xl text-sm text-indigo-200 sm:text-base">Pick a championship to manage it step by step: setup, teams, matches, live control and results.</p>
           <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[{ label: "Total", value: counts.total, icon: Trophy, color: "text-amber-300" }, { label: "Active", value: counts.active, icon: Radio, color: "text-emerald-300" }, { label: "Draft", value: counts.draft, icon: Clock3, color: "text-sky-300" }, { label: "Completed", value: counts.completed, icon: CheckCircle2, color: "text-violet-300" }].map(stat => <div key={stat.label} className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur"><stat.icon className={stat.color} size={20} /><div className="mt-2 text-2xl font-black">{stat.value}</div><div className="text-xs uppercase tracking-wider text-indigo-200">{stat.label}</div></div>)}
           </div>
@@ -713,17 +715,17 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       {/* 1 — Championship summary */}
       <section className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start gap-4">
-          <div className="min-w-0 flex-1">
+          <div className="w-full min-w-0 sm:flex-1">
             <div className="flex flex-wrap items-center gap-3">
-              <h2 className="flex items-center gap-2 text-2xl font-black text-slate-900"><Trophy className="text-amber-500" size={24} /> {detail.championship.name}</h2>
+              <h2 className="flex min-w-0 items-center gap-2 text-xl font-black text-slate-900 sm:text-2xl"><Trophy className="shrink-0 text-amber-500" size={24} /> {detail.championship.name}</h2>
               <ChampionshipStatusBadge status={championshipStatus} />
             </div>
             <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500"><CalendarDays size={14} /> {formatDateRange(detail.championship.startDate, detail.championship.endDate)}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs font-semibold text-slate-500">
+          <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500 sm:block">
               Change status
-              <select className="ml-2 h-9 rounded-md border bg-white px-2 text-sm font-medium text-slate-800"
+              <select className="h-9 w-full rounded-md border bg-white px-2 text-sm font-medium text-slate-800 sm:ml-2 sm:w-auto"
                 value={championshipStatus}
                 onChange={event => action.mutate({ method: "PATCH", url: `/api/championships/${selected}`, body: { status: event.target.value }, success: `Status changed to ${championshipStatusLabel[event.target.value]}` })}>
                 <option value="draft">Draft — still being prepared</option>
@@ -731,7 +733,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
                 <option value="completed">Completed — championship is over</option>
               </select>
             </label>
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
               <a href={`/championships/${selected}`} target="_blank" rel="noreferrer">Public page <ExternalLink size={14} /></a>
             </Button>
           </div>
@@ -746,13 +748,15 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stat.label}</div>
             </div>)}
         </div>
-        <div className={`mt-4 flex flex-wrap items-center gap-3 rounded-xl border p-4 ${attentionStyle[attention.tone].box}`}>
-          {(() => { const Icon = attentionStyle[attention.tone].icon; return <Icon size={20} className={`shrink-0 ${attentionStyle[attention.tone].iconClass}`} />; })()}
-          <div className="min-w-0 flex-1">
+        <div className={`mt-4 flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center ${attentionStyle[attention.tone].box}`}>
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            {(() => { const Icon = attentionStyle[attention.tone].icon; return <Icon size={20} className={`mt-0.5 shrink-0 ${attentionStyle[attention.tone].iconClass}`} />; })()}
+            <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">What needs attention?</p>
             <p className="text-sm font-semibold">{attention.tone === "live" && "🔴 "}{attention.message}</p>
+            </div>
           </div>
-          {attention.button}
+          {attention.button && <div className="w-full sm:w-auto">{attention.button}</div>}
         </div>
       </section>
 
@@ -776,7 +780,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
             <Input className="mt-1 font-normal" value={editForm.name} onChange={event => setEdit("name", event.target.value)} />
           </label>
           {editChampionshipNameTaken && <p className="text-xs font-medium text-red-600 lg:col-span-2">A championship with this name already exists.</p>}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold text-slate-700">Start date
               <Input className="mt-1 font-normal" type="date" value={editForm.startDate} onChange={event => setEdit("startDate", event.target.value)} />
             </label>
@@ -945,7 +949,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
 
     {/* Create championship */}
     <Dialog open={showCreateChampionship} onOpenChange={setShowCreateChampionship}>
-      <DialogContent>
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New championship</DialogTitle>
           <DialogDescription>Set the basic details. You can add teams and matches next.</DialogDescription>
@@ -954,7 +958,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
           <label className="text-sm font-semibold">Championship name<Input className="mt-1 font-normal" placeholder="e.g. Summer League" value={createForm.name} onChange={event => setCreate("name", event.target.value)} /></label>
           {createChampionshipNameTaken && <p className="text-xs font-medium text-red-600">A championship with this name already exists.</p>}
           <label className="text-sm font-semibold">Description <span className="font-normal text-slate-400">(optional)</span><Textarea className="mt-1 font-normal" rows={3} value={createForm.description} onChange={event => setCreate("description", event.target.value)} /></label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold">Start date<Input className="mt-1 font-normal" type="date" min={createToday} value={createForm.startDate} onChange={event => setCreate("startDate", event.target.value)} />{createStartDateInvalid && <p className="mt-1 text-xs font-medium text-red-600">Start date cannot be in the past.</p>}</label>
             <label className="text-sm font-semibold">End date<Input className="mt-1 font-normal" type="date" min={createForm.startDate || undefined} value={createForm.endDate} onChange={event => setCreate("endDate", event.target.value)} />{createEndDateInvalid && <p className="mt-1 text-xs font-medium text-red-600">End date cannot be before the start date.</p>}</label>
           </div>

@@ -57,7 +57,8 @@ import {
   BarChart3,
   Settings,
   Mic,
-  Volume2
+  Volume2,
+  Menu
 } from 'lucide-react';
 import { ChampionshipManagementPanel } from '@/components/admin/ChampionshipManagementPanel';
 import { adminFetch, apiRequest } from '@/lib/queryClient';
@@ -74,6 +75,7 @@ import { GameStatsPanel } from '@/components/admin/GameStatsPanel';
 import { GameControlPanel } from '@/components/admin/GameControlPanel';
 import { AdminLeaderboardPanel } from '@/components/admin/AdminLeaderboardPanel';
 import { buildQuestionsCsv, downloadCsv } from '@/lib/csv-export';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
 const categories = [
   "All Categories",
@@ -158,6 +160,7 @@ const AdminPanel: React.FC = () => {
   const [showQuestionReview, setShowQuestionReview] = useState<boolean>(false);
   const [reviewQuestions, setReviewQuestions] = useState<Question[]>([]);
   const [championshipsResetSignal, setChampionshipsResetSignal] = useState(0);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   
   // Helpers: dedupe and shuffle for safe downloads
   const normalizeQuestionKey = (text: string) =>
@@ -668,132 +671,156 @@ const AdminPanel: React.FC = () => {
 
   const goToAdminDashboard = () => {
     setActiveTab("questions");
+    setMobileSidebarOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex">
-      {/* Fixed Sidebar */}
-      <div className="w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col fixed h-screen">
-        {/* Sidebar Header */}
-        <div className="p-6 border-b border-gray-100 flex-shrink-0">
-          <button
-            type="button"
-            onClick={goToAdminDashboard}
-            className="flex items-center gap-3 w-full text-left hover:opacity-90 transition-opacity cursor-pointer"
-            aria-label="Go to admin dashboard"
-          >
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <Trophy className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                FaithIQ Admin
-              </h1>
-              <p className="text-xs text-gray-500">Bible Trivia Management</p>
-            </div>
-          </button>
-        </div>
+  const selectAdminTab = (tab: string) => {
+    if (tab === "championships") {
+      setActiveTab("championships");
+      setChampionshipsResetSignal(signal => signal + 1);
+    } else {
+      setActiveTab(tab);
+    }
+    setMobileSidebarOpen(false);
+  };
 
-        {/* Sidebar Navigation */}
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <div className="space-y-2">
-            <button
-              onClick={() => setActiveTab("questions")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === "questions"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <FileText size={20} />
-              <span className="font-medium">Question Management</span>
-            </button>
-            
-            <button
-              onClick={() => setActiveTab("users")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === "users"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <Users size={20} />
-              <span className="font-medium">User Management</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("stats")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === "stats"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <BarChart3 size={20} />
-              <span className="font-medium">Game Statistics</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === "settings"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <Settings size={20} />
-              <span className="font-medium">Game Control</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab("championships");
-                setChampionshipsResetSignal(signal => signal + 1);
-              }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${activeTab === "championships" ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}
-            >
-              <Trophy size={20} /><span className="font-medium">Championships</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("leaderboard")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === "leaderboard"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <Trophy size={20} />
-              <span className="font-medium">Leaderboard</span>
-            </button>
+  const renderSidebarContent = () => (
+    <div className="flex h-full w-full flex-col">
+      <div className="p-6 border-b border-gray-100 flex-shrink-0">
+        <button
+          type="button"
+          onClick={goToAdminDashboard}
+          className="flex items-center gap-3 w-full text-left hover:opacity-90 transition-opacity cursor-pointer"
+          aria-label="Go to admin dashboard"
+        >
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+            <Trophy className="w-7 h-7 text-white" />
           </div>
-        </nav>
-
-        {/* Sidebar Footer - Fixed at bottom */}
-        <div className="p-4 border-t border-gray-100 flex-shrink-0">
-          <Button
-            variant="outline"
-            className="w-full flex items-center gap-2 hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-colors"
-            disabled={logoutMutation.isPending}
-            onClick={() => {
-              logoutMutation.mutate(undefined, {
-                onSuccess: () => setLocation("/admin/login"),
-              });
-            }}
-          >
-            <LogOut size={18} /> Logout
-          </Button>
-        </div>
+          <div>
+            <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              FaithIQ Admin
+            </h1>
+            <p className="text-xs text-gray-500">Bible Trivia Management</p>
+          </div>
+        </button>
       </div>
 
+      <nav className="flex-1 p-4 overflow-y-auto">
+        <div className="space-y-2">
+          <button
+            onClick={() => selectAdminTab("questions")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+              activeTab === "questions"
+                ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            }`}
+          >
+            <FileText size={20} />
+            <span className="font-medium">Question Management</span>
+          </button>
+
+          <button
+            onClick={() => selectAdminTab("users")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+              activeTab === "users"
+                ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            }`}
+          >
+            <Users size={20} />
+            <span className="font-medium">User Management</span>
+          </button>
+
+          <button
+            onClick={() => selectAdminTab("stats")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+              activeTab === "stats"
+                ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            }`}
+          >
+            <BarChart3 size={20} />
+            <span className="font-medium">Game Statistics</span>
+          </button>
+
+          <button
+            onClick={() => selectAdminTab("settings")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+              activeTab === "settings"
+                ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            }`}
+          >
+            <Settings size={20} />
+            <span className="font-medium">Game Control</span>
+          </button>
+
+          <button
+            onClick={() => selectAdminTab("championships")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${activeTab === "championships" ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}
+          >
+            <Trophy size={20} /><span className="font-medium">Championships</span>
+          </button>
+
+          <button
+            onClick={() => selectAdminTab("leaderboard")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+              activeTab === "leaderboard"
+                ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            }`}
+          >
+            <Trophy size={20} />
+            <span className="font-medium">Leaderboard</span>
+          </button>
+        </div>
+      </nav>
+
+      <div className="p-4 border-t border-gray-100 flex-shrink-0">
+        <Button
+          variant="outline"
+          className="w-full flex items-center gap-2 hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-colors"
+          disabled={logoutMutation.isPending}
+          onClick={() => {
+            logoutMutation.mutate(undefined, {
+              onSuccess: () => setLocation("/admin/login"),
+            });
+          }}
+        >
+          <LogOut size={18} /> Logout
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 flex">
+      {/* Fixed Sidebar */}
+      <aside className="hidden md:fixed md:flex md:h-screen md:w-64 md:flex-col md:border-r md:border-gray-200 md:bg-white md:shadow-lg">
+        {renderSidebarContent()}
+      </aside>
+
+      <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+        <SheetContent side="left" className="flex h-full w-[min(20rem,calc(100vw-2rem))] flex-col gap-0 p-0">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Admin navigation</SheetTitle>
+            <SheetDescription>Choose an admin section or log out.</SheetDescription>
+          </SheetHeader>
+          {renderSidebarContent()}
+        </SheetContent>
+      </Sheet>
+
       {/* Main Content Area */}
-      <div className="flex-1 ml-64 flex flex-col h-screen">
+      <div className="flex min-h-screen w-full min-w-0 flex-1 flex-col md:ml-64 md:h-screen">
         {/* Top Navbar */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
+        <div className="flex-shrink-0 border-b border-gray-200 bg-white px-3 py-3 sm:px-4 md:px-6 md:py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3 md:gap-4">
+              <Button type="button" variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileSidebarOpen(true)} aria-label="Open admin navigation">
+                <Menu size={22} />
+              </Button>
+              <div className="flex min-w-0 items-center gap-3">
                 <button
                   type="button"
                   onClick={goToAdminDashboard}
@@ -802,8 +829,8 @@ const AdminPanel: React.FC = () => {
                 >
                   <Trophy className="w-6 h-6 text-white" />
                 </button>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">
+                <div className="min-w-0">
+                  <h1 className="text-xl font-bold text-gray-900 md:text-2xl">
                     {activeTab === "questions" && "Question Management"}
                     {activeTab === "users" && "User Management"}
                     {activeTab === "stats" && "Game Statistics"}
@@ -811,7 +838,7 @@ const AdminPanel: React.FC = () => {
                     {activeTab === "leaderboard" && "Leaderboard"}
                     {activeTab === "championships" && "Championship Management"}
                   </h1>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-xs text-gray-600 md:text-sm">
                     {activeTab === "questions" && "Manage your Bible trivia questions and content"}
                     {activeTab === "users" && "View registered users, profiles, and activity status"}
                     {activeTab === "stats" && "Live platform metrics and game activity"}
@@ -822,7 +849,7 @@ const AdminPanel: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-3 sm:flex">
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 FaithIQ Admin
@@ -832,9 +859,9 @@ const AdminPanel: React.FC = () => {
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 min-w-0 overflow-auto p-3 sm:p-4 md:p-6">
           {/* Content Container */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
 
             {/* Questions Tab Content */}
             {activeTab === "questions" && (
@@ -842,7 +869,7 @@ const AdminPanel: React.FC = () => {
                 {/* Fixed Filters Section */}
                 <div className="bg-gray-50 rounded-xl p-6 mb-6 flex-shrink-0">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Filter Questions</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     <div className="relative">
                       <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                       <Input
@@ -1077,27 +1104,27 @@ const AdminPanel: React.FC = () => {
             )}
 
             {activeTab === "users" && (
-              <div className="p-8">
+              <div className="p-4 md:p-8">
                 <UserManagementPanel />
               </div>
             )}
 
             {/* Stats Tab Content */}
             {activeTab === "stats" && (
-              <div className="p-8">
+              <div className="p-4 md:p-8">
                 <GameStatsPanel />
               </div>
             )}
 
             {/* Game Control Tab Content */}
             {activeTab === "settings" && (
-              <div className="p-8">
+              <div className="p-4 md:p-8">
                 <GameControlPanel />
               </div>
             )}
 
             {activeTab === "leaderboard" && (
-              <div className="p-8">
+              <div className="p-4 md:p-8">
                 <AdminLeaderboardPanel />
               </div>
             )}
@@ -1105,7 +1132,7 @@ const AdminPanel: React.FC = () => {
 
             {/* Voices Tab Content */}
             {activeTab === "voices" && (
-              <div className="p-8">
+              <div className="p-4 md:p-8">
                 <div className="space-y-6">
                   {/* Current Voice Status */}
                   <Card className="border-0 shadow-sm">

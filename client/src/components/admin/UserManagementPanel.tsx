@@ -42,19 +42,21 @@ function StatusBadge({
   activeLabel,
   inactiveLabel,
   activeClassName,
+  className,
 }: {
   active: boolean;
   activeLabel: string;
   inactiveLabel: string;
   activeClassName: string;
+  className?: string;
 }) {
   return (
     <Badge
       variant="outline"
       className={
-        active
+        `${active
           ? activeClassName
-          : "bg-gray-50 text-gray-600 border-gray-200"
+          : "bg-gray-50 text-gray-600 border-gray-200"} ${className ?? ""}`
       }
     >
       {active ? activeLabel : inactiveLabel}
@@ -244,6 +246,7 @@ export function UserManagementPanel() {
                         activeLabel="In Lobby"
                         inactiveLabel="Not in Lobby"
                         activeClassName="bg-blue-50 text-blue-700 border-blue-200"
+                        className="shrink-0 whitespace-nowrap"
                       />
                     </TableCell>
                     <TableCell>

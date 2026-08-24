@@ -137,8 +137,8 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className={`modal-animation w-full max-w-md p-0 rounded-2xl shadow-2xl overflow-hidden ${
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 py-2 sm:p-4">
+      <div className={`modal-animation w-[calc(100%-2rem)] max-w-md p-0 rounded-2xl shadow-2xl overflow-hidden sm:w-full ${
         isCorrect 
           ? 'bg-gradient-to-br from-accent to-accent-dark border-2 border-accent' 
           : 'bg-gradient-to-br from-red-600 to-red-800 border-2 border-red-500'

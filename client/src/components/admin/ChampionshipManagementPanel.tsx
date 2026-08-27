@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { adminFetch, apiRequest } from "@/lib/queryClient";
-import { formatKickoff, isMatchReadyToStart, matchDisplayState } from "@/lib/championship";
+import { formatKickoff, formatKickoffSpotlight, isMatchReadyToStart, matchDisplayState } from "@/lib/championship";
 import { onEvent, sendGameEvent, setupGameSocket } from "@/lib/socket";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -20,6 +20,8 @@ import { TeamIconPicker } from "@/components/admin/championship/TeamIconPicker";
 import { TeamAvatar } from "@/components/championship/TeamAvatar";
 import { PlayerSearchSelect, PlayerMultiSelect, playerLabel } from "@/components/admin/championship/PlayerPickers";
 import { AutoScheduleDialog } from "@/components/admin/championship/AutoScheduleDialog";
+import { ScheduleTimeline } from "@/components/admin/championship/ScheduleTimeline";
+import { NextMatchCard } from "@/components/admin/championship/NextMatchCard";
 
 type ChampionshipForm = { name: string; description: string; startDate: string; endDate: string };
 const emptyForm: ChampionshipForm = { name: "", description: "", startDate: "", endDate: "" };
@@ -27,7 +29,7 @@ const emptyForm: ChampionshipForm = { name: "", description: "", startDate: "", 
 // Section anchors. Championship management is an operations dashboard, not a
 // one-way wizard: every section stays on the page and stays usable, and these
 // ids only let one section link the operator to another.
-const SECTION = { teams: "championship-teams", matches: "championship-matches", live: "championship-live", results: "championship-results" };
+const SECTION = { teams: "championship-teams", matches: "championship-matches", schedule: "championship-schedule-timeline", live: "championship-live", results: "championship-results" };
 const scrollToSection = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
 const championshipStatusLabel: Record<string, string> = { draft: "Draft", active: "Active", completed: "Completed" };
@@ -361,6 +363,12 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   const normalizeChampionshipName = (value: string) => value.trim().toLowerCase();
   const formatLocalDateTime = (date: Date) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const parseLocalDateTime = (value: string) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+    if (!match) return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]));
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
   const todayLocalDate = new Date();
   const createToday = `${todayLocalDate.getFullYear()}-${String(todayLocalDate.getMonth() + 1).padStart(2, "0")}-${String(todayLocalDate.getDate()).padStart(2, "0")}`;
   const createMatchMinDateTime = formatLocalDateTime(new Date());
@@ -555,18 +563,27 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       const nowLocalDateTime = formatLocalDateTime(new Date());
       const nextScheduledAt = editingMatch.scheduledAt || "";
       if (nextScheduledAt && nextScheduledAt < nowLocalDateTime && nextScheduledAt !== editingMatchInitialScheduledAt) {
-        throw new Error("Scheduled time cannot be in the past");
+        throw new Error("Match date and time cannot be in the past.");
       }
+      const timeChanged = nextScheduledAt !== editingMatchInitialScheduledAt;
       await apiRequest("PATCH", `/api/championship-matches/${editingMatch.id}`, {
         teamAId: editingMatch.teamAId,
         teamBId: editingMatch.teamBId,
         scheduledAt: nextScheduledAt || null,
         streamUrl: editingMatch.streamUrl || null,
       });
+      const teamAName = teamById(editingMatch.teamAId)?.name ?? "Team A";
+      const teamBName = teamById(editingMatch.teamBId)?.name ?? "Team B";
+      const kickoff = formatKickoffSpotlight(parseLocalDateTime(nextScheduledAt));
       await refresh();
       setEditingMatch(null);
       setEditingMatchInitialScheduledAt("");
-      toast({ title: "Match updated" });
+      toast({
+        title: timeChanged && nextScheduledAt ? "Match rescheduled" : "Match updated",
+        description: timeChanged && nextScheduledAt
+          ? `${teamAName} vs ${teamBName} · ${kickoff ?? "Time to be announced"}`
+          : undefined,
+      });
     } catch (error) {
       toast({ title: "Could not update match", description: error instanceof Error ? error.message : "Please check the match details", variant: "destructive" });
     }
@@ -612,6 +629,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
 
   const teams: any[] = detail?.teams ?? [];
   const matches: any[] = detail?.matches ?? [];
+  const teamById = (id: string) => teams.find(team => team.id === id);
   const liveMatch = matches.find(match => match.status === "live") ?? null;
   const upcomingMatches = matches.filter(match => match.status === "upcoming");
   // Same list, narrowed to the ones whose kick-off time has already passed.
@@ -636,7 +654,6 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       )
     : completedMatches;
   const championshipStatus: string = detail?.championship?.status ?? "draft";
-  const teamById = (id: string) => teams.find(team => team.id === id);
 
   // The dashboard never marks a section "finished" — an active championship can
   // gain teams and matches at any time. This single line says what, if anything,
@@ -693,6 +710,32 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   const isSetupOpen = setupOpen ?? !setupComplete;
   const leader = detail?.standings?.[0] ?? null;
 
+  const renderMatchActions = (match: any, options?: { hideResultLink?: boolean }) => <>
+    {match.status === "upcoming" && <>
+      <Button size="sm" disabled={championshipStatus !== "active"}
+        onClick={() => action.mutate({ url: `/api/championship-matches/${match.id}/start`, body: {}, success: "Match is live" }, { onSuccess: () => scrollToSection(SECTION.live) })}>
+        <Play size={15} /> Start Match
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => {
+        const initialScheduledAt = match.scheduledAt ? formatLocalDateTime(new Date(match.scheduledAt)) : "";
+        setEditingMatch({ ...match, scheduledAt: initialScheduledAt });
+        setEditingMatchInitialScheduledAt(initialScheduledAt);
+      }}>
+        <Edit3 size={15} /> Edit
+      </Button>
+      <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
+    </>}
+    {match.status === "live" && <>
+      <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={() => scrollToSection(SECTION.live)}><Radio size={15} /> Manage Match</Button>
+      <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Live</a></Button>
+      <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
+    </>}
+    {match.status === "completed" && <>
+      {!options?.hideResultLink && <Button size="sm" variant="outline" onClick={() => scrollToSection(SECTION.results)}><Trophy size={15} /> View Result</Button>}
+      <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Result</a></Button>
+    </>}
+  </>;
+
   const renderMatchCard = (match: any, options?: { hideResultLink?: boolean }) => {
     const teamA = teamById(match.teamAId);
     const teamB = teamById(match.teamBId);
@@ -721,33 +764,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
           </p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {match.status === "upcoming" && <>
-            <Button size="sm" disabled={championshipStatus !== "active"}
-              onClick={() => action.mutate({ url: `/api/championship-matches/${match.id}/start`, body: {}, success: "Match is live" }, { onSuccess: () => scrollToSection(SECTION.live) })}>
-              <Play size={15} /> Start Match
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => {
-              const initialScheduledAt = match.scheduledAt ? formatLocalDateTime(new Date(match.scheduledAt)) : "";
-              setEditingMatch({ ...match, scheduledAt: initialScheduledAt });
-              setEditingMatchInitialScheduledAt(initialScheduledAt);
-            }}>
-              <Edit3 size={15} /> Edit
-            </Button>
-            {/* Available before kick-off so the operator can load the overlay into OBS in advance. */}
-            <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
-          </>}
-          {match.status === "live" && <>
-            <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={() => scrollToSection(SECTION.live)}><Radio size={15} /> Manage Match</Button>
-            <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Live</a></Button>
-            <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
-          </>}
-          {/* Completed fixtures offer results only. The overlay route and the
-              OBS browser source are untouched - this drops the admin shortcut,
-              which is not useful once a match is over. */}
-          {match.status === "completed" && <>
-            {!options?.hideResultLink && <Button size="sm" variant="outline" onClick={() => scrollToSection(SECTION.results)}><Trophy size={15} /> View Result</Button>}
-            <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Result</a></Button>
-          </>}
+          {renderMatchActions(match, options)}
         </div>
       </div>
       {match.status === "upcoming" && championshipStatus !== "active" && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
@@ -954,17 +971,18 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
         {teams.length < 2
           ? <EmptyState icon={Users} title="Add at least two teams first." description="A match is played between two different teams in this championship."
               action={<Button onClick={() => scrollToSection(SECTION.teams)}><Users size={16} /> Go to Teams</Button>} />
-          : matches.length === 0
-            ? <EmptyState icon={CalendarDays} title="No matches scheduled yet." description="Create a match between two teams, or generate a Round Robin schedule."
-                action={
-                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:justify-center">
-                    <Button onClick={() => setShowScheduleMatch(true)}><Plus size={16} /> Schedule your first match</Button>
-                    <Button variant="outline" disabled={championshipStatus === "completed"} onClick={() => setShowAutoSchedule(true)}>
-                      <Zap size={16} /> Auto Schedule
-                    </Button>
-                  </div>
-                } />
-            : <div className="space-y-6">
+          : <div className="space-y-6">
+                <NextMatchCard
+                  matches={matches}
+                  teams={teams}
+                  autoStartEnabled={autoStartEnabled}
+                  championshipStatus={championshipStatus}
+                  renderActions={match => renderMatchActions(match)}
+                  onScheduleMatch={() => setShowScheduleMatch(true)}
+                  onAutoSchedule={() => setShowAutoSchedule(true)}
+                  autoScheduleDisabled={championshipStatus === "completed"}
+                />
+                {matches.length > 0 && <>
                 {liveMatch && <div>
                   <h4 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-red-600"><span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" /> Live now</h4>
                   {renderMatchCard(liveMatch)}
@@ -981,8 +999,22 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
                     ? <EmptyState icon={CheckCircle2} title="No completed matches yet." description="Results appear here once a match has ended." />
                     : <div className="space-y-3">{completedMatches.map(match => renderMatchCard(match))}</div>}
                 </div>
+                </>}
               </div>}
       </SectionCard>
+
+      {teams.length >= 2 && (
+        <ScheduleTimeline
+          matches={matches}
+          teams={teams}
+          championshipStatus={championshipStatus}
+          autoStartEnabled={autoStartEnabled}
+          renderActions={match => renderMatchActions(match)}
+          onScheduleMatch={() => setShowScheduleMatch(true)}
+          onAutoSchedule={() => setShowAutoSchedule(true)}
+          autoScheduleDisabled={championshipStatus === "completed"}
+        />
+      )}
 
       {/* 5 — Live match control. Contextual: the full desk appears only while a
           match is actually live, otherwise a compact placeholder holds its place. */}
@@ -1292,7 +1324,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       onCreated={refresh}
     />
 
-    {/* Edit match */}
+    {/* Edit match — same PATCH as existing Edit; changing scheduledAt is reschedule. */}
     <Dialog open={!!editingMatch} onOpenChange={open => {
       if (!open) {
         setEditingMatch(null);
@@ -1302,28 +1334,74 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit match</DialogTitle>
-          <DialogDescription>Change the teams, date or stream link before the match starts.</DialogDescription>
+          <DialogDescription>Change the teams, scheduled date and time, or stream link before the match starts.</DialogDescription>
         </DialogHeader>
-        {editingMatch && <div className="space-y-4">
-          <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
-            <select className="h-11 w-full rounded-md border bg-white px-3" value={editingMatch.teamAId} onChange={event => setEditingMatch({ ...editingMatch, teamAId: event.target.value })}>
-              {teams.map((team: any) => <option key={team.id} value={team.id}>{team.emoticon} {team.name}</option>)}
-            </select>
-            <span className="mx-auto grid h-9 w-9 place-items-center rounded-full bg-slate-900 text-[11px] font-black text-white">VS</span>
-            <select className="h-11 w-full rounded-md border bg-white px-3" value={editingMatch.teamBId} onChange={event => setEditingMatch({ ...editingMatch, teamBId: event.target.value })}>
-              {teams.map((team: any) => <option key={team.id} value={team.id}>{team.emoticon} {team.name}</option>)}
-            </select>
+        {editingMatch && (() => {
+          const nextScheduledAt = editingMatch.scheduledAt || "";
+          const scheduleMoved = nextScheduledAt !== editingMatchInitialScheduledAt;
+          const scheduleInPast = Boolean(nextScheduledAt && nextScheduledAt < createMatchMinDateTime && nextScheduledAt !== editingMatchInitialScheduledAt);
+          const fromKickoff = formatKickoffSpotlight(parseLocalDateTime(editingMatchInitialScheduledAt));
+          const toKickoff = formatKickoffSpotlight(parseLocalDateTime(nextScheduledAt));
+          const sameTeam = editingMatch.teamAId === editingMatch.teamBId;
+          return (
+        <div className="space-y-4">
+          <div className="grid min-w-0 items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
+            <label className="min-w-0 text-sm font-semibold">
+              <span className="mb-1 block">Team A</span>
+              <select aria-label="Team A" className="h-11 w-full rounded-md border bg-white px-3" value={editingMatch.teamAId} onChange={event => setEditingMatch({ ...editingMatch, teamAId: event.target.value })}>
+                {teams.map((team: any) => <option key={team.id} value={team.id}>{team.emoticon} {team.name}</option>)}
+              </select>
+            </label>
+            <span className="mx-auto grid h-9 w-9 place-items-center rounded-full bg-slate-900 text-[11px] font-black text-white" aria-hidden="true">VS</span>
+            <label className="min-w-0 text-sm font-semibold">
+              <span className="mb-1 block">Team B</span>
+              <select aria-label="Team B" className="h-11 w-full rounded-md border bg-white px-3" value={editingMatch.teamBId} onChange={event => setEditingMatch({ ...editingMatch, teamBId: event.target.value })}>
+                {teams.map((team: any) => <option key={team.id} value={team.id}>{team.emoticon} {team.name}</option>)}
+              </select>
+            </label>
           </div>
-          <label className="block text-sm font-semibold">Match date and time
-            <Input className="mt-1 font-normal" type="datetime-local" min={createMatchMinDateTime} value={editingMatch.scheduledAt ?? ""} onChange={event => setEditingMatch({ ...editingMatch, scheduledAt: event.target.value })} />
+          {sameTeam && <p className="text-sm font-medium text-red-700">A team cannot play itself.</p>}
+          <div>
+            <label htmlFor="edit-match-scheduled-at" className="block text-sm font-semibold">Scheduled date and time</label>
+            <Input
+              id="edit-match-scheduled-at"
+              className="mt-1 font-normal"
+              type="datetime-local"
+              min={createMatchMinDateTime}
+              value={editingMatch.scheduledAt ?? ""}
+              aria-invalid={scheduleInPast}
+              aria-describedby="edit-match-scheduled-help"
+              onChange={event => setEditingMatch({ ...editingMatch, scheduledAt: event.target.value })}
+            />
+            {scheduleInPast
+              ? <p id="edit-match-scheduled-help" className="mt-1 text-sm font-medium text-red-700">Match date and time cannot be in the past.</p>
+              : <p id="edit-match-scheduled-help" className="mt-1 text-xs text-slate-500">
+                  {autoStartEnabled
+                    ? "Changing the scheduled time will update when automatic start occurs."
+                    : "The date is informational. The match only starts when an admin clicks Start Match."}
+                </p>}
+            {scheduleMoved && !scheduleInPast && (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                From: {fromKickoff ?? "Time to be announced"}
+                <span className="mx-1.5 text-amber-700">→</span>
+                To: {toKickoff ?? "Time to be announced"}
+              </p>
+            )}
+          </div>
+          <label htmlFor="edit-match-stream-url" className="block text-sm font-semibold">Live stream link
+            <Input id="edit-match-stream-url" className="mt-1 font-normal" placeholder="https://stream.example.com/live.m3u8" value={editingMatch.streamUrl ?? ""} onChange={event => setEditingMatch({ ...editingMatch, streamUrl: event.target.value })} />
           </label>
-          <label className="block text-sm font-semibold">Live stream link
-            <Input className="mt-1 font-normal" placeholder="https://stream.example.com/live.m3u8" value={editingMatch.streamUrl ?? ""} onChange={event => setEditingMatch({ ...editingMatch, streamUrl: event.target.value })} />
-          </label>
-        </div>}
-        <DialogFooter>
+        </div>
+          );
+        })()}
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => setEditingMatch(null)}>Cancel</Button>
-          <Button onClick={handleSaveMatch}>Save match</Button>
+          <Button
+            disabled={!!editingMatch && (editingMatch.teamAId === editingMatch.teamBId || Boolean(editingMatch.scheduledAt && editingMatch.scheduledAt < createMatchMinDateTime && editingMatch.scheduledAt !== editingMatchInitialScheduledAt))}
+            onClick={handleSaveMatch}
+          >
+            Save changes
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

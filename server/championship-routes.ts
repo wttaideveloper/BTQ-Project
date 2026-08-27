@@ -16,6 +16,7 @@ import {
 } from "./championship-schedule";
 import { ChampionshipMatchStartError, startChampionshipMatch } from "./championship-match-start";
 import { isChampionshipAutoStartEnabled, notifyChampionshipScheduleChanged } from "./championship-autostart";
+import { rescheduleMatchError } from "./championship-match-reschedule";
 import { deleteManagedTeamLogo, hasAllowedImageSignature, teamLogoUpload } from "./team-logo-upload";
 
 const championshipFields = z.object({
@@ -544,12 +545,14 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       const [existing] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
       if (!existing) return res.status(404).json({ message: "Match not found" });
       if (existing.status === "completed") throw new Error("Completed matches cannot be edited");
-      if (data.scheduledAt) {
-        const submittedAt = localDateTimeString(data.scheduledAt);
-        const nowLocalDateTime = localDateTimeString(new Date());
-        const existingAt = existing.scheduledAt ? localDateTimeString(new Date(existing.scheduledAt)) : null;
-        if (submittedAt < nowLocalDateTime && submittedAt !== existingAt) {
-          return res.status(400).json({ message: "Match date and time cannot be in the past" });
+      if (data.scheduledAt !== undefined) {
+        const scheduleError = rescheduleMatchError(
+          existing.status,
+          data.scheduledAt,
+          existing.scheduledAt,
+        );
+        if (scheduleError) {
+          return res.status(existing.status === "upcoming" ? 400 : 409).json({ message: scheduleError });
         }
       }
       const teamAId = data.teamAId ?? existing.teamAId;

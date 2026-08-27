@@ -218,6 +218,56 @@ export function pickFocusMatch(grouped: GroupedMatches): ChampionshipMatchSummar
   return grouped.live[0] ?? grouped.upcoming[0] ?? grouped.completed[0] ?? null;
 }
 
+export type AdminMatchSpotlight =
+  | { type: "live"; match: ChampionshipMatchSummary }
+  | { type: "next"; match: ChampionshipMatchSummary }
+  | { type: "all-completed" }
+  | { type: "empty" };
+
+/**
+ * Admin Matches & Schedule spotlight: live match first, otherwise the earliest
+ * upcoming fixture by actual scheduledAt (then id). Completed matches never win.
+ * Upcoming rows with no scheduledAt are only used if nothing dated remains.
+ */
+export function pickAdminMatchSpotlight(matches: ChampionshipMatchSummary[]): AdminMatchSpotlight {
+  const live = matches
+    .filter(match => matchStatusOf(match) === "live")
+    .sort((a, b) => {
+      const delta = (timeOf(a.startedAt) ?? 0) - (timeOf(b.startedAt) ?? 0);
+      return delta !== 0 ? delta : a.id.localeCompare(b.id);
+    });
+  if (live[0]) return { type: "live", match: live[0] };
+
+  const upcoming = matches.filter(match => matchStatusOf(match) === "upcoming");
+  const dated = upcoming
+    .filter(match => timeOf(match.scheduledAt) !== null)
+    .sort((a, b) => {
+      const delta = (timeOf(a.scheduledAt) ?? 0) - (timeOf(b.scheduledAt) ?? 0);
+      return delta !== 0 ? delta : a.id.localeCompare(b.id);
+    });
+  if (dated[0]) return { type: "next", match: dated[0] };
+
+  const undated = upcoming
+    .filter(match => timeOf(match.scheduledAt) === null)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (undated[0]) return { type: "next", match: undated[0] };
+
+  return matches.length ? { type: "all-completed" } : { type: "empty" };
+}
+
+/** "Today · 2:40 PM" using the same local calendar day as formatKickoff. */
+export function formatKickoffSpotlight(value: ApiDate, now: Date = new Date()): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const dayDelta = Math.round((startOfLocalDay(date) - startOfLocalDay(now)) / 86_400_000);
+  const time = formatClock(date);
+  if (dayDelta === 0) return `Today · ${time}`;
+  if (dayDelta === 1) return `Tomorrow · ${time}`;
+  if (dayDelta === -1) return `Yesterday · ${time}`;
+  return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${time}`;
+}
+
 /**
  * Result of a completed match from one team's point of view.
  *
@@ -238,14 +288,112 @@ function formatClock(date: Date): string {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+function startOfLocalDay(input: Date): number {
+  return new Date(input.getFullYear(), input.getMonth(), input.getDate()).getTime();
+}
+
+function localDayKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Kick-off time only ("2:40 PM"), using the same local clock as formatKickoff. */
+export function formatKickoffTime(value: ApiDate): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return formatClock(date);
+}
+
+export const UNSCHEDULED_SCHEDULE_KEY = "unscheduled";
+
+export type ScheduleDayGroup = {
+  key: string;
+  label: string;
+  sublabel: string | null;
+  dayStartMs: number | null;
+  matches: ChampionshipMatchSummary[];
+};
+
+function scheduleDayHeading(date: Date, now: Date): { label: string; sublabel: string | null } {
+  const dayDelta = Math.round((startOfLocalDay(date) - startOfLocalDay(now)) / 86_400_000);
+  const calendarDate = date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+  if (dayDelta === 0) return { label: "Today", sublabel: calendarDate };
+  if (dayDelta === 1) return { label: "Tomorrow", sublabel: calendarDate };
+  if (dayDelta === -1) return { label: "Yesterday", sublabel: calendarDate };
+  return {
+    label: date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }),
+    sublabel: date.getFullYear() === now.getFullYear() ? null : String(date.getFullYear()),
+  };
+}
+
+/**
+ * Group fixtures by local calendar date for the admin schedule timeline.
+ * Sorted by the actual scheduled timestamp, never by formatted strings.
+ * Matches with no scheduledAt go in an Unscheduled group at the end.
+ */
+export function groupMatchesForScheduleTimeline(
+  matches: ChampionshipMatchSummary[],
+  now: Date = new Date(),
+): ScheduleDayGroup[] {
+  const sorted = [...matches].sort((a, b) => {
+    const left = timeOf(a.scheduledAt);
+    const right = timeOf(b.scheduledAt);
+    if (left === null && right === null) return a.id.localeCompare(b.id);
+    if (left === null) return 1;
+    if (right === null) return -1;
+    if (left !== right) return left - right;
+    return a.id.localeCompare(b.id);
+  });
+
+  const groups = new Map<string, ScheduleDayGroup>();
+  const unscheduled: ChampionshipMatchSummary[] = [];
+
+  for (const match of sorted) {
+    const ms = timeOf(match.scheduledAt);
+    if (ms === null) {
+      unscheduled.push(match);
+      continue;
+    }
+    const date = new Date(ms);
+    const key = localDayKey(date);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.matches.push(match);
+      continue;
+    }
+    const heading = scheduleDayHeading(date, now);
+    groups.set(key, {
+      key,
+      label: heading.label,
+      sublabel: heading.sublabel,
+      dayStartMs: startOfLocalDay(date),
+      matches: [match],
+    });
+  }
+
+  const dated = [...groups.values()].sort((a, b) => (a.dayStartMs ?? 0) - (b.dayStartMs ?? 0));
+  if (unscheduled.length) {
+    dated.push({
+      key: UNSCHEDULED_SCHEDULE_KEY,
+      label: "Unscheduled",
+      sublabel: "No date set",
+      dayStartMs: null,
+      matches: unscheduled,
+    });
+  }
+  return dated;
+}
+
 /** "Today, 7:30 PM" / "Tomorrow, 7:30 PM" / "Sat, Sep 12, 7:30 PM". */
 export function formatKickoff(value: ApiDate): string | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
 
-  const startOfDay = (input: Date) => new Date(input.getFullYear(), input.getMonth(), input.getDate()).getTime();
-  const dayDelta = Math.round((startOfDay(date) - startOfDay(new Date())) / 86_400_000);
+  const dayDelta = Math.round((startOfLocalDay(date) - startOfLocalDay(new Date())) / 86_400_000);
   if (dayDelta === 0) return `Today, ${formatClock(date)}`;
   if (dayDelta === 1) return `Tomorrow, ${formatClock(date)}`;
   if (dayDelta === -1) return `Yesterday, ${formatClock(date)}`;

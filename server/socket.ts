@@ -879,6 +879,7 @@ async function completeChampionshipMatchForSession(
 
     if (!completedMatch) return;
     broadcastChampionshipEvent({ type: "match_ended", match: completedMatch });
+    void import("./championship-autostart").then(mod => mod.notifyChampionshipScheduleChanged());
   } catch (error) {
     console.error("[Championship] Failed to complete match for finished session:", error);
   }

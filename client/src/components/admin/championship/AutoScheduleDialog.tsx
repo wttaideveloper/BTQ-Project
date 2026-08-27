@@ -61,6 +61,7 @@ export function AutoScheduleDialog({
   championshipStatus,
   teamCount,
   endDate,
+  autoStartEnabled = false,
   onCreated,
 }: {
   open: boolean;
@@ -69,6 +70,7 @@ export function AutoScheduleDialog({
   championshipStatus: string;
   teamCount: number;
   endDate?: string | null;
+  autoStartEnabled?: boolean;
   onCreated: () => Promise<void>;
 }) {
   const { toast } = useToast();
@@ -163,6 +165,10 @@ export function AutoScheduleDialog({
     }
   };
 
+  const autoStartCopy = autoStartEnabled
+    ? "Matches will automatically start at their scheduled time."
+    : "Matches are created as upcoming. An admin must start them manually.";
+
   return <>
     <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
       <DialogContent className="flex max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-lg flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
@@ -171,7 +177,7 @@ export function AutoScheduleDialog({
             <Zap className="text-amber-500" size={18} /> Auto Schedule
           </DialogTitle>
           <DialogDescription>
-            {step === "format" && "Generate a Round Robin schedule. Matches are created as upcoming and will not start automatically."}
+            {step === "format" && `Generate a Round Robin schedule. ${autoStartCopy}`}
             {step === "settings" && "Choose when the first match should appear and how fixtures are spaced."}
             {step === "preview" && "Review the generated fixtures before they are created."}
           </DialogDescription>
@@ -255,7 +261,7 @@ export function AutoScheduleDialog({
               </div>
               <p className="text-xs text-slate-500">
                 Kickoffs are spaced by duration plus break. With the defaults that is 40 minutes between start times.
-                Matches are not started automatically.
+                {" "}{autoStartCopy}
               </p>
             </div>
           )}
@@ -358,7 +364,7 @@ export function AutoScheduleDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Create {preview?.matches.length ?? 0} upcoming match{(preview?.matches.length ?? 0) === 1 ? "" : "es"}?</AlertDialogTitle>
           <AlertDialogDescription>
-            These matches will be added to the championship schedule. They will not start automatically.
+            These matches will be added to the championship schedule. {autoStartCopy}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

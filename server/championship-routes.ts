@@ -14,6 +14,8 @@ import {
   localDateTimeString,
   possibleMatchCount,
 } from "./championship-schedule";
+import { ChampionshipMatchStartError, startChampionshipMatch } from "./championship-match-start";
+import { isChampionshipAutoStartEnabled, notifyChampionshipScheduleChanged } from "./championship-autostart";
 
 const championshipFields = z.object({
   name: z.string().trim().min(1).max(120),
@@ -166,6 +168,9 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     const visible = team ? matches.filter(match => match.teamAId === team.id || match.teamBId === team.id) : matches;
     res.json({ championship, team, teams, matches: visible.map(toPublicMatch) });
   });
+  app.get("/api/championships/features", ensureAdmin, (_req, res) => {
+    res.json({ autoStartEnabled: isChampionshipAutoStartEnabled() });
+  });
   app.post("/api/championships", ensureAdmin, async (req, res) => {
     try {
       const data = championshipInput.parse(req.body);
@@ -220,7 +225,9 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       }
       const [row] = await db.update(championships).set({ ...data, updatedAt: new Date() })
         .where(eq(championships.id, req.params.id)).returning();
-      row ? res.json(row) : res.status(404).json({ message: "Championship not found" });
+      if (!row) return res.status(404).json({ message: "Championship not found" });
+      notifyChampionshipScheduleChanged();
+      res.json(row);
     } catch (e) { fail(res, e); }
   });
   app.delete("/api/championships/:id", ensureAdmin, async (req, res) => {
@@ -236,6 +243,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       await db.delete(championshipTeams).where(eq(championshipTeams.championshipId, championship.id));
       await db.delete(championships).where(eq(championships.id, championship.id));
       broadcastChampionshipEvent({ type: "championship_deleted", championshipId: championship.id });
+      notifyChampionshipScheduleChanged();
       res.status(204).end();
     } catch (error) { fail(res, error); }
   });
@@ -323,6 +331,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       });
       if (result.status === 404) return res.status(404).json({ message: result.message });
       if (result.status === 400) return res.status(400).json({ message: result.message, ...result.plan });
+      notifyChampionshipScheduleChanged();
       res.status(result.status).json({ ...result.plan, created: result.created });
     } catch (error) { fail(res, error); }
   });
@@ -475,6 +484,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       const selected = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, data.championshipId));
       assertTeamsPlayable(data.teamAId, data.teamBId, selected);
       const [row] = await db.insert(championshipMatches).values({ id: uuid(), ...data }).returning();
+      notifyChampionshipScheduleChanged();
       res.status(201).json(row);
     } catch (e) { fail(res, e); }
   });
@@ -523,70 +533,21 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       const [row] = await db.update(championshipMatches).set({ ...data, updatedAt: new Date() })
         .where(eq(championshipMatches.id, existing.id)).returning();
       broadcastChampionshipEvent({ type: "match_updated", match: row });
+      notifyChampionshipScheduleChanged();
       res.json(row);
     } catch (e) { fail(res, e); }
   });
   app.post("/api/championship-matches/:id/start", ensureAdmin, async (req, res) => {
-    // Previously this route had no try/catch, so any driver error (see the
-    // duplicate-key case below) surfaced as an opaque 500.
+    // Operator override: scheduledAt is not required and may still be in the future.
     try {
-      await completeExpiredChampionships();
-      const [match] = await db.select().from(championshipMatches).where(eq(championshipMatches.id, req.params.id));
-      if (!match) return res.status(404).json({ message: "Match not found" });
-      const [championship] = await db.select().from(championships).where(eq(championships.id, match.championshipId));
-      if (championship?.status !== "active") return res.status(409).json({ message: "Only active championships can play matches" });
-      const otherLive = await db.select().from(championshipMatches).where(and(
-        eq(championshipMatches.championshipId, match.championshipId), eq(championshipMatches.status, "live"), ne(championshipMatches.id, match.id)));
-      if (otherLive.length) return res.status(409).json({ message: "Another match is already live in this championship" });
-      const [teamA] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, match.teamAId));
-      const [teamB] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, match.teamBId));
-      if (!teamA || !teamB) return res.status(409).json({ message: "Both championship teams are required" });
-      // Defence in depth. Match create/edit already guarantee both of these,
-      // and the database enforces team_a_id <> team_b_id, but the rosters are
-      // about to be copied into a Team Battle so they are re-checked at the
-      // last moment before that snapshot is taken.
-      if (teamA.championshipId !== match.championshipId || teamB.championshipId !== match.championshipId) {
-        return res.status(409).json({ message: "Both teams must belong to this championship" });
-      }
-      if (teamA.id === teamB.id) return res.status(409).json({ message: "A team cannot play itself" });
-
-      // ONE match : ONE Team Battle, keyed by a deterministic battle id.
-      //
-      // The battle used to be located by querying team_battles for the session
-      // id, where the session id was `match.gameSessionId ?? uuid()`. That left
-      // a reachable failure loop: if a previous attempt created the battle but
-      // the guarded UPDATE below did not match a row (so gameSessionId was
-      // never persisted on the match), a retry minted a NEW uuid, found no
-      // battle under it, and tried to INSERT a second row with the same
-      // `championship-{matchId}` primary key - a duplicate-key error that
-      // escaped as a 500 and left the match permanently unstartable.
-      //
-      // Looking the battle up by its deterministic id instead makes this route
-      // idempotent: a retry reuses the existing battle and its session id.
-      const battleId = `championship-${match.id}`;
-      const existingBattle = await database.getTeamBattle(battleId);
-      const gameSessionId = existingBattle?.gameSessionId || match.gameSessionId || uuid();
-      // Ordering is deliberate: create the battle FIRST, then flip the match to
-      // live. If the UPDATE does not match (concurrent start, or the match is
-      // no longer upcoming) we are left with an unused forming battle, which a
-      // retry reuses. The reverse order would risk a live match with no battle
-      // behind it, which nothing can recover from because /start then refuses
-      // the match for no longer being upcoming.
-      if (!existingBattle) {
-        await database.createTeamBattle({
-          id: battleId, gameSessionId, gameType: "question", category: "All Categories", difficulty: "Mixed", status: "forming",
-          teamACaptainId: teamA.captainId, teamAName: teamA.name, teamATeammates: (teamA.memberIds ?? []).filter(id => id !== teamA.captainId),
-          teamBCaptainId: teamB.captainId, teamBName: teamB.name, teamBTeammates: (teamB.memberIds ?? []).filter(id => id !== teamB.captainId),
-          teamAScore: 0, teamBScore: 0, teamACorrectAnswers: 0, teamBCorrectAnswers: 0, teamAIncorrectAnswers: 0, teamBIncorrectAnswers: 0,
-        });
-      }
-      const [row] = await db.update(championshipMatches).set({
-        status: "live", startedAt: new Date(), gameSessionId, updatedAt: new Date(),
-      }).where(and(eq(championshipMatches.id, match.id), eq(championshipMatches.status, "upcoming"))).returning();
-      if (!row) return res.status(409).json({ message: "Only upcoming matches can be started" });
-      broadcastChampionshipEvent({ type: "match_started", match: row });
+      const row = await startChampionshipMatch(req.params.id);
       res.json(row);
-    } catch (error) { fail(res, error); }
+    } catch (error) {
+      if (error instanceof ChampionshipMatchStartError) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      fail(res, error);
+    }
   });
   app.post("/api/championship-matches/:id/join", async (req, res) => {
     if (!req.isAuthenticated() || !req.user?.id) return res.status(401).json({ message: "Authentication required" });
@@ -623,6 +584,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
         ...scores, winnerTeamId, status: "completed", completedAt: new Date(), updatedAt: new Date(),
       }).where(eq(championshipMatches.id, match.id)).returning();
       broadcastChampionshipEvent({ type: "match_ended", match: row });
+      notifyChampionshipScheduleChanged();
       res.json(row);
     } catch (error) { fail(res, error); }
   });

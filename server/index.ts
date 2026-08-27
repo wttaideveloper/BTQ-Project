@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
 import { log } from "./logger";
 import { completeExpiredChampionships, startChampionshipLifecycle } from "./championship-lifecycle";
+import { startChampionshipAutoStart } from "./championship-autostart";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -154,6 +155,7 @@ app.use((req, res, next) => {
   await cleanupVeryOldBattles();
   await completeExpiredChampionships();
   startChampionshipLifecycle();
+  startChampionshipAutoStart();
 
   server.listen(port, "localhost", () => {
     log(`serving on port ${port}`);

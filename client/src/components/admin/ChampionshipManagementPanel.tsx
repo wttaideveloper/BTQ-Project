@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, Clock3, Crown, Edit3,
-  ExternalLink, Eye, Info, MonitorPlay, Play, Plus, Radio, Settings2, Smile, Sparkles,
+  ExternalLink, Eye, Info, MonitorPlay, Play, Plus, Radio, RefreshCw, Settings2, Smile, Sparkles,
   Search, Trash2, Trophy, Tv, UserPlus, Users,
   Check, Copy, Zap,
 } from "lucide-react";
@@ -39,9 +39,8 @@ const championshipStatusDot: Record<string, string> = {
   draft: "bg-slate-400", active: "bg-emerald-500 animate-pulse", completed: "bg-violet-500",
 };
 // "ready" is a DISPLAY state only - an upcoming match whose scheduled time has
-// passed. Nothing starts by itself; the operator still presses Start Match, and
-// the stored status stays "upcoming" until /start flips it. See
-// matchDisplayState in @/lib/championship.
+// passed. The stored status stays "upcoming" until POST /start (manual or
+// server auto-start) flips it. See matchDisplayState in @/lib/championship.
 const matchStatusLabel: Record<string, string> = { upcoming: "Upcoming", ready: "Ready to start", live: "Live", completed: "Completed" };
 const matchStatusStyle: Record<string, string> = {
   upcoming: "bg-sky-100 text-sky-800 border-sky-200",
@@ -366,11 +365,42 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
 
   const { data: championships = [] } = useQuery<any[]>({ queryKey: ["/api/championships"] });
   const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
+  const { data: championshipFeatures } = useQuery<{ autoStartEnabled: boolean }>({
+    queryKey: ["/api/championships/features"],
+    queryFn: async () => {
+      const response = await adminFetch("/api/championships/features");
+      if (!response.ok) return { autoStartEnabled: false };
+      return response.json();
+    },
+  });
+  const autoStartEnabled = championshipFeatures?.autoStartEnabled === true;
   const eligiblePlayers = users.filter(user => !user.isAdmin);
-  const { data: detail } = useQuery<any>({
+  const { data: detail, refetch: refetchChampionshipDetail } = useQuery<any>({
     queryKey: ["/api/championships", selected], enabled: !!selected,
     queryFn: async () => { const response = await adminFetch(`/api/championships/${selected}`); if (!response.ok) throw new Error("Could not load championship"); return response.json(); },
+    // Auto-start can flip upcoming → live without this page's Start Match
+    // mutation. Championship socket events only go to spectators of one match,
+    // so poll while an active championship still has upcoming fixtures.
+    refetchInterval: query => {
+      const data = query.state.data;
+      if (data?.championship?.status !== "active") return false;
+      if (!data.matches?.some((match: { status?: string }) => match.status === "upcoming")) return false;
+      return 15_000;
+    },
   });
+  const [refreshingMatches, setRefreshingMatches] = useState(false);
+  const refreshMatchesInFlight = useRef(false);
+  const refreshMatches = async () => {
+    if (!selected || refreshMatchesInFlight.current) return;
+    refreshMatchesInFlight.current = true;
+    setRefreshingMatches(true);
+    try {
+      await refetchChampionshipDetail();
+    } finally {
+      refreshMatchesInFlight.current = false;
+      setRefreshingMatches(false);
+    }
+  };
 
   useEffect(() => {
     if (!detail?.championship) return;
@@ -588,7 +618,9 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
     }
     : readyMatches.length ? {
       tone: "action",
-      message: `Ready to start: ${teamById(readyMatches[0].teamAId)?.name ?? "Team A"} vs ${teamById(readyMatches[0].teamBId)?.name ?? "Team B"} has reached its scheduled time. It will not start automatically.`,
+      message: autoStartEnabled
+        ? `Ready to start: ${teamById(readyMatches[0].teamAId)?.name ?? "Team A"} vs ${teamById(readyMatches[0].teamBId)?.name ?? "Team B"} has reached its scheduled time and will start automatically.`
+        : `Ready to start: ${teamById(readyMatches[0].teamAId)?.name ?? "Team A"} vs ${teamById(readyMatches[0].teamBId)?.name ?? "Team B"} has reached its scheduled time. An admin must start them manually.`,
       button: <Button size="sm" variant="outline" onClick={() => scrollToSection(SECTION.matches)}><CalendarDays size={15} /> Go to matches</Button>,
     }
     : upcomingMatches.length ? {
@@ -672,7 +704,9 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
         <Info size={14} className="mt-0.5 shrink-0" /> Set this championship to Active before starting the match.
       </p>}
       {match.status === "upcoming" && readyToStart && championshipStatus === "active" && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
-        <Info size={14} className="mt-0.5 shrink-0" /> The match will not start automatically. Start it when both teams are ready.
+        <Info size={14} className="mt-0.5 shrink-0" /> {autoStartEnabled
+          ? "This match will automatically start at its scheduled time. An admin can still start it now."
+          : "The match will not start automatically. Start it when both teams are ready."}
       </p>}
     </div>;
   };
@@ -841,19 +875,32 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
 
       {/* 4 — Matches & schedule */}
       <SectionCard id={SECTION.matches} icon={CalendarDays} title="Matches & Schedule" description="Create fixtures and manage scheduled matches."
-        action={teams.length >= 2 ? (
+        action={
           <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row">
-            <Button onClick={() => setShowScheduleMatch(true)}><Plus size={16} /> Schedule Match</Button>
             <Button
               variant="outline"
-              disabled={championshipStatus === "completed"}
-              title={championshipStatus === "completed" ? "Auto Schedule is not available for a completed championship." : undefined}
-              onClick={() => setShowAutoSchedule(true)}
+              className="w-full sm:w-auto"
+              disabled={refreshingMatches}
+              aria-label="Refresh matches"
+              onClick={() => { void refreshMatches(); }}
             >
-              <Zap size={16} /> Auto Schedule
+              <RefreshCw size={16} className={refreshingMatches ? "animate-spin" : undefined} />
+              Refresh
             </Button>
+            {teams.length >= 2 && <>
+              <Button className="w-full sm:w-auto" onClick={() => setShowScheduleMatch(true)}><Plus size={16} /> Schedule Match</Button>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                disabled={championshipStatus === "completed"}
+                title={championshipStatus === "completed" ? "Auto Schedule is not available for a completed championship." : undefined}
+                onClick={() => setShowAutoSchedule(true)}
+              >
+                <Zap size={16} /> Auto Schedule
+              </Button>
+            </>}
           </div>
-        ) : undefined}>
+        }>
         {teams.length < 2
           ? <EmptyState icon={Users} title="Add at least two teams first." description="A match is played between two different teams in this championship."
               action={<Button onClick={() => scrollToSection(SECTION.teams)}><Users size={16} /> Go to Teams</Button>} />
@@ -1142,7 +1189,9 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
           <div>
             <label className="mb-2 block text-sm font-semibold">Match date and time <span className="font-normal text-slate-400">(optional)</span></label>
             <Input className="h-11" type="datetime-local" min={createMatchMinDateTime} value={scheduledAt} onChange={event => setScheduledAt(event.target.value)} />
-            <p className="mt-1 text-xs text-slate-500">The date is informational. The match only starts when an admin clicks Start Match.</p>
+            <p className="mt-1 text-xs text-slate-500">{autoStartEnabled
+              ? "If a date is set, the match will automatically start at that time while this championship is active. An admin can still start it earlier."
+              : "The date is informational. The match only starts when an admin clicks Start Match."}</p>
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold">Live stream link <span className="font-normal text-slate-400">(optional)</span></label>
@@ -1164,6 +1213,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       championshipStatus={championshipStatus}
       teamCount={teams.length}
       endDate={detail?.championship?.endDate}
+      autoStartEnabled={autoStartEnabled}
       onCreated={refresh}
     />
 

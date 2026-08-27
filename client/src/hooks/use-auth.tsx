@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { setupGameSocket, closeGameSocket } from "@/lib/socket";
 import { useTeamInvitationToasts } from "@/hooks/useTeamInvitationToasts";
 import { useJoinRequestToasts } from "@/hooks/useJoinRequestToasts";
+import { useChampionshipMatchStartToasts } from "@/hooks/useChampionshipMatchStartToasts";
 
 type AuthContextType = {
   user: SelectUser | null;
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Show toast when this user receives a team battle / rapid fire invitation
   useTeamInvitationToasts(user?.id);
   useJoinRequestToasts(user?.id);
+  useChampionshipMatchStartToasts(user?.id);
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {

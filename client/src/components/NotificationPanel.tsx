@@ -123,7 +123,7 @@ export function NotificationPanel() {
       case 'challenge_completed': return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'challenge_declined': return <X className="h-4 w-4 text-red-500" />;
       case 'challenge_expired': return <Loader2 className="h-4 w-4 text-yellow-500" />;
-      case 'challenge_result': return <Trophy className="h-4 w-4 text-yellow-500" />;
+      case 'championship_match_started': return <Trophy className="h-4 w-4 text-amber-500" />;
       default: return <Bell className="h-4 w-4" />;
     }
   };
@@ -176,7 +176,16 @@ export function NotificationPanel() {
                     <p className="text-xs text-muted-foreground">
                       {new Date(notification.createdAt).toLocaleString()}
                     </p>
-                    {notification.challengeId && (
+                    {notification.challengeId && notification.type === 'championship_match_started' && (
+                      <div className="pt-1">
+                        <Button size="sm" variant="secondary" asChild className="text-xs h-7 px-2">
+                          <a href={user?.isAdmin ? '/admin/dashboard' : '/my-championship'}>
+                            {user?.isAdmin ? 'Open Match' : 'Join Match'}
+                          </a>
+                        </Button>
+                      </div>
+                    )}
+                    {notification.challengeId && notification.type !== 'championship_match_started' && (
                       <div className="pt-1">
                         <Button size="sm" variant="secondary" asChild className="text-xs h-7 px-2">
                           <a href={`/play?mode=challenge&id=${notification.challengeId}`}>

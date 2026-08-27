@@ -15,6 +15,10 @@ export interface GameEvent {
   difficulty?: string;
   message?: string;
   notificationId?: string;
+  championshipId?: string;
+  teamAName?: string;
+  teamBName?: string;
+  role?: "admin" | "player";
   clientId?: string;
   leaderboard?: any[];
   challengeResult?: any;
@@ -376,6 +380,7 @@ export function onError(callback: (error: any) => void) {
   'team_member_removed',       // CRITICAL: Member removed notification
   'invitation_declined',       // Inviter notified when invitee declines
   'invitation_expired',        // Invitee notified when slot is filled
+  'championship_match_started',
 ].forEach((key) => {
   if (!eventListeners[key]) eventListeners[key] = [];
 });

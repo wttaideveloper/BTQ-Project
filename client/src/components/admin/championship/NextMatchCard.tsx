@@ -109,7 +109,7 @@ export function NextMatchCard({
         : `Next match: ${teamAName} versus ${teamBName}`}
       className={`overflow-hidden rounded-2xl border shadow-sm ${isLive
         ? "border-red-200 bg-gradient-to-r from-red-50 to-rose-50"
-        : "border-amber-200/60 bg-gradient-to-r from-slate-950 via-indigo-950 to-violet-950 text-white"}`}
+        : "border-amber-200/60 bg-gradient-to-r from-slate-950 via-indigo-950 to-violet-950"}`}
     >
       <div className="p-4 sm:p-5">
         <h3
@@ -163,7 +163,7 @@ export function NextMatchCard({
           )}
         </div>
 
-        <div className="mt-4 flex flex-col items-stretch gap-2 [&>*]:w-full sm:flex-row sm:flex-wrap sm:items-center sm:justify-center sm:[&>*]:w-auto">
+        <div className={`mt-4 flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center ${isLive ? "" : "text-slate-900 [&_a]:text-slate-900 [&_a]:shrink-0 [&_button]:shrink-0"}`}>
           {renderActions(match)}
         </div>
       </div>

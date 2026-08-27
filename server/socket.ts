@@ -135,6 +135,10 @@ interface GameEvent {
   challengeResult?: any;
   challengeDetails?: any;
   notificationId?: string;
+  championshipId?: string;
+  teamAName?: string;
+  teamBName?: string;
+  role?: string;
   // Team-based multiplayer fields
   teamId?: string;
   teamName?: string;
@@ -2802,6 +2806,17 @@ async function sendUnreadNotifications(userId: number) {
     const connections = userConnections.get(userId) || [];
     for (const notification of notifications) {
       for (const clientId of connections) {
+        if (notification.type === "championship_match_started") {
+          sendToClient(clientId, {
+            type: "championship_match_started",
+            message: notification.message,
+            notificationId: notification.id,
+            matchId: notification.challengeId,
+            challengeId: notification.challengeId,
+            role: notification.message.includes("Join now") ? "player" : "admin",
+          });
+          continue;
+        }
         sendToClient(clientId, {
           type: "notification",
           message: notification.message,

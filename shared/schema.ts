@@ -184,7 +184,8 @@ export type Notification = {
     | "challenge_completed"
     | "challenge_declined"
     | "challenge_expired"
-    | "challenge_result";
+    | "challenge_result"
+    | "championship_match_started";
   message: string;
   read: boolean;
   challengeId?: string;

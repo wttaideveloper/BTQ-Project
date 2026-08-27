@@ -11,6 +11,7 @@ import { database } from "./database";
 import { completeExpiredChampionships } from "./championship-lifecycle";
 import { broadcastChampionshipEvent } from "./socket";
 import { notifyChampionshipScheduleChanged } from "./championship-autostart";
+import { notifyChampionshipMatchStarted } from "./championship-match-notifications";
 
 export class ChampionshipMatchStartError extends Error {
   readonly status: number;
@@ -137,5 +138,10 @@ export async function startChampionshipMatch(matchId: string): Promise<Champions
 
   broadcastChampionshipEvent({ type: "match_started", match: row });
   notifyChampionshipScheduleChanged();
+  try {
+    await notifyChampionshipMatchStarted(row);
+  } catch (error) {
+    console.error("[Championship] Failed to send match-start notifications:", error);
+  }
   return row;
 }

@@ -22,6 +22,7 @@ import { PlayerSearchSelect, PlayerMultiSelect, playerLabel } from "@/components
 import { AutoScheduleDialog } from "@/components/admin/championship/AutoScheduleDialog";
 import { ScheduleTimeline } from "@/components/admin/championship/ScheduleTimeline";
 import { NextMatchCard } from "@/components/admin/championship/NextMatchCard";
+import { CHAMPIONSHIP_FOCUS_LIVE_EVENT, CHAMPIONSHIP_FOCUS_LIVE_KEY } from "@/hooks/useChampionshipMatchStartToasts";
 
 type ChampionshipForm = { name: string; description: string; startDate: string; endDate: string };
 const emptyForm: ChampionshipForm = { name: "", description: "", startDate: "", endDate: "" };
@@ -427,6 +428,35 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   // Switching championship hands the Setup panel back to its automatic state:
   // expanded while the basics are missing, collapsed once they are filled in.
   useEffect(() => { setSetupOpen(null); }, [selected]);
+
+  useEffect(() => {
+    const readFocusPayload = (event?: Event) => {
+      const fromEvent = (event as CustomEvent<{ championshipId?: string; matchId?: string }>)?.detail;
+      if (fromEvent?.championshipId) return fromEvent;
+      try {
+        const raw = sessionStorage.getItem(CHAMPIONSHIP_FOCUS_LIVE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw) as { championshipId?: string; matchId?: string };
+      } catch {
+        return null;
+      }
+    };
+    const focusLiveDesk = (event?: Event) => {
+      const payload = readFocusPayload(event);
+      try { sessionStorage.removeItem(CHAMPIONSHIP_FOCUS_LIVE_KEY); } catch { /* ignore */ }
+      if (payload?.championshipId) {
+        setSelected(payload.championshipId);
+        void qc.invalidateQueries({ queryKey: ["/api/championships", payload.championshipId] });
+      } else {
+        void refetchChampionshipDetail();
+      }
+      window.setTimeout(() => scrollToSection(SECTION.live), 200);
+    };
+    const pending = readFocusPayload();
+    if (pending) focusLiveDesk();
+    window.addEventListener(CHAMPIONSHIP_FOCUS_LIVE_EVENT, focusLiveDesk);
+    return () => window.removeEventListener(CHAMPIONSHIP_FOCUS_LIVE_EVENT, focusLiveDesk);
+  }, [qc, refetchChampionshipDetail]);
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: ["/api/championships"] });

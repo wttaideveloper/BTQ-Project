@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -61,6 +61,7 @@ import {
   Menu
 } from 'lucide-react';
 import { ChampionshipManagementPanel } from '@/components/admin/ChampionshipManagementPanel';
+import { CHAMPIONSHIP_FOCUS_LIVE_EVENT } from '@/hooks/useChampionshipMatchStartToasts';
 import { adminFetch, apiRequest } from '@/lib/queryClient';
 import { 
   fetchQuestions, 
@@ -161,6 +162,15 @@ const AdminPanel: React.FC = () => {
   const [reviewQuestions, setReviewQuestions] = useState<Question[]>([]);
   const [championshipsResetSignal, setChampionshipsResetSignal] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const openChampionshipsLive = () => {
+      setActiveTab("championships");
+      setMobileSidebarOpen(false);
+    };
+    window.addEventListener(CHAMPIONSHIP_FOCUS_LIVE_EVENT, openChampionshipsLive);
+    return () => window.removeEventListener(CHAMPIONSHIP_FOCUS_LIVE_EVENT, openChampionshipsLive);
+  }, []);
   
   // Helpers: dedupe and shuffle for safe downloads
   const normalizeQuestionKey = (text: string) =>

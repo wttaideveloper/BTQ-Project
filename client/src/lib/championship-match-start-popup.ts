@@ -30,6 +30,37 @@ export type MatchStartPopupState = {
   seen: string[];
 };
 
+/**
+ * Remove leftover match-start dialog portals. A trapped overlay (Radix
+ * `bg-black/80` + `#root { overflow-x: hidden }`) paints as a solid black
+ * slab in the admin content column even after the popup is unmounted by React.
+ */
+export function stripTrappedMatchStartOverlays(): void {
+  if (typeof document === "undefined") return;
+
+  const isMatchStartUi = (node: Element) => {
+    const text = node.textContent ?? "";
+    return /Match Started|Your Match Is Live/.test(text) && /Open Match|Join Match/.test(text);
+  };
+
+  document.querySelectorAll("[aria-label='Dismiss match started popup']").forEach(node => {
+    node.parentElement?.remove() ?? node.remove();
+  });
+
+  for (const dialog of document.querySelectorAll("[role='dialog']")) {
+    if (!isMatchStartUi(dialog)) continue;
+    const portal = dialog.closest("[data-radix-portal]") ?? dialog.parentElement;
+    portal?.remove() ?? dialog.remove();
+  }
+
+  for (const overlay of document.querySelectorAll("[data-radix-dialog-overlay]")) {
+    const portal = overlay.parentElement;
+    if (portal?.querySelector("[role='dialog']")) continue;
+    overlay.remove();
+    if (portal && portal.childElementCount === 0) portal.remove();
+  }
+}
+
 export function isPublicWatchPath(pathname: string): boolean {
   return pathname.startsWith("/watch/") || pathname.startsWith("/overlay/");
 }

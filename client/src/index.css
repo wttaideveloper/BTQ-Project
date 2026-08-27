@@ -439,6 +439,24 @@ html, body {
   overflow-x: hidden;
 }
 
+/*
+ * Admin panel: body is globally `bg-black` for the game/overlay. While the
+ * admin desk is open, lock the document to the viewport so only the inner
+ * main pane scrolls (otherwise html/body AND the pane each get a scrollbar,
+ * with a blank band under the 100vh shell).
+ */
+html.admin-panel-page,
+html.admin-panel-page body {
+  height: 100vh;
+  overflow: hidden;
+  background: #f8fafc !important;
+}
+#root.admin-panel-page-root {
+  height: 100vh;
+  overflow: hidden;
+  background: #f8fafc !important;
+}
+
 /* Fix button overflow on mobile */
 button, .answer-button {
   max-width: 100%;

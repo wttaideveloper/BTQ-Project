@@ -247,7 +247,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      {!location.startsWith("/admin") && <ChampionshipMatchStartPopup userId={user?.id} />}
+      {user && !user.isAdmin && !location.startsWith("/admin") && (
+        <ChampionshipMatchStartPopup userId={user.id} />
+      )}
     </AuthContext.Provider>
   );
 }

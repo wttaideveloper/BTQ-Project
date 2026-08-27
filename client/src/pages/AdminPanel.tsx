@@ -61,7 +61,7 @@ import {
   Menu
 } from 'lucide-react';
 import { ChampionshipManagementPanel } from '@/components/admin/ChampionshipManagementPanel';
-import { CHAMPIONSHIP_FOCUS_LIVE_EVENT } from '@/lib/championship-match-start-popup';
+import { CHAMPIONSHIP_FOCUS_LIVE_EVENT, stripTrappedMatchStartOverlays } from '@/lib/championship-match-start-popup';
 import { adminFetch, apiRequest } from '@/lib/queryClient';
 import { 
   fetchQuestions, 
@@ -173,10 +173,19 @@ const AdminPanel: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    for (const overlay of document.querySelectorAll("[data-radix-dialog-overlay]")) {
-      const group = overlay.parentElement;
-      if (!group?.querySelector("[role='dialog']")) overlay.remove();
-    }
+    document.documentElement.classList.add("admin-panel-page");
+    document.body.classList.add("admin-panel-page");
+    document.getElementById("root")?.classList.add("admin-panel-page-root");
+    stripTrappedMatchStartOverlays();
+    const t1 = window.setTimeout(stripTrappedMatchStartOverlays, 0);
+    const t2 = window.setTimeout(stripTrappedMatchStartOverlays, 300);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      document.documentElement.classList.remove("admin-panel-page");
+      document.body.classList.remove("admin-panel-page");
+      document.getElementById("root")?.classList.remove("admin-panel-page-root");
+    };
   }, []);
   
   // Helpers: dedupe and shuffle for safe downloads
@@ -812,7 +821,7 @@ const AdminPanel: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 flex">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Fixed Sidebar */}
       <aside className="hidden md:fixed md:flex md:h-screen md:w-64 md:flex-col md:border-r md:border-gray-200 md:bg-white md:shadow-lg">
         {renderSidebarContent()}
@@ -829,7 +838,7 @@ const AdminPanel: React.FC = () => {
       </Sheet>
 
       {/* Main Content Area */}
-      <div className="flex min-h-screen w-full min-w-0 flex-1 flex-col bg-slate-50 md:ml-64 md:h-screen">
+      <div className="flex h-screen w-full min-w-0 flex-1 flex-col overflow-hidden bg-slate-50 md:ml-64">
         {/* Top Navbar */}
         <div className="flex-shrink-0 border-b border-gray-200 bg-white px-3 py-3 sm:px-4 md:px-6 md:py-4">
           <div className="flex items-center justify-between gap-3">
@@ -876,7 +885,7 @@ const AdminPanel: React.FC = () => {
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 min-w-0 overflow-auto bg-slate-50 p-3 sm:p-4 md:p-6">
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-50 p-3 sm:p-4 md:p-6">
           {/* Content Container */}
           <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
 

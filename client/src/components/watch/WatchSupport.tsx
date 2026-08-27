@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Check, Heart } from "lucide-react";
+import { TeamAvatar } from "@/components/championship/TeamAvatar";
 
 export interface SupportTeam {
   id: string;
   name: string;
   emoticon: string;
+  logoUrl?: string | null;
 }
 
 /**
@@ -78,9 +80,7 @@ export function WatchSupport({
               className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
             >
               <div className="flex items-center gap-2">
-                <span className="text-lg leading-none" aria-hidden="true">
-                  {team.emoticon}
-                </span>
+                <TeamAvatar logoUrl={team.logoUrl} emoticon={team.emoticon} alt={`${team.name} logo`} className="h-6 w-6 text-lg" />
                 <p className="min-w-0 flex-1 truncate text-sm font-bold text-white">{team.name}</p>
                 <p className="shrink-0 text-[11px] champ-meta tabular-nums">
                   {supporters[team.id] ?? 0} supporters
@@ -100,7 +100,7 @@ export function WatchSupport({
                   </>
                 ) : (
                   <>
-                    <span aria-hidden="true">{team.emoticon}</span> Support {team.name}
+                    <TeamAvatar logoUrl={team.logoUrl} emoticon={team.emoticon} alt={`${team.name} logo`} className="h-5 w-5 text-base" /> Support {team.name}
                   </>
                 )}
               </button>

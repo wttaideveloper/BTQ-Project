@@ -1,4 +1,4 @@
-import type { Express, RequestHandler } from "express";
+import type { Express, Request, RequestHandler } from "express";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
@@ -16,6 +16,7 @@ import {
 } from "./championship-schedule";
 import { ChampionshipMatchStartError, startChampionshipMatch } from "./championship-match-start";
 import { isChampionshipAutoStartEnabled, notifyChampionshipScheduleChanged } from "./championship-autostart";
+import { deleteManagedTeamLogo, hasAllowedImageSignature, teamLogoUpload } from "./team-logo-upload";
 
 const championshipFields = z.object({
   name: z.string().trim().min(1).max(120),
@@ -27,11 +28,16 @@ const championshipFields = z.object({
 const championshipInput = championshipFields.refine(value => !value.startDate || !value.endDate || value.endDate >= value.startDate, {
   message: "End date must be on or after the start date",
 });
+const managedTeamLogoUrl = z.string()
+  .regex(/^\/uploads\/team-logos\/[a-z0-9][a-z0-9._-]*\.(jpg|png|webp|avif)$/i, "Invalid managed team logo URL");
 const teamInput = z.object({
   championshipId: z.string().min(1), name: z.string().trim().min(1).max(80),
   captainId: z.coerce.number().int().positive(),
   memberIds: z.array(z.coerce.number().int().positive()).default([]),
   emoticon: z.string().min(1).max(300).default("👏"),
+  // URLs are server-owned: handlers only add a string after saving a verified
+  // upload. Clients may request removal with null or omit this field.
+  logoUrl: managedTeamLogoUrl.nullable().optional(),
 });
 const matchInput = z.object({
   championshipId: z.string().min(1), teamAId: z.string().min(1), teamBId: z.string().min(1),
@@ -48,8 +54,38 @@ const normalizeChampionshipName = (value: string) => value.trim().toLowerCase();
 
 export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHandler) {
   const db = database.db;
+  type TeamLogoRequest = Request & { file?: Express.Multer.File };
+  const readTeamInput = (body: Record<string, unknown>) => {
+    const input = { ...body } as Record<string, unknown>;
+    if (typeof input.memberIds === "string") {
+      try { input.memberIds = JSON.parse(input.memberIds); } catch { throw new Error("memberIds must be valid JSON"); }
+    }
+    if (input.logoUrl !== undefined && input.logoUrl !== null) {
+      throw new Error("logoUrl is server-managed; upload a logo file instead");
+    }
+    return input;
+  };
+  const uploadedLogoUrl = (req: TeamLogoRequest) => {
+    if (!req.file) return undefined;
+    if (!hasAllowedImageSignature(req.file.path, req.file.mimetype)) {
+      deleteManagedTeamLogo(`/uploads/team-logos/${req.file.filename}`);
+      throw new Error("The uploaded team logo does not match its declared image type");
+    }
+    return `/uploads/team-logos/${req.file.filename}`;
+  };
+  const uploadTeamLogo: RequestHandler = (req, res, next) => {
+    teamLogoUpload.single("logo")(req, res, error => {
+      if (!error) return next();
+      return res.status(400).json({ message: error.message || "Invalid team logo upload" });
+    });
+  };
   const fail = (res: any, error: unknown) => {
-    console.error("[Championship]", error);
+    // Do not pass framework/database objects to console.error: Node's inspector
+    // can itself throw while traversing unusual error shapes.
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error(`[Championship] ${message}`);
+    if (stack) console.error(`[Championship stack]\n${stack}`);
     return res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
   };
 
@@ -356,9 +392,10 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
    * teams are created by POST /api/teams in server/routes.ts, which is gated by
    * ensureAuthenticated and is deliberately left untouched.
    */
-  app.post("/api/championship-teams", ensureAdmin, async (req, res) => {
+  app.post("/api/championship-teams", ensureAdmin, uploadTeamLogo, async (req: TeamLogoRequest, res) => {
     try {
-      const data = teamInput.parse(req.body);
+      const logoUrl = uploadedLogoUrl(req);
+      const data = teamInput.parse({ ...readTeamInput(req.body), ...(logoUrl ? { logoUrl } : {}) });
       const members = [...new Set([data.captainId, ...data.memberIds])];
       await assertUsersExist(members);
       const conflicting = await db.select().from(championshipTeams)
@@ -367,7 +404,10 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
         throw new Error("A user can only belong to one team per championship");
       const [row] = await db.insert(championshipTeams).values({ id: uuid(), ...data, memberIds: members }).returning();
       res.status(201).json(row);
-    } catch (e) { fail(res, e); }
+    } catch (e) {
+      if (req.file) deleteManagedTeamLogo(`/uploads/team-logos/${req.file.filename}`);
+      fail(res, e);
+    }
   });
   /**
    * Roster assignment is an administrator action, exactly like team creation
@@ -409,9 +449,12 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     const matches = await db.select().from(championshipMatches).where(eq(championshipMatches.championshipId, team.championshipId));
     res.json({ team, members, matches: matches.filter(match => match.teamAId === team.id || match.teamBId === team.id) });
   });
-  app.patch("/api/championship-teams/:id", ensureAdmin, async (req, res) => {
+  app.patch("/api/championship-teams/:id", ensureAdmin, uploadTeamLogo, async (req: TeamLogoRequest, res) => {
     try {
-      const data = teamInput.omit({ championshipId: true }).partial().parse(req.body);
+      const logoUrl = uploadedLogoUrl(req);
+      const data = teamInput.omit({ championshipId: true }).partial().parse({
+        ...readTeamInput(req.body), ...(logoUrl ? { logoUrl } : {}),
+      });
       const [team] = await db.select().from(championshipTeams).where(eq(championshipTeams.id, req.params.id));
       if (!team) return res.status(404).json({ message: "Team not found" });
       const live = await db.select().from(championshipMatches).where(and(
@@ -441,8 +484,12 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       }
       const [row] = await db.update(championshipTeams).set({ ...data, memberIds, updatedAt: new Date() })
         .where(eq(championshipTeams.id, team.id)).returning();
+      if (logoUrl || data.logoUrl === null) deleteManagedTeamLogo(team.logoUrl);
       res.json(row);
-    } catch (e) { fail(res, e); }
+    } catch (e) {
+      if (req.file) deleteManagedTeamLogo(`/uploads/team-logos/${req.file.filename}`);
+      fail(res, e);
+    }
   });
   app.delete("/api/championship-teams/:id", ensureAdmin, async (req, res) => {
     // A team referenced by ANY match cannot be deleted.

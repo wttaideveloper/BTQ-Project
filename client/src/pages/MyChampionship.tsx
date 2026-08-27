@@ -49,6 +49,7 @@ import { EmptyState } from "@/components/championship/EmptyState";
 import { MatchActions } from "@/components/championship/MatchActions";
 import { MatchCard } from "@/components/championship/MatchCard";
 import { MatchResultModal } from "@/components/championship/MatchResultModal";
+import { TeamAvatar } from "@/components/championship/TeamAvatar";
 import { SectionHeader } from "@/components/championship/SectionHeader";
 import {
   ChampionshipStatusBadge,
@@ -146,9 +147,7 @@ function FocusMatchPanel({
           : "flex flex-col items-center gap-2 text-center",
       )}
     >
-      <span className={cn("shrink-0 leading-none", compact ? "text-xl" : "text-3xl sm:text-4xl")} aria-hidden="true">
-        {team?.emoticon ?? "🏳️"}
-      </span>
+      <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallback} logo`} className={cn("shrink-0", compact ? "h-5 w-5 text-xl" : "h-10 w-10 text-3xl sm:h-11 sm:w-11 sm:text-4xl")} />
       <span
         className={cn(
           "min-w-0 truncate font-bold",
@@ -566,12 +565,7 @@ export default function MyChampionship() {
             {myTeam ? (
               <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-4 sm:justify-between">
                 <div className="flex min-w-0 items-center gap-3.5">
-                  <span
-                    className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-[#d4af37]/25 bg-white/[0.04] text-2xl leading-none"
-                    aria-hidden="true"
-                  >
-                    {myTeam.emoticon}
-                  </span>
+                  <TeamAvatar logoUrl={myTeam.logoUrl} emoticon={myTeam.emoticon} alt={`${myTeam.name} logo`} className="h-12 w-12 shrink-0 rounded-xl border border-[#d4af37]/25 bg-white/[0.04] p-1 text-2xl" />
                   <div className="min-w-0">
                     <p className="champ-eyebrow">Your team</p>
                     <p className="mt-1 truncate text-xl font-bold text-white">{myTeam.name}</p>
@@ -707,12 +701,7 @@ export default function MyChampionship() {
 
             <div className="flex flex-wrap items-start justify-between gap-5">
               <div className="flex min-w-0 items-center gap-4 sm:gap-5">
-                <span
-                  className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-[#d4af37]/20 bg-white/[0.04] text-4xl leading-none"
-                  aria-hidden="true"
-                >
-                  {myTeam.emoticon}
-                </span>
+                <TeamAvatar logoUrl={myTeam.logoUrl} emoticon={myTeam.emoticon} alt={`${myTeam.name} logo`} className="h-16 w-16 shrink-0 rounded-2xl border border-[#d4af37]/20 bg-white/[0.04] p-1 text-4xl" />
                 <div className="min-w-0">
                   <p className="champ-eyebrow">Your team</p>
                   <h2 className="mt-1 truncate text-2xl font-black text-white sm:text-3xl">{myTeam.name}</h2>
@@ -821,7 +810,7 @@ export default function MyChampionship() {
                         </td>
                         <td className="py-3.5 pr-3">
                           <span className="flex items-center gap-2">
-                            <span aria-hidden="true">{row.emoticon}</span>
+                            <TeamAvatar logoUrl={row.logoUrl} emoticon={row.emoticon} alt={`${row.name} logo`} className="h-5 w-5" />
                             <span className={cn("truncate font-semibold", isMine ? "text-[#f0d58a]" : "text-white/90")}>
                               {row.name}
                             </span>

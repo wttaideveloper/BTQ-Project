@@ -1,5 +1,6 @@
 import { Check, Trophy } from "lucide-react";
 import type { WatchQuestionOption } from "./WatchQuestionPanel";
+import { TeamAvatar } from "@/components/championship/TeamAvatar";
 
 export interface WatchToss {
   questionId?: string;
@@ -33,11 +34,13 @@ export function WatchTossPanel({
   toss,
   result,
   winnerEmoticon,
+  winnerLogoUrl,
 }: {
   toss: WatchToss;
   /** Null until the toss is decided. */
   result: WatchTossResult | null;
   winnerEmoticon?: string;
+  winnerLogoUrl?: string | null;
 }) {
   const resolved = result && (!result.questionId || !toss.questionId || result.questionId === toss.questionId)
     ? result
@@ -101,7 +104,7 @@ export function WatchTossPanel({
             <Trophy className="h-4 w-4" /> Toss winner
           </p>
           <p className="mt-0.5 text-lg font-black text-white">
-            {winnerEmoticon ? `${winnerEmoticon} ` : ""}
+            {winnerEmoticon && <TeamAvatar logoUrl={winnerLogoUrl} emoticon={winnerEmoticon} alt={`${resolved.winnerTeamName ?? "Winner"} logo`} className="mr-1 inline-grid h-5 w-5 align-middle text-base" />}
             {resolved.winnerTeamName ?? "—"}
           </p>
           {resolved.firstTurnTeamName && (

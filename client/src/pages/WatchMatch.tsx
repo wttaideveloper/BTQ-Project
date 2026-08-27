@@ -442,6 +442,8 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               teamBName={data.teamB?.name}
               teamAEmoticon={data.teamA?.emoticon}
               teamBEmoticon={data.teamB?.emoticon}
+              teamALogoUrl={data.teamA?.logoUrl}
+              teamBLogoUrl={data.teamB?.logoUrl}
               teamAScore={data.match.teamAScore}
               teamBScore={data.match.teamBScore}
               winnerName={winnerName}
@@ -461,6 +463,13 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
                           ? data.teamB?.emoticon
                           : undefined
                     }
+                    winnerLogoUrl={
+                      tossResult?.winnerTeamId === data.teamA?.id
+                        ? data.teamA?.logoUrl
+                        : tossResult?.winnerTeamId === data.teamB?.id
+                          ? data.teamB?.logoUrl
+                          : undefined
+                    }
                   />
                 ) : status === "live" && liveQuestionDetail ? (
                   <WatchQuestionPanel
@@ -471,6 +480,13 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
                         ? data.teamA?.emoticon
                         : liveQuestionDetail.answeringTeamId === data.teamB?.id
                           ? data.teamB?.emoticon
+                          : undefined
+                    }
+                    teamLogoUrl={
+                      liveQuestionDetail.answeringTeamId === data.teamA?.id
+                        ? data.teamA?.logoUrl
+                        : liveQuestionDetail.answeringTeamId === data.teamB?.id
+                          ? data.teamB?.logoUrl
                           : undefined
                     }
                   />

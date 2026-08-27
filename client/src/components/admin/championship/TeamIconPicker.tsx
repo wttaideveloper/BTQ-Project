@@ -28,12 +28,6 @@ export function TeamIconPicker({
   return (
     <div>
       <div className="flex items-center gap-3">
-        <span
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border bg-slate-50 text-2xl"
-          aria-hidden="true"
-        >
-          {value || "🏆"}
-        </span>
         <Input
           id={id}
           className="h-11 max-w-[10rem] text-xl"

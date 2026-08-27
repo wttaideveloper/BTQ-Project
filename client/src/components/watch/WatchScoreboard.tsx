@@ -1,4 +1,5 @@
 import type { ReactionParticle } from "@/lib/watch-reactions";
+import { TeamAvatar } from "@/components/championship/TeamAvatar";
 
 /**
  * Broadcast scoreboard — and the single canvas for audience reactions.
@@ -24,8 +25,8 @@ export function WatchScoreboard({
   particles = [],
 }: {
   status: string;
-  teamA?: { id: string; name: string; emoticon: string };
-  teamB?: { id: string; name: string; emoticon: string };
+  teamA?: { id: string; name: string; emoticon: string; logoUrl?: string | null };
+  teamB?: { id: string; name: string; emoticon: string; logoUrl?: string | null };
   teamAScore: number;
   teamBScore: number;
   supporters: Record<string, number>;
@@ -53,9 +54,7 @@ export function WatchScoreboard({
         } ${isWaiting ? "opacity-70" : ""}`}
       >
         <div className={`flex items-center gap-2.5 ${align === "right" ? "justify-end" : ""}`}>
-          <span className="text-2xl leading-none sm:text-3xl" aria-hidden="true">
-            {team?.emoticon ?? "🏳️"}
-          </span>
+          <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallback} logo`} className="h-8 w-8 shrink-0 text-2xl sm:h-9 sm:w-9 sm:text-3xl" />
           <div className="min-w-0">
             <p className={`truncate font-bold text-white ${isWinner ? "text-[#f0d58a]" : ""}`}>
               {team?.name ?? fallback}

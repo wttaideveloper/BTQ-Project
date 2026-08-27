@@ -369,6 +369,7 @@ export const championshipTeams = pgTable("championship_teams", {
   captainId: integer("captain_id").notNull(),
   memberIds: json("member_ids").notNull().default([]).$type<number[]>(),
   emoticon: text("emoticon").notNull().default("👏"),
+  logoUrl: text("logo_url"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
+import { TeamAvatar } from "@/components/championship/TeamAvatar";
 
 export default function ChampionshipTeam() {
   const { id } = useParams<{ id: string }>();
@@ -29,7 +30,7 @@ export default function ChampionshipTeam() {
       </Link>
     </div>
     <header className="mt-6 rounded-3xl bg-gradient-to-r from-cyan-500/20 to-violet-500/20 border border-white/10 p-8">
-      <div className="text-6xl">{data.team.emoticon}</div><h1 className="text-4xl font-black mt-3">{data.team.name}</h1>
+      <TeamAvatar logoUrl={data.team.logoUrl} emoticon={data.team.emoticon} alt={`${data.team.name} logo`} className="h-16 w-16 text-6xl" /><h1 className="text-4xl font-black mt-3">{data.team.name}</h1>
       <p className="text-slate-400 mt-2">Championship team</p>
     </header>
     <section className="mt-6 bg-white/5 border border-white/10 rounded-2xl p-6"><h2 className="text-xl font-bold mb-4">Members</h2>

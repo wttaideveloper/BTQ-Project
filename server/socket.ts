@@ -136,6 +136,7 @@ interface GameEvent {
   challengeDetails?: any;
   notificationId?: string;
   championshipId?: string;
+  championshipName?: string;
   teamAName?: string;
   teamBName?: string;
   role?: string;

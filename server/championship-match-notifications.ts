@@ -7,6 +7,7 @@
  */
 import { eq, inArray } from "drizzle-orm";
 import {
+  championships,
   championshipTeams,
   users,
   type ChampionshipMatch,
@@ -76,6 +77,11 @@ export async function notifyChampionshipMatchStarted(match: Pick<ChampionshipMat
   const teamB = teams.find(team => team.id === match.teamBId);
   const teamAName = teamA?.name ?? "Team A";
   const teamBName = teamB?.name ?? "Team B";
+  const [championship] = await database.db
+    .select({ name: championships.name })
+    .from(championships)
+    .where(eq(championships.id, match.championshipId));
+  const championshipName = championship?.name?.trim() || undefined;
 
   const admins = await database.db.select({ id: users.id }).from(users).where(eq(users.isAdmin, true));
   const recipients = resolveMatchStartRecipients({
@@ -110,6 +116,7 @@ export async function notifyChampionshipMatchStarted(match: Pick<ChampionshipMat
       notificationId: notification.id,
       matchId: match.id,
       championshipId: match.championshipId,
+      championshipName,
       teamAName,
       teamBName,
       role: recipient.role,

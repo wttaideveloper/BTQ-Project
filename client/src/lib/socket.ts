@@ -16,6 +16,7 @@ export interface GameEvent {
   message?: string;
   notificationId?: string;
   championshipId?: string;
+  championshipName?: string;
   teamAName?: string;
   teamBName?: string;
   role?: "admin" | "player";

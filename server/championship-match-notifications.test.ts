@@ -146,16 +146,20 @@ test("private notifications use sendToUser, not the public spectator broadcast",
 
 test("client popup ignores public Watch Live paths and public match_started", () => {
   assert.match(popupSource, /championship_match_started/);
-  assert.match(popupSource, /<Dialog /);
+  assert.match(popupSource, /role="dialog"/);
   assert.doesNotMatch(popupSource, /onEvent\("match_started"/);
   assert.doesNotMatch(popupSource, /duration: 8000/);
   assert.match(popupSource, /isPublicWatchPath/);
-  assert.match(popupSource, /Join Match/);
-  assert.match(popupSource, /Open Match/);
+  assert.match(hookSource, /Join Match/);
+  assert.match(hookSource, /Open Match/);
+  assert.match(popupSource, /copy\.action/);
+  assert.match(popupSource, /joinPlayerMatch/);
+  assert.match(popupSource, /openAdminMatch/);
   assert.match(popupSource, /\/my-championship/);
   assert.match(popupSource, /\/admin\/dashboard/);
   assert.match(popupSource, /\/api\/championship-matches\/\$\{current\.matchId\}\/join/);
   assert.match(notifySource, /database\.createNotification/);
+  assert.match(notifySource, /championshipName/);
   assert.match(hookSource, /enqueueMatchStartPopup/);
 });
 

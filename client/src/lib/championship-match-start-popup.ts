@@ -8,6 +8,7 @@ export type MatchStartPopupEvent = {
   notificationId?: string;
   matchId?: string;
   championshipId?: string;
+  championshipName?: string;
   teamAName?: string;
   teamBName?: string;
   role?: MatchStartPopupRole | string;
@@ -18,6 +19,7 @@ export type MatchStartPopupItem = {
   id: string;
   matchId?: string;
   championshipId?: string;
+  championshipName?: string;
   teamAName: string;
   teamBName: string;
   role: MatchStartPopupRole;
@@ -47,14 +49,13 @@ export function stripTrappedMatchStartOverlays(): void {
     node.parentElement?.remove() ?? node.remove();
   });
 
-  for (const dialog of document.querySelectorAll("[role='dialog']")) {
-    if (!isMatchStartUi(dialog)) continue;
-    const portal = dialog.closest("[data-radix-portal]") ?? dialog.parentElement;
-    portal?.remove() ?? dialog.remove();
-  }
-
   for (const overlay of document.querySelectorAll("[data-radix-dialog-overlay]")) {
     const portal = overlay.parentElement;
+    const dialog = portal?.querySelector("[role='dialog']");
+    if (dialog && isMatchStartUi(dialog)) {
+      portal?.remove();
+      continue;
+    }
     if (portal?.querySelector("[role='dialog']")) continue;
     overlay.remove();
     if (portal && portal.childElementCount === 0) portal.remove();
@@ -70,17 +71,65 @@ export function isAdminAppPath(pathname: string): boolean {
 }
 
 /**
- * Never show the match-start popup in the admin app. Operators already have
- * Live Match Control, and a full-screen overlay paints as a black slab there.
- * Watch/Overlay stay silent. On player pages, skip only when the live desk
- * is already mounted (should not happen outside admin).
+ * Watch Live / Overlay stay silent. Admin and player pages both show the
+ * compact match-start card (no full-screen overlay).
  */
 export function shouldSuppressMatchStartPopup(
   _event: Pick<MatchStartPopupEvent, "role">,
-  ctx: { pathname: string; liveDeskPresent: boolean },
+  ctx: { pathname: string; liveDeskPresent?: boolean },
 ): boolean {
-  if (isPublicWatchPath(ctx.pathname) || isAdminAppPath(ctx.pathname)) return true;
-  return ctx.liveDeskPresent;
+  return isPublicWatchPath(ctx.pathname);
+}
+
+/** Hide empty strings and UUID-looking values. Real names pass through. */
+export function sanitizeChampionshipName(value?: string | null): string | undefined {
+  const name = value?.replace(/\s+/g, " ").trim();
+  if (!name) return undefined;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name)) return undefined;
+  return name;
+}
+
+export function championshipNameFromCaches(
+  championshipId: string | undefined,
+  caches: {
+    list?: Array<{ id?: string; name?: string }> | null;
+    detail?: { championship?: { id?: string; name?: string }; name?: string } | null;
+    dashboard?: { championship?: { id?: string; name?: string } | null } | null;
+  },
+): string | undefined {
+  if (!championshipId) return undefined;
+  const listName = caches.list?.find(item => item.id === championshipId)?.name;
+  const detailChamp = caches.detail?.championship;
+  const detailName = !detailChamp?.id || detailChamp.id === championshipId
+    ? (detailChamp?.name ?? caches.detail?.name)
+    : undefined;
+  const dash = caches.dashboard?.championship;
+  const dashName = dash?.id === championshipId ? dash.name : undefined;
+  return sanitizeChampionshipName(listName)
+    ?? sanitizeChampionshipName(detailName)
+    ?? sanitizeChampionshipName(dashName);
+}
+
+export function matchStartPopupCopy(role: MatchStartPopupRole): {
+  title: string;
+  body: string;
+  action: string;
+  dismiss: string;
+} {
+  if (role === "player") {
+    return {
+      title: "Your Match Is Live!",
+      body: "Your match has started. Join now to play.",
+      action: "Join Match",
+      dismiss: "Later",
+    };
+  }
+  return {
+    title: "Match Started",
+    body: "This match is now live.",
+    action: "Open Match",
+    dismiss: "Close",
+  };
 }
 
 export function markMatchStartPopupSeen(state: MatchStartPopupState, id: string | null): MatchStartPopupState {
@@ -111,6 +160,7 @@ export function enqueueMatchStartPopup(
     id,
     matchId: event.matchId,
     championshipId: event.championshipId,
+    championshipName: sanitizeChampionshipName(event.championshipName),
     teamAName: event.teamAName?.trim() || "Team A",
     teamBName: event.teamBName?.trim() || "Team B",
     role: event.role === "player" ? "player" : "admin",

@@ -12,7 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { setupGameSocket, closeGameSocket } from "@/lib/socket";
 import { useTeamInvitationToasts } from "@/hooks/useTeamInvitationToasts";
 import { useJoinRequestToasts } from "@/hooks/useJoinRequestToasts";
-import { useChampionshipMatchStartToasts } from "@/hooks/useChampionshipMatchStartToasts";
+import { useLocation } from "wouter";
+import { ChampionshipMatchStartPopup } from "@/components/championship/ChampionshipMatchStartPopup";
 
 type AuthContextType = {
   user: SelectUser | null;
@@ -48,6 +49,7 @@ type RegisterData = {
 export const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
+  const [location] = useLocation();
   const {
     data: user,
     error,
@@ -77,7 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Show toast when this user receives a team battle / rapid fire invitation
   useTeamInvitationToasts(user?.id);
   useJoinRequestToasts(user?.id);
-  useChampionshipMatchStartToasts(user?.id);
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
@@ -246,6 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      {!location.startsWith("/admin") && <ChampionshipMatchStartPopup userId={user?.id} />}
     </AuthContext.Provider>
   );
 }

@@ -22,7 +22,7 @@ import { PlayerSearchSelect, PlayerMultiSelect, playerLabel } from "@/components
 import { AutoScheduleDialog } from "@/components/admin/championship/AutoScheduleDialog";
 import { ScheduleTimeline } from "@/components/admin/championship/ScheduleTimeline";
 import { NextMatchCard } from "@/components/admin/championship/NextMatchCard";
-import { CHAMPIONSHIP_FOCUS_LIVE_EVENT, CHAMPIONSHIP_FOCUS_LIVE_KEY } from "@/hooks/useChampionshipMatchStartToasts";
+import { CHAMPIONSHIP_FOCUS_LIVE_EVENT, CHAMPIONSHIP_FOCUS_LIVE_KEY } from "@/lib/championship-match-start-popup";
 
 type ChampionshipForm = { name: string; description: string; startDate: string; endDate: string };
 const emptyForm: ChampionshipForm = { name: "", description: "", startDate: "", endDate: "" };

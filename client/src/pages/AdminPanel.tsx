@@ -61,7 +61,7 @@ import {
   Menu
 } from 'lucide-react';
 import { ChampionshipManagementPanel } from '@/components/admin/ChampionshipManagementPanel';
-import { CHAMPIONSHIP_FOCUS_LIVE_EVENT } from '@/hooks/useChampionshipMatchStartToasts';
+import { CHAMPIONSHIP_FOCUS_LIVE_EVENT } from '@/lib/championship-match-start-popup';
 import { adminFetch, apiRequest } from '@/lib/queryClient';
 import { 
   fetchQuestions, 
@@ -170,6 +170,13 @@ const AdminPanel: React.FC = () => {
     };
     window.addEventListener(CHAMPIONSHIP_FOCUS_LIVE_EVENT, openChampionshipsLive);
     return () => window.removeEventListener(CHAMPIONSHIP_FOCUS_LIVE_EVENT, openChampionshipsLive);
+  }, []);
+
+  useEffect(() => {
+    for (const overlay of document.querySelectorAll("[data-radix-dialog-overlay]")) {
+      const group = overlay.parentElement;
+      if (!group?.querySelector("[role='dialog']")) overlay.remove();
+    }
   }, []);
   
   // Helpers: dedupe and shuffle for safe downloads
@@ -822,7 +829,7 @@ const AdminPanel: React.FC = () => {
       </Sheet>
 
       {/* Main Content Area */}
-      <div className="flex min-h-screen w-full min-w-0 flex-1 flex-col md:ml-64 md:h-screen">
+      <div className="flex min-h-screen w-full min-w-0 flex-1 flex-col bg-slate-50 md:ml-64 md:h-screen">
         {/* Top Navbar */}
         <div className="flex-shrink-0 border-b border-gray-200 bg-white px-3 py-3 sm:px-4 md:px-6 md:py-4">
           <div className="flex items-center justify-between gap-3">
@@ -869,7 +876,7 @@ const AdminPanel: React.FC = () => {
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 min-w-0 overflow-auto p-3 sm:p-4 md:p-6">
+        <div className="flex-1 min-w-0 overflow-auto bg-slate-50 p-3 sm:p-4 md:p-6">
           {/* Content Container */}
           <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
 

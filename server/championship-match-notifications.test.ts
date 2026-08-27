@@ -35,7 +35,8 @@ const autoSource = readFileSync(new URL("./championship-autostart.ts", import.me
 const routesSource = readFileSync(new URL("./championship-routes.ts", import.meta.url), "utf8");
 const socketSource = readFileSync(new URL("./socket.ts", import.meta.url), "utf8");
 const notifySource = readFileSync(new URL("./championship-match-notifications.ts", import.meta.url), "utf8");
-const hookSource = readFileSync(new URL("../client/src/hooks/useChampionshipMatchStartToasts.tsx", import.meta.url), "utf8");
+const popupSource = readFileSync(new URL("../client/src/components/championship/ChampionshipMatchStartPopup.tsx", import.meta.url), "utf8");
+const hookSource = readFileSync(new URL("../client/src/lib/championship-match-start-popup.ts", import.meta.url), "utf8");
 
 console.log("championship match-start notifications");
 
@@ -143,13 +144,19 @@ test("private notifications use sendToUser, not the public spectator broadcast",
   assert.match(socketSource, /watchMatchId === matchId/);
 });
 
-test("client toast ignores public Watch Live paths and public match_started", () => {
-  assert.match(hookSource, /championship_match_started/);
-  assert.doesNotMatch(hookSource, /onEvent\("match_started"/);
-  assert.match(hookSource, /\/watch\//);
-  assert.match(hookSource, /\/overlay\//);
-  assert.match(hookSource, /\/my-championship/);
-  assert.match(hookSource, /\/admin\/dashboard/);
+test("client popup ignores public Watch Live paths and public match_started", () => {
+  assert.match(popupSource, /championship_match_started/);
+  assert.match(popupSource, /<Dialog /);
+  assert.doesNotMatch(popupSource, /onEvent\("match_started"/);
+  assert.doesNotMatch(popupSource, /duration: 8000/);
+  assert.match(popupSource, /isPublicWatchPath/);
+  assert.match(popupSource, /Join Match/);
+  assert.match(popupSource, /Open Match/);
+  assert.match(popupSource, /\/my-championship/);
+  assert.match(popupSource, /\/admin\/dashboard/);
+  assert.match(popupSource, /\/api\/championship-matches\/\$\{current\.matchId\}\/join/);
+  assert.match(notifySource, /database\.createNotification/);
+  assert.match(hookSource, /enqueueMatchStartPopup/);
 });
 
 test("persistent notification type matches the existing notifications table", () => {

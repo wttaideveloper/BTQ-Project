@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, Clock3, Crown, Edit3,
   ExternalLink, Eye, Info, MonitorPlay, Play, Plus, Radio, RefreshCw, Settings2, Smile, Sparkles,
-  Search, Trash2, Trophy, Tv, UserPlus, Users,
+  Search, Trash2, Trophy, Tv, UserPlus, Users, Loader2,
   Check, Copy, Zap, ImagePlus, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -361,6 +361,7 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
   const [showAutoSchedule, setShowAutoSchedule] = useState(false);
   const [deleteTeamTarget, setDeleteTeamTarget] = useState<any>(null);
   const [endMatchTarget, setEndMatchTarget] = useState<any>(null);
+  const [startingMatchId, setStartingMatchId] = useState<string | null>(null);
   const normalizeChampionshipName = (value: string) => value.trim().toLowerCase();
   const formatLocalDateTime = (date: Date) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
@@ -742,9 +743,18 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
 
   const renderMatchActions = (match: any, options?: { hideResultLink?: boolean }) => <>
     {match.status === "upcoming" && <>
-      <Button size="sm" disabled={championshipStatus !== "active"}
-        onClick={() => action.mutate({ url: `/api/championship-matches/${match.id}/start`, body: {}, success: "Match is live" }, { onSuccess: () => scrollToSection(SECTION.live) })}>
-        <Play size={15} /> Start Match
+      <Button size="sm" className="bg-blue-600 hover:bg-blue-700" disabled={championshipStatus !== "active" || startingMatchId !== null}
+        onClick={() => {
+          setStartingMatchId(match.id);
+          action.mutate(
+            { url: `/api/championship-matches/${match.id}/start`, body: {}, success: "Match is live" },
+            {
+              onSuccess: () => scrollToSection(SECTION.live),
+              onSettled: () => setStartingMatchId(null),
+            },
+          );
+        }}>
+        {startingMatchId === match.id ? <><Loader2 size={15} className="animate-spin" /> Starting...</> : <><Play size={15} /> Start Match</>}
       </Button>
       <Button size="sm" variant="outline" onClick={() => {
         const initialScheduledAt = match.scheduledAt ? formatLocalDateTime(new Date(match.scheduledAt)) : "";

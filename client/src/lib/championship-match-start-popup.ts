@@ -97,17 +97,29 @@ export function championshipNameFromCaches(
     dashboard?: { championship?: { id?: string; name?: string } | null } | null;
   },
 ): string | undefined {
-  if (!championshipId) return undefined;
-  const listName = caches.list?.find(item => item.id === championshipId)?.name;
-  const detailChamp = caches.detail?.championship;
-  const detailName = !detailChamp?.id || detailChamp.id === championshipId
-    ? (detailChamp?.name ?? caches.detail?.name)
-    : undefined;
-  const dash = caches.dashboard?.championship;
-  const dashName = dash?.id === championshipId ? dash.name : undefined;
-  return sanitizeChampionshipName(listName)
-    ?? sanitizeChampionshipName(detailName)
-    ?? sanitizeChampionshipName(dashName);
+  if (championshipId) {
+    const listName = caches.list?.find(item => item.id === championshipId)?.name;
+    const detailChamp = caches.detail?.championship;
+    const detailName = !detailChamp?.id || detailChamp.id === championshipId
+      ? (detailChamp?.name ?? caches.detail?.name)
+      : undefined;
+    const dash = caches.dashboard?.championship;
+    const dashName = dash?.id === championshipId ? dash.name : undefined;
+    return sanitizeChampionshipName(listName)
+      ?? sanitizeChampionshipName(detailName)
+      ?? sanitizeChampionshipName(dashName);
+  }
+  return sanitizeChampionshipName(caches.dashboard?.championship?.name);
+}
+
+export function markMatchStartPopupIdentities(
+  state: MatchStartPopupState,
+  event: Pick<MatchStartPopupEvent, "notificationId" | "matchId">,
+): MatchStartPopupState {
+  return matchStartPopupIdentities(event).reduce(
+    (next, id) => markMatchStartPopupSeen(next, id),
+    state,
+  );
 }
 
 export function matchStartPopupCopy(role: MatchStartPopupRole): {
@@ -143,6 +155,13 @@ export function matchStartPopupIdentity(event: Pick<MatchStartPopupEvent, "notif
   return null;
 }
 
+export function matchStartPopupIdentities(event: Pick<MatchStartPopupEvent, "notificationId" | "matchId">): string[] {
+  const ids: string[] = [];
+  if (event.notificationId) ids.push(event.notificationId);
+  if (event.matchId) ids.push(`match:${event.matchId}`);
+  return ids;
+}
+
 export function emptyMatchStartPopupState(seen: string[] = []): MatchStartPopupState {
   return { current: null, queue: [], seen };
 }
@@ -151,9 +170,13 @@ export function enqueueMatchStartPopup(
   state: MatchStartPopupState,
   event: MatchStartPopupEvent,
 ): MatchStartPopupState {
+  const identities = matchStartPopupIdentities(event);
   const id = matchStartPopupIdentity(event);
-  if (!id) return state;
-  if (state.seen.includes(id) || state.current?.id === id || state.queue.some(item => item.id === id)) {
+  if (!id || identities.length === 0) return state;
+  if (
+    identities.some(item => state.seen.includes(item) || state.current?.id === item || state.queue.some(queued => item === queued.id))
+    || (event.matchId && (state.current?.matchId === event.matchId || state.queue.some(queued => queued.matchId === event.matchId)))
+  ) {
     return state;
   }
   const item: MatchStartPopupItem = {
@@ -168,7 +191,7 @@ export function enqueueMatchStartPopup(
       ? `${event.teamAName || "Team A"} vs ${event.teamBName || "Team B"} has started. Join now to play.`
       : `${event.teamAName || "Team A"} vs ${event.teamBName || "Team B"} is now LIVE.`),
   };
-  const seen = [...state.seen, id];
+  const seen = [...state.seen, ...identities];
   if (!state.current) return { current: item, queue: state.queue, seen };
   return { current: state.current, queue: [...state.queue, item], seen };
 }

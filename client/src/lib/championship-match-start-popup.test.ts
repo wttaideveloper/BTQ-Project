@@ -131,6 +131,9 @@ test("cache lookup uses the matching championship id", () => {
   assert.equal(championshipNameFromCaches("c1", {
     dashboard: { championship: { id: "other", name: "Other Cup" } },
   }), undefined);
+  assert.equal(championshipNameFromCaches(undefined, {
+    dashboard: { championship: { id: "c1", name: "My Cup" } },
+  }), "My Cup");
 });
 
 test("one event produces one popup", () => {
@@ -144,7 +147,19 @@ test("duplicate event does not create a second popup", () => {
   const second = enqueueMatchStartPopup(first, adminEvent);
   assert.equal(second.current?.id, first.current?.id);
   assert.equal(second.queue.length, 0);
-  assert.equal(second.seen.length, 1);
+  assert.deepEqual(second.seen, ["champ-match-start-m1-1", "match:m1"]);
+});
+
+test("the same match does not queue twice under different identities", () => {
+  const first = enqueueMatchStartPopup(emptyMatchStartPopupState(), adminEvent);
+  const replay = enqueueMatchStartPopup(first, {
+    matchId: "m1",
+    role: "admin",
+    teamAName: "Team B",
+    teamBName: "Team A",
+  });
+  assert.equal(replay.queue.length, 0);
+  assert.equal(replay.current?.id, first.current?.id);
 });
 
 test("a later match is queued instead of stacking", () => {

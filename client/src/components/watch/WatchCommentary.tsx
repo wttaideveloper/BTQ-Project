@@ -24,12 +24,18 @@ const TONES: Record<CommentaryEntry["tone"], { row: string; chip: string; label:
  * inferred or invented: if no event has arrived yet the panel says so rather
  * than inventing play-by-play.
  */
-export function WatchCommentary({ entries }: { entries: CommentaryEntry[] }) {
+export function WatchCommentary({
+  entries,
+  title = "Live commentary",
+}: {
+  entries: CommentaryEntry[];
+  title?: string;
+}) {
   return (
-    <section className="champ-panel rounded-2xl p-4 sm:p-5" aria-label="Live commentary">
+    <section className="champ-panel rounded-2xl p-4 sm:p-5" aria-label={title}>
       <div className="flex items-center gap-2">
         <Radio className="h-3.5 w-3.5 text-[#d4af37]" />
-        <h2 className="champ-eyebrow">Live commentary</h2>
+        <h2 className="champ-eyebrow">{title}</h2>
       </div>
       <div className="champ-divider my-3" />
 

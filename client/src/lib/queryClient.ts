@@ -30,6 +30,7 @@ function isPublicRoute(pathname: string) {
     pathname === "/admin/login" ||
     pathname.startsWith("/watch/") ||
     pathname.startsWith("/overlay/") ||
+    pathname.startsWith("/broadcast/") ||
     pathname.startsWith("/championships/") ||
     pathname.startsWith("/championship-teams/")
   );

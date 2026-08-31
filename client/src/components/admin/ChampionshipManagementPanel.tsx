@@ -145,9 +145,12 @@ function BroadcastPanel({ matchId }: { matchId: string }) {
     <p className="flex items-center gap-2 text-sm font-bold text-slate-800"><Tv size={16} className="text-slate-500" /> Broadcast</p>
     <p className="mt-1 text-xs text-slate-500">Share the live match with anyone. No login required.</p>
 
-    <div className="mt-3">
+    <div className="mt-3 flex flex-wrap gap-2">
       <Button asChild size="sm" variant="outline">
         <a href={watchPath} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Live</a>
+      </Button>
+      <Button asChild size="sm" variant="outline">
+        <a href={`/broadcast/${matchId}`} target="_blank" rel="noreferrer"><Tv size={15} /> Commentator</a>
       </Button>
     </div>
 
@@ -768,11 +771,13 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
     {match.status === "live" && <>
       <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={() => scrollToSection(SECTION.live)}><Radio size={15} /> Manage Match</Button>
       <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Live</a></Button>
+      <Button asChild size="sm" variant="outline"><a href={`/broadcast/${match.id}`} target="_blank" rel="noreferrer"><Tv size={15} /> Commentator</a></Button>
       <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
     </>}
     {match.status === "completed" && <>
       {!options?.hideResultLink && <Button size="sm" variant="outline" onClick={() => scrollToSection(SECTION.results)}><Trophy size={15} /> View Result</Button>}
       <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Result</a></Button>
+      <Button asChild size="sm" variant="outline"><a href={`/broadcast/${match.id}`} target="_blank" rel="noreferrer"><Tv size={15} /> Commentator</a></Button>
     </>}
   </>;
 

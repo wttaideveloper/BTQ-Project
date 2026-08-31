@@ -63,7 +63,7 @@ export function stripTrappedMatchStartOverlays(): void {
 }
 
 export function isPublicWatchPath(pathname: string): boolean {
-  return pathname.startsWith("/watch/") || pathname.startsWith("/overlay/");
+  return pathname.startsWith("/watch/") || pathname.startsWith("/overlay/") || pathname.startsWith("/broadcast/");
 }
 
 export function isAdminAppPath(pathname: string): boolean {

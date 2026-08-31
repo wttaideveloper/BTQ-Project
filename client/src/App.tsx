@@ -22,6 +22,7 @@ import { stopSpeaking } from "./lib/sounds";
 import NavigationGuardProvider from "@/components/NavigationGuardProvider";
 import { Loader2 } from "lucide-react";
 import WatchMatch from "@/pages/WatchMatch";
+import BroadcastMatch from "@/pages/BroadcastMatch";
 import Championship from "@/pages/Championship";
 import ChampionshipTeam from "@/pages/ChampionshipTeam";
 import MyChampionship from "@/pages/MyChampionship";
@@ -67,7 +68,7 @@ function Router() {
   //
   // IMPORTANT: every hook in this component must run before the public-route
   // early returns below. Previously this effect sat *after* them, so navigating
-  // between a normal page and /watch, /overlay, /championships or
+  // between a normal page and /watch, /overlay, /broadcast, /championships or
   // /championship-teams changed the number of hooks rendered between two
   // renders of the same component and React threw
   // "Rendered fewer hooks than expected than the previous render".
@@ -86,6 +87,7 @@ function Router() {
   // every hook call above and must not introduce hooks of their own here.
   if (location.startsWith("/watch/")) return <Switch><Route path="/watch/:matchId"><WatchMatch /></Route></Switch>;
   if (location.startsWith("/overlay/")) return <Switch><Route path="/overlay/:matchId"><WatchMatch overlay /></Route></Switch>;
+  if (location.startsWith("/broadcast/")) return <Switch><Route path="/broadcast/:matchId"><BroadcastMatch /></Route></Switch>;
   if (location.startsWith("/championships/")) return <Switch><Route path="/championships/:id" component={Championship} /></Switch>;
   if (location.startsWith("/championship-teams/")) return <Switch><Route path="/championship-teams/:id" component={ChampionshipTeam} /></Switch>;
 

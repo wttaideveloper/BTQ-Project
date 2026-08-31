@@ -178,19 +178,21 @@ test("Later/Close dismisses the current popup", () => {
   assert.equal(afterDismiss.current, null);
 });
 
-test("Watch Live and Overlay paths are public spectator routes", () => {
+test("Watch Live, Overlay, and Broadcast paths are public spectator routes", () => {
   assert.equal(isPublicWatchPath("/watch/m1"), true);
   assert.equal(isPublicWatchPath("/overlay/m1"), true);
+  assert.equal(isPublicWatchPath("/broadcast/m1"), true);
   assert.equal(isPublicWatchPath("/admin/dashboard"), false);
   assert.equal(isPublicWatchPath("/my-championship"), false);
 });
 
-test("only Watch Live and Overlay suppress the private popup", () => {
+test("Watch Live, Overlay, and Broadcast suppress the private popup", () => {
   assert.equal(isAdminAppPath("/admin/dashboard"), true);
   assert.equal(shouldSuppressMatchStartPopup(adminEvent, { pathname: "/admin/dashboard" }), false);
   assert.equal(shouldSuppressMatchStartPopup(captainEvent, { pathname: "/my-championship" }), false);
   assert.equal(shouldSuppressMatchStartPopup(adminEvent, { pathname: "/watch/m1" }), true);
   assert.equal(shouldSuppressMatchStartPopup(adminEvent, { pathname: "/overlay/m1" }), true);
+  assert.equal(shouldSuppressMatchStartPopup(adminEvent, { pathname: "/broadcast/m1" }), true);
 });
 
 test("suppressed popups are still marked seen so reconnect does not replay them", () => {

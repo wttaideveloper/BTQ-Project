@@ -232,7 +232,7 @@ await test("login uses the existing session auth against the hashed password and
   assert.doesNotMatch(sanitize, /password:/);
 });
 
-await test("commentator dashboard authorization stays separate from admin", () => {
+await test("dashboard authorization stays separate from admin and does not require championship assignment", () => {
   const routes = read("server/routes.ts");
   const gate = read("client/src/components/ProtectedRoute.tsx");
   const app = read("client/src/App.tsx");

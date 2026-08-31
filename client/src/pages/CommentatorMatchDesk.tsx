@@ -36,7 +36,7 @@ export default function CommentatorMatchDesk() {
   const [, setLocation] = useLocation();
   const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
-  const { data, isLoading, isError, refetch } = useQuery<MatchPayload>({
+  const { data, isLoading, isError, error, refetch } = useQuery<MatchPayload>({
     queryKey: ["/api/commentator/matches", matchId],
     queryFn: async () => {
       const response = await apiRequest("GET", `/api/commentator/matches/${matchId}`);
@@ -235,11 +235,19 @@ export default function CommentatorMatchDesk() {
   }
 
   if (isError || !data) {
+    const inactiveChampionship = error instanceof Error
+      && /championship is not active/i.test(error.message);
     return (
       <main className="champ-portal grid min-h-screen place-items-center px-4 text-center text-white">
         <div>
-          <p className="text-lg font-bold">You cannot open this match</p>
-          <p className="mt-2 text-sm text-white/60">It may belong to another championship, or the match was not found.</p>
+          <p className="text-lg font-bold">
+            {inactiveChampionship ? "This championship is not active." : "This championship match was not found"}
+          </p>
+          <p className="mt-2 text-sm text-white/60">
+            {inactiveChampionship
+              ? "The commentator desk only covers matches in the currently active championship."
+              : "It may have been removed, or the link is incorrect."}
+          </p>
           <Button className="mt-6" variant="outline" onClick={() => setLocation("/commentator")}>Back to desk</Button>
         </div>
       </main>

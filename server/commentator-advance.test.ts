@@ -137,25 +137,108 @@ await test("NEXT QUESTION is rejected when the match is not live", () => {
   assert.equal(decision.ok, false);
 });
 
+import {
+  ACTIVE_CHAMPIONSHIP_STATUS,
+  filterMatchesForActiveChampionships,
+  groupCommentatorDeskMatches,
+  isActiveChampionshipStatus,
+  toPublicCommentatorTeam,
+} from "./commentator-access.ts";
+
 const socketSource = read("server/socket.ts");
 const routesSource = read("server/routes.ts");
 const championshipRoutesSource = read("server/championship-routes.ts");
 const commentatorRoutesSource = read("server/commentator-routes.ts");
 const schemaSource = read("shared/schema.ts");
+const dashboardSource = read("client/src/pages/CommentatorDashboard.tsx");
+const matchDeskSource = read("client/src/pages/CommentatorMatchDesk.tsx");
+const adminPanelSource = read("client/src/components/admin/ChampionshipManagementPanel.tsx");
 
-await test("schema adds isCommentator independently of isAdmin", () => {
+await test("schema keeps isCommentator independent of isAdmin and retains commentator_user_id for compatibility", () => {
   assert.match(schemaSource, /isCommentator: boolean\("is_commentator"\)\.default\(false\)/);
   assert.match(schemaSource, /commentatorUserId: integer\("commentator_user_id"\)/);
 });
 
-await test("ensureCommentator does not treat admins as commentators", () => {
+await test("ensureCommentator requires an authenticated commentator and rejects admins", () => {
   assert.match(routesSource, /function ensureCommentator/);
   assert.match(routesSource, /req\.user\.isCommentator && !req\.user\.isAdmin/);
   assert.match(routesSource, /registerCommentatorRoutes\(app, ensureCommentator\)/);
+  assert.match(routesSource, /status\(401\).*Authentication required/s);
+  assert.match(routesSource, /Commentator access required/);
 });
 
-await test("admin assignment endpoint is admin-only", () => {
+await test("global commentator dashboard does not require championship assignment", () => {
+  assert.doesNotMatch(commentatorRoutesSource, /commentatorUserId/);
+  assert.doesNotMatch(commentatorRoutesSource, /assignedChampionship/);
+  assert.doesNotMatch(dashboardSource, /No championship assigned/);
+  assert.match(commentatorRoutesSource, /app\.get\("\/api\/commentator\/dashboard", ensureCommentator/);
+  assert.match(commentatorRoutesSource, /liveMatches/);
+  assert.match(dashboardSource, /liveMatches/);
+});
+
+await test("commentator dashboard SQL-filters to active championships only", () => {
+  assert.equal(ACTIVE_CHAMPIONSHIP_STATUS, "active");
+  assert.equal(isActiveChampionshipStatus("active"), true);
+  assert.equal(isActiveChampionshipStatus("draft"), false);
+  assert.equal(isActiveChampionshipStatus("completed"), false);
+  assert.match(commentatorRoutesSource, /innerJoin\(championships, eq\(championshipMatches\.championshipId, championships\.id\)\)/);
+  assert.match(commentatorRoutesSource, /eq\(championships\.status, ACTIVE_CHAMPIONSHIP_STATUS\)/);
+  assert.doesNotMatch(dashboardSource, /status === "active"/);
+});
+
+await test("active championship matches appear; draft and completed championship matches do not", () => {
+  const championships = [
+    { id: "active", status: "active" },
+    { id: "draft", status: "draft" },
+    { id: "done", status: "completed" },
+  ];
+  const matches = [
+    { id: "live-active", championshipId: "active", status: "live" },
+    { id: "upcoming-active", championshipId: "active", status: "upcoming" },
+    { id: "recent-active", championshipId: "active", status: "completed" },
+    { id: "live-draft", championshipId: "draft", status: "live" },
+    { id: "live-completed-champ", championshipId: "done", status: "live" },
+    { id: "done-completed-champ", championshipId: "done", status: "completed" },
+  ];
+  const visible = filterMatchesForActiveChampionships(matches, championships);
+  assert.deepEqual(visible.map(item => item.id), ["live-active", "upcoming-active", "recent-active"]);
+});
+
+await test("global commentator can see live matches first and open a match without assignment", () => {
+  const grouped = groupCommentatorDeskMatches([
+    { id: "done", status: "completed", completedAt: "2026-01-01T12:00:00Z" },
+    { id: "soon", status: "upcoming", scheduledAt: "2026-09-02T18:00:00Z" },
+    { id: "live-old", status: "live", startedAt: "2026-09-01T10:00:00Z" },
+    { id: "live-new", status: "live", startedAt: "2026-09-01T12:00:00Z" },
+  ]);
+  assert.deepEqual(grouped.live.map(item => item.id), ["live-new", "live-old"]);
+  assert.deepEqual(grouped.upcoming.map(item => item.id), ["soon"]);
+  assert.deepEqual(grouped.recent.map(item => item.id), ["done"]);
+  assert.match(commentatorRoutesSource, /app\.get\("\/api\/commentator\/matches\/:id", ensureCommentator/);
+  assert.match(matchDeskSource, /\/api\/commentator\/matches\/\$\{matchId\}/);
+  assert.doesNotMatch(matchDeskSource, /assigned/);
+});
+
+await test("commentator match payloads strip gameSessionId and private roster fields", () => {
+  assert.match(commentatorRoutesSource, /gameSessionId: _internal/);
+  assert.match(commentatorRoutesSource, /toPublicCommentatorTeam/);
+  const publicTeam = toPublicCommentatorTeam({
+    id: "t1",
+    name: "Alpha",
+    emoticon: "🔥",
+    logoUrl: "/logo.png",
+    memberIds: [1, 2, 3],
+    captainId: 1,
+  } as never);
+  assert.deepEqual(publicTeam, { id: "t1", name: "Alpha", emoticon: "🔥", logoUrl: "/logo.png" });
+  assert.equal(Object.prototype.hasOwnProperty.call(publicTeam, "memberIds"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(publicTeam, "captainId"), false);
+});
+
+await test("admin assignment endpoint remains admin-only and is no longer required by commentator UI", () => {
   assert.match(championshipRoutesSource, /app\.put\("\/api\/championships\/:id\/commentator", ensureAdmin/);
+  assert.doesNotMatch(adminPanelSource, /\/api\/championships\/\$\{selected\}\/commentator/);
+  assert.match(adminPanelSource, /You do not need to assign a commentator/);
 });
 
 await test("non-admin cannot assign commentator through the championship details PATCH", () => {
@@ -166,11 +249,27 @@ await test("non-admin cannot assign commentator through the championship details
   assert.doesNotMatch(fieldsBlock, /commentatorUserId/);
 });
 
-await test("NEXT QUESTION HTTP route is commentator-only and reuses sendTeamBattleQuestion", () => {
+await test("NEXT QUESTION is commentator-only, not assignment-based, and reuses sendTeamBattleQuestion", () => {
   assert.match(commentatorRoutesSource, /app\.post\("\/api\/commentator\/matches\/:id\/next-question", ensureCommentator/);
+  assert.match(commentatorRoutesSource, /assertChampionshipMatch\(req\.params\.id\)/);
   assert.match(commentatorRoutesSource, /advanceChampionshipQuestion/);
+  assert.doesNotMatch(commentatorRoutesSource, /commentatorUserId/);
   assert.match(socketSource, /export async function advanceChampionshipQuestion/);
   assert.match(socketSource, /sendTeamBattleQuestion\(session\.id\)/);
+});
+
+await test("inactive championships cannot be opened or advanced by the commentator", () => {
+  assert.match(commentatorRoutesSource, /isActiveChampionshipStatus\(championship\.status\)/);
+  assert.match(commentatorRoutesSource, /CommentatorAdvanceError\(403, "This championship is not active\."\)/);
+  assert.match(matchDeskSource, /This championship is not active\./);
+  assert.match(matchDeskSource, /championship is not active/i);
+});
+
+await test("NEXT QUESTION still requires a championship match and keeps gameplay safety checks", () => {
+  assert.match(commentatorRoutesSource, /championshipMatches/);
+  assert.match(commentatorRoutesSource, /match\.championshipId/);
+  assert.match(socketSource, /Only a live match can be advanced|evaluateCommentatorAdvance/);
+  assert.match(socketSource, /commentatorAdvanceInFlight/);
 });
 
 await test("championship auto-advance is replaced by a wait; regular Team Battle keeps the 3 second delay", () => {
@@ -192,9 +291,9 @@ await test("rapid fire pipeline is not used by commentator advance", () => {
 await test("commentator restore uses sanitized watch_match state, not get_game_state or team_battle_question", () => {
   assert.doesNotMatch(commentatorRoutesSource, /get_game_state/);
   assert.doesNotMatch(commentatorRoutesSource, /team_battle_question/);
-  assert.match(read("client/src/pages/CommentatorMatchDesk.tsx"), /watch_match/);
-  assert.doesNotMatch(read("client/src/pages/CommentatorMatchDesk.tsx"), /get_game_state/);
-  assert.doesNotMatch(read("client/src/pages/CommentatorMatchDesk.tsx"), /team_battle_question/);
+  assert.match(matchDeskSource, /watch_match/);
+  assert.doesNotMatch(matchDeskSource, /get_game_state/);
+  assert.doesNotMatch(matchDeskSource, /team_battle_question/);
 });
 
 await test("Watch Live still listens for question_started after commentator advance", () => {

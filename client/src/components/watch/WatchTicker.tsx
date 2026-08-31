@@ -8,7 +8,7 @@
 export function WatchTicker({ items }: { items: string[] }) {
   const line = items.length ? items : ["FaithIQ Championship • Live Bible Trivia"];
   return (
-    <div className="watch-ticker overflow-hidden py-1.5">
+    <div className="watch-ticker overflow-hidden">
       <div className="watch-ticker-track">
         {/* Duplicated once so the marquee wraps without a visible seam. */}
         {[0, 1].map(copy => (

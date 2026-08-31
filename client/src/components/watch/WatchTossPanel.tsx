@@ -47,7 +47,7 @@ export function WatchTossPanel({
     : null;
 
   return (
-    <div className="champ-fade-in mx-auto w-full min-w-0 text-left">
+    <div className="watch-question-stack champ-fade-in mx-auto w-full min-w-0 text-left">
       <div className="flex justify-center">
         <span className="watch-turn-live inline-flex items-center gap-2 rounded-full border border-[#d4af37]/55 bg-[#d4af37]/12 px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-[#f0d58a] sm:text-sm">
           <Trophy className="h-3.5 w-3.5" />
@@ -56,19 +56,19 @@ export function WatchTossPanel({
       </div>
 
       {toss.questionText && (
-        <p className="mt-2 text-center text-sm font-bold leading-snug text-white lg:text-base">
+        <p className="mt-3 text-center text-sm font-bold leading-snug text-white lg:text-base">
           {toss.questionText}
         </p>
       )}
 
-      <div className="watch-answer-grid mt-2 grid gap-1.5">
+      <div className="watch-answer-grid">
         {toss.options.map((option, index) => {
           const isCorrectAnswer = !!resolved && resolved.correctAnswerId === option.id;
           const dimmed = !!resolved && !isCorrectAnswer;
           return (
             <div
               key={option.id}
-              className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
+              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
                 isCorrectAnswer
                   ? "border-[#d4af37]/55 bg-[#d4af37]/12"
                   : dimmed
@@ -98,7 +98,7 @@ export function WatchTossPanel({
       {resolved ? (
         <div
           key={`${resolved.winnerTeamId ?? "toss"}-result`}
-          className="champ-fade-in mt-3 rounded-xl border border-[#d4af37]/45 bg-[#d4af37]/10 px-4 py-2.5 text-center"
+          className="watch-question-status champ-fade-in rounded-xl border border-[#d4af37]/45 bg-[#d4af37]/10 px-4 py-2.5 text-center"
         >
           <p className="flex items-center justify-center gap-2 text-sm font-black uppercase tracking-[0.18em] text-[#f0d58a]">
             <Trophy className="h-4 w-4" /> Toss winner
@@ -112,7 +112,7 @@ export function WatchTossPanel({
           )}
         </div>
       ) : (
-        <p className="mt-2.5 text-center text-xs champ-meta">
+        <p className="watch-question-status text-center text-xs champ-meta">
           Both teams are racing — the first correct answer wins the toss.
         </p>
       )}

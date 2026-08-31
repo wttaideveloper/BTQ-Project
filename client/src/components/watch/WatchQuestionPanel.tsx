@@ -55,7 +55,7 @@ export function WatchQuestionPanel({
   const resolved = result?.questionId === question.questionId ? result : null;
 
   return (
-    <div className="champ-fade-in mx-auto w-full min-w-0 text-left">
+    <div className="watch-question-stack champ-fade-in mx-auto w-full min-w-0 text-left">
       {question.questionNumber && (
         <p className="text-center text-[10px] font-black uppercase tracking-[0.22em] text-white/35">
           Question {question.questionNumber}
@@ -66,7 +66,7 @@ export function WatchQuestionPanel({
       {/* Whose turn it is — the single most important line for a spectator.
           Built as one string so the possessive never separates from the name. */}
       {question.answeringTeamName && (
-        <div className="mt-1.5 flex justify-center">
+        <div className="mt-2 flex justify-center">
           <span
             className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.16em] transition-colors sm:text-sm ${
               resolved
@@ -89,12 +89,12 @@ export function WatchQuestionPanel({
       )}
 
       {question.questionText && (
-        <p className="mt-2 text-center text-sm font-bold leading-snug text-white lg:text-base">
+        <p className="mt-3 text-center text-sm font-bold leading-snug text-white lg:text-base">
           {question.questionText}
         </p>
       )}
 
-      <div className="watch-answer-grid mt-2 grid gap-1.5">
+      <div className="watch-answer-grid">
         {question.options.map((option, index) => {
           const isSelected = resolved?.selectedAnswerId === option.id;
           const isCorrectAnswer = !!resolved && resolved.correctAnswerId === option.id;
@@ -103,7 +103,7 @@ export function WatchQuestionPanel({
           return (
             <div
               key={option.id}
-              className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
+              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
                 isSelected && resolved?.isCorrect
                   ? "border-[#4fd1a5]/60 bg-[#4fd1a5]/12"
                   : isSelected
@@ -149,7 +149,7 @@ export function WatchQuestionPanel({
       {resolved ? (
         <div
           key={`${resolved.questionId}-result`}
-          className={`champ-fade-in mt-3 rounded-xl border px-4 py-2.5 text-center ${
+          className={`watch-question-status champ-fade-in rounded-xl border px-4 py-2.5 text-center ${
             resolved.isCorrect ? "border-[#4fd1a5]/45 bg-[#4fd1a5]/10" : "border-[#c76a7a]/40 bg-[#c76a7a]/10"
           }`}
         >
@@ -166,7 +166,7 @@ export function WatchQuestionPanel({
           </p>
         </div>
       ) : (
-        <p className="mt-2.5 text-center text-xs champ-meta">
+        <p className="watch-question-status text-center text-xs champ-meta">
           {question.answeringTeamName ? `${question.answeringTeamName} is answering…` : "Waiting for the answer…"}
         </p>
       )}

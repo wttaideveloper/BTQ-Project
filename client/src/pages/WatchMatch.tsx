@@ -435,14 +435,14 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
         }
       />
     ) : gameplayStarted && liveQuestion ? (
-      <div className="mt-3 text-center">
+      <div className="m-auto text-center">
         <p className="champ-scoreline text-2xl font-black text-white">Question {liveQuestion}</p>
         <p className="mt-1.5 text-xs champ-meta">Waiting for the question to be broadcast…</p>
       </div>
     ) : gameplayStarted ? (
-      <p className="mt-3 text-center text-sm champ-meta">Waiting for the next question…</p>
+      <p className="m-auto text-center text-sm champ-meta">Waiting for the next question…</p>
     ) : (
-      <p className="mt-3 text-center text-sm champ-meta">
+      <p className="m-auto text-center text-sm champ-meta">
         {bothCaptainsReady
           ? "Both captains are ready. Waiting for the match to start…"
           : someCaptainHere
@@ -495,14 +495,14 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
 
           <aside className="watch-question-rail min-w-0" aria-label="Current question">
             <p className="champ-eyebrow shrink-0">Current question</p>
-            <div className="champ-divider my-2 shrink-0" />
+            <div className="champ-divider shrink-0" />
             <div className="watch-question-body min-h-0 min-w-0">
               {status === "live" ? liveQuestionBody : status === "completed" ? (
-                <p className="text-center text-sm champ-meta">
+                <p className="m-auto text-center text-sm champ-meta">
                   {isDraw ? "Match complete · Draw" : winnerName ? `Match complete · ${winnerName} won` : "Match complete"}
                 </p>
               ) : (
-                <p className="text-center text-sm champ-meta">
+                <p className="m-auto text-center text-sm champ-meta">
                   {scheduledLabel ? `Scheduled for ${scheduledLabel}` : "Waiting for kick-off."}
                 </p>
               )}

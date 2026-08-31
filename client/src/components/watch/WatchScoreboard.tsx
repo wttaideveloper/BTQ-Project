@@ -72,37 +72,42 @@ export function WatchScoreboard({
     const isWaiting = status === "live" && !!answeringTeamId && !isAnswering;
     return (
       <div
-        className={`relative z-[1] min-w-0 flex-1 p-1.5 transition-opacity ${align === "right" ? "text-right" : ""} ${
-          isAnswering ? "watch-team-active" : ""
-        } ${isWaiting ? "opacity-70" : ""}`}
+        className={`relative z-[1] min-w-0 transition-opacity ${isWaiting ? "opacity-70" : ""}`}
+        data-align={align}
       >
-        <div className={`flex items-center gap-2 sm:gap-2.5 ${align === "right" ? "flex-row-reverse justify-start" : ""}`}>
+        <div
+          className={`watch-scoreboard-chip ${align === "right" ? "flex-row-reverse" : ""} ${
+            isAnswering ? "watch-team-active" : ""
+          }`}
+        >
           <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallback} logo`} className="h-7 w-7 shrink-0 text-xl sm:h-8 sm:w-8 sm:text-2xl" />
-          <div className="min-w-0">
+          <div className={`min-w-0 ${align === "right" ? "text-right" : ""}`}>
             <p className={`truncate text-xs font-black uppercase tracking-[0.08em] text-white sm:text-sm ${isWinner ? "text-[#f0d58a]" : ""}`}>
               {team?.name ?? fallback}
             </p>
             <p className="mt-0.5 text-[10px] champ-meta sm:text-[11px]">
               {(team && supporters[team.id]) ?? 0} supporters
             </p>
+            {isWinner && (
+              <span className="mt-1 inline-block rounded-full border border-[#d4af37]/45 bg-[#d4af37]/12 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-[#f0d58a]">
+                Winner
+              </span>
+            )}
           </div>
         </div>
-        {isWinner && (
-          <span className="mt-2 inline-block rounded-full border border-[#d4af37]/45 bg-[#d4af37]/12 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-[#f0d58a]">
-            Winner
-          </span>
-        )}
       </div>
     );
   };
 
   return (
     <section
-      className="champ-panel relative overflow-hidden rounded-xl px-3 py-2 sm:px-5 sm:py-2.5"
+      className="champ-panel relative overflow-hidden rounded-xl px-4 py-2.5 sm:px-6 sm:py-3"
       aria-label="Match scoreboard"
     >
-      <div className="relative flex items-center gap-2 sm:gap-6">
-        {side(teamA, "Team A", "left")}
+      <div className="watch-scoreboard-row relative">
+        <div className="watch-scoreboard-team" data-align="left">
+          {side(teamA, "Team A", "left")}
+        </div>
 
         <div className="relative z-[3] shrink-0 text-center">
           <p className={`champ-scoreline text-3xl font-black text-white sm:text-4xl lg:text-5xl ${scorePulse ? "watch-score-pulse" : ""}`}>
@@ -121,7 +126,9 @@ export function WatchScoreboard({
           </p>
         </div>
 
-        {side(teamB, "Team B", "right")}
+        <div className="watch-scoreboard-team" data-align="right">
+          {side(teamB, "Team B", "right")}
+        </div>
       </div>
 
       <div

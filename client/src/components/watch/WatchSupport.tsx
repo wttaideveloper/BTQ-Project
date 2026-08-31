@@ -62,26 +62,26 @@ export function WatchSupport({
 
   return (
     <section className="watch-support-bar" aria-label="Support your team">
-      <p className="hidden items-center gap-1.5 champ-eyebrow sm:flex">
+      <p className="hidden shrink-0 items-center gap-1.5 champ-eyebrow sm:flex">
         <Heart className="h-3 w-3 text-[#d4af37]" /> Support your team
       </p>
       <p className="sr-only" role="status">
         {cooldown ? "Easy there — give it a second." : "Cheer for your favourite team"}
       </p>
 
-      <div className="flex min-w-0 flex-1 items-stretch gap-2">
+      <div className="watch-support-teams">
         {teams.map(team => {
           const supported = justSupported === team.id;
           return (
-            <div key={team.id} className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+            <div key={team.id} className="watch-support-team">
               <TeamAvatar logoUrl={team.logoUrl} emoticon={team.emoticon} alt={`${team.name} logo`} className="h-6 w-6 shrink-0 text-lg" />
-              <p className="hidden min-w-0 truncate text-xs font-bold text-white md:block">{team.name}</p>
+              <p className="hidden min-w-0 truncate text-xs font-bold text-white lg:block">{team.name}</p>
               <button
                 type="button"
                 onClick={() => send(team)}
                 disabled={cooldown}
                 aria-label={`Support ${team.name}`}
-                className="watch-support flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-bold text-white transition-transform active:scale-[0.97] disabled:opacity-50 sm:flex-none sm:px-3"
+                className="watch-support flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-bold text-white transition-transform active:scale-[0.97] disabled:opacity-50"
               >
                 {supported ? (
                   <>
@@ -91,7 +91,7 @@ export function WatchSupport({
                   <span className="truncate">Support {team.name}</span>
                 )}
               </button>
-              <ul className="flex shrink-0 gap-1">
+              <ul className="flex shrink-0 gap-1.5">
                 {AUDIENCE_REACTIONS.map(reaction => (
                   <li key={reaction.id}>
                     <button
@@ -107,7 +107,7 @@ export function WatchSupport({
                   </li>
                 ))}
               </ul>
-              <p className="hidden shrink-0 text-[10px] champ-meta tabular-nums lg:block">
+              <p className="hidden shrink-0 text-[10px] champ-meta tabular-nums xl:block">
                 {supporters[team.id] ?? 0}
               </p>
             </div>

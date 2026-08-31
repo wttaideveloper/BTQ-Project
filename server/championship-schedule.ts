@@ -4,12 +4,12 @@
  * No database access. Preview and generate share this module so the same
  * input always produces the same plan.
  *
- * Duration and break are scheduling settings only. They are never stored on
- * championship_matches — only scheduledAt is persisted, same as manual create.
+ * Break and matches-per-day are scheduling settings only. They are never
+ * stored on championship_matches — only scheduledAt is persisted, same as
+ * manual create. scheduledAt is an earliest/target start, not a match length.
  */
 
 export const AUTO_SCHEDULE_DEFAULTS = {
-  durationMinutes: 30,
   breakMinutes: 10,
   matchesPerDay: 1,
 } as const;
@@ -33,7 +33,6 @@ export type ExistingMatch = {
 
 export type ScheduleSettings = {
   startAt: Date;
-  durationMinutes: number;
   breakMinutes: number;
   matchesPerDay: number;
   endDate?: Date | null;
@@ -150,11 +149,8 @@ export function buildRoundRobinSchedule(
   settings: ScheduleSettings,
 ): ScheduleResult {
   const errors: string[] = [];
-  const { startAt, durationMinutes, breakMinutes, matchesPerDay, endDate, now = new Date() } = settings;
+  const { startAt, breakMinutes, matchesPerDay, endDate, now = new Date() } = settings;
 
-  if (!Number.isInteger(durationMinutes) || durationMinutes < 1) {
-    errors.push("Match duration must be at least 1 minute.");
-  }
   if (!Number.isInteger(breakMinutes) || breakMinutes < 0) {
     errors.push("Break between matches cannot be negative.");
   }
@@ -199,7 +195,7 @@ export function buildRoundRobinSchedule(
     };
   }
 
-  const slotLengthMinutes = durationMinutes + breakMinutes;
+  const slotLengthMinutes = breakMinutes;
   const matches: PlannedMatch[] = remaining.map(([teamA, teamB], index) => {
     const dayOffset = Math.floor(index / matchesPerDay);
     const slotIndex = index % matchesPerDay;

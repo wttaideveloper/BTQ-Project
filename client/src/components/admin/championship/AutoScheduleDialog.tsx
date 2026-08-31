@@ -38,7 +38,6 @@ type PreviewResponse = {
 };
 
 const DEFAULTS = {
-  durationMinutes: 30,
   breakMinutes: 10,
   matchesPerDay: 1,
 };
@@ -76,7 +75,6 @@ export function AutoScheduleDialog({
   const { toast } = useToast();
   const [step, setStep] = useState<AutoScheduleStep>("format");
   const [startAt, setStartAt] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState(String(DEFAULTS.durationMinutes));
   const [breakMinutes, setBreakMinutes] = useState(String(DEFAULTS.breakMinutes));
   const [matchesPerDay, setMatchesPerDay] = useState(String(DEFAULTS.matchesPerDay));
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
@@ -86,12 +84,10 @@ export function AutoScheduleDialog({
 
   const possibleMatches = teamCount >= 2 ? (teamCount * (teamCount - 1)) / 2 : 0;
   const minDateTime = formatLocalDateTime(new Date());
-  const durationValue = Number(durationMinutes);
   const breakValue = Number(breakMinutes);
   const perDayValue = Number(matchesPerDay);
   const settingsValid =
     !!startAt &&
-    Number.isInteger(durationValue) && durationValue >= 1 &&
     Number.isInteger(breakValue) && breakValue >= 0 &&
     Number.isInteger(perDayValue) && perDayValue >= 1;
   const canGenerate = !!preview && preview.errors.length === 0 && preview.matches.length > 0 && !creating;
@@ -99,7 +95,6 @@ export function AutoScheduleDialog({
 
   const payload = () => ({
     startAt,
-    durationMinutes: durationValue,
     breakMinutes: breakValue,
     matchesPerDay: perDayValue,
   });
@@ -108,7 +103,6 @@ export function AutoScheduleDialog({
     if (!open) return;
     setStep("format");
     setStartAt(formatLocalDateTime(new Date()));
-    setDurationMinutes(String(DEFAULTS.durationMinutes));
     setBreakMinutes(String(DEFAULTS.breakMinutes));
     setMatchesPerDay(String(DEFAULTS.matchesPerDay));
     setPreview(null);
@@ -218,20 +212,7 @@ export function AutoScheduleDialog({
                   onChange={event => { setStartAt(event.target.value); setPreview(null); }}
                 />
               </label>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <label className="text-sm font-semibold text-slate-800" htmlFor="auto-schedule-duration">
-                  Match duration (minutes)
-                  <Input
-                    id="auto-schedule-duration"
-                    className="mt-1 h-11 font-normal"
-                    type="number"
-                    min={1}
-                    max={1440}
-                    inputMode="numeric"
-                    value={durationMinutes}
-                    onChange={event => { setDurationMinutes(event.target.value); setPreview(null); }}
-                  />
-                </label>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-semibold text-slate-800" htmlFor="auto-schedule-break">
                   Break between matches (minutes)
                   <Input
@@ -260,7 +241,7 @@ export function AutoScheduleDialog({
                 </label>
               </div>
               <p className="text-xs text-slate-500">
-                Kickoffs are spaced by duration plus break. With the defaults that is 40 minutes between start times.
+                Matches are scheduled starting at the selected time. Each time is an earliest start, not a fixed match length. The next match will not start while another match in this championship is live. The break spaces planned start times on the same day. If a match runs past the next target time, the next match starts after the live match ends.
                 {" "}{autoStartCopy}
               </p>
             </div>

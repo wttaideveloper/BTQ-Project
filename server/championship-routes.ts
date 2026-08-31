@@ -46,7 +46,6 @@ const matchInput = z.object({
 });
 const autoScheduleInput = z.object({
   startAt: z.coerce.date(),
-  durationMinutes: z.coerce.number().int().min(1).max(1440),
   breakMinutes: z.coerce.number().int().min(0).max(1440),
   matchesPerDay: z.coerce.number().int().min(1).max(48),
 });
@@ -127,7 +126,6 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       ctx.matches.map(match => ({ teamAId: match.teamAId, teamBId: match.teamBId })),
       {
         startAt: settings.startAt,
-        durationMinutes: settings.durationMinutes,
         breakMinutes: settings.breakMinutes,
         matchesPerDay: settings.matchesPerDay,
         endDate: ctx.championship.endDate,

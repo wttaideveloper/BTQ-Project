@@ -5,6 +5,7 @@
  */
 import assert from "node:assert/strict";
 import {
+  AUTO_SCHEDULE_DEFAULTS,
   END_DATE_OVERFLOW_MESSAGE,
   MIN_TEAMS_MESSAGE,
   PAST_START_MESSAGE,
@@ -51,7 +52,6 @@ const now = at(2026, 7, 24, 12, 0);
 function plan(inputTeams: ScheduleTeam[], existing: ExistingMatch[] = [], extra: Partial<Parameters<typeof buildRoundRobinSchedule>[2]> = {}) {
   return buildRoundRobinSchedule(inputTeams, existing, {
     startAt: start,
-    durationMinutes: 30,
     breakMinutes: 10,
     matchesPerDay: 1,
     now,
@@ -60,6 +60,12 @@ function plan(inputTeams: ScheduleTeam[], existing: ExistingMatch[] = [], extra:
 }
 
 console.log("championship auto schedule");
+
+test("defaults omit match duration and keep break spacing", () => {
+  assert.equal("durationMinutes" in AUTO_SCHEDULE_DEFAULTS, false);
+  assert.equal(AUTO_SCHEDULE_DEFAULTS.breakMinutes, 10);
+  assert.equal(AUTO_SCHEDULE_DEFAULTS.matchesPerDay, 1);
+});
 
 test("2 teams → 1 match", () => {
   const result = plan(teams(A, B));
@@ -142,12 +148,12 @@ test("upcoming match counts as existing", () => {
   assert.equal(result.summary.newMatches, 5);
 });
 
-test("duration + break calculation", () => {
-  const result = plan(teams(A, B, C, D), [], { matchesPerDay: 4, durationMinutes: 30, breakMinutes: 10 });
+test("same-day kickoffs are spaced by break only", () => {
+  const result = plan(teams(A, B, C, D), [], { matchesPerDay: 4, breakMinutes: 10 });
   assert.equal(result.matches[0].scheduledAt.getTime(), at(2026, 7, 25, 18, 0).getTime());
-  assert.equal(result.matches[1].scheduledAt.getTime(), at(2026, 7, 25, 18, 40).getTime());
-  assert.equal(result.matches[2].scheduledAt.getTime(), at(2026, 7, 25, 19, 20).getTime());
-  assert.equal(result.matches[3].scheduledAt.getTime(), at(2026, 7, 25, 20, 0).getTime());
+  assert.equal(result.matches[1].scheduledAt.getTime(), at(2026, 7, 25, 18, 10).getTime());
+  assert.equal(result.matches[2].scheduledAt.getTime(), at(2026, 7, 25, 18, 20).getTime());
+  assert.equal(result.matches[3].scheduledAt.getTime(), at(2026, 7, 25, 18, 30).getTime());
 });
 
 test("matches-per-day keeps the same clock time", () => {
@@ -158,14 +164,21 @@ test("matches-per-day keeps the same clock time", () => {
 });
 
 test("next-day rollover after filling a day", () => {
-  const result = plan(teams(A, B, C, D), [], { matchesPerDay: 3, durationMinutes: 30, breakMinutes: 10 });
+  const result = plan(teams(A, B, C, D), [], { matchesPerDay: 3, breakMinutes: 10 });
   assert.equal(result.matches.length, 6);
   assert.equal(result.matches[0].scheduledAt.getTime(), at(2026, 7, 25, 18, 0).getTime());
-  assert.equal(result.matches[1].scheduledAt.getTime(), at(2026, 7, 25, 18, 40).getTime());
-  assert.equal(result.matches[2].scheduledAt.getTime(), at(2026, 7, 25, 19, 20).getTime());
+  assert.equal(result.matches[1].scheduledAt.getTime(), at(2026, 7, 25, 18, 10).getTime());
+  assert.equal(result.matches[2].scheduledAt.getTime(), at(2026, 7, 25, 18, 20).getTime());
   assert.equal(result.matches[3].scheduledAt.getTime(), at(2026, 7, 26, 18, 0).getTime());
-  assert.equal(result.matches[4].scheduledAt.getTime(), at(2026, 7, 26, 18, 40).getTime());
-  assert.equal(result.matches[5].scheduledAt.getTime(), at(2026, 7, 26, 19, 20).getTime());
+  assert.equal(result.matches[4].scheduledAt.getTime(), at(2026, 7, 26, 18, 10).getTime());
+  assert.equal(result.matches[5].scheduledAt.getTime(), at(2026, 7, 26, 18, 20).getTime());
+});
+
+test("zero break keeps same-day kickoffs at the same clock time", () => {
+  const result = plan(teams(A, B, C), [], { matchesPerDay: 3, breakMinutes: 0 });
+  assert.equal(result.matches[0].scheduledAt.getTime(), at(2026, 7, 25, 18, 0).getTime());
+  assert.equal(result.matches[1].scheduledAt.getTime(), at(2026, 7, 25, 18, 0).getTime());
+  assert.equal(result.matches[2].scheduledAt.getTime(), at(2026, 7, 25, 18, 0).getTime());
 });
 
 test("end-date overflow returns no matches", () => {

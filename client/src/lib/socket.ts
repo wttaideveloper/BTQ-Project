@@ -113,15 +113,16 @@ export function setupGameSocket(userId?: number): WebSocket {
   // Reset reconnection attempts when explicitly setting up socket
   reconnectAttempts = 0;
 
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    // If socket is already open and we have a userId, send authenticate event
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    // Reuse the live socket, including one that is still CONNECTING.
+    // Replacing a CONNECTING instance left send() racing against the new socket.
     if (userId && userId !== authenticatedUserId) {
       authenticateUser(userId);
     }
     return socket;
   }
   
-  // Close existing socket if it's not open
+  // Close existing socket if it's not open (CLOSING / CLOSED)
   if (socket) {
     try {
       socket.close();
@@ -159,7 +160,7 @@ export function setupGameSocket(userId?: number): WebSocket {
     }, PING_INTERVAL_MS);
     
     // If we have a userId, authenticate the connection
-    if (userId) {
+    if (userId && userId !== authenticatedUserId) {
       authenticateUser(userId);
     }
   });
@@ -259,16 +260,60 @@ export function closeGameSocket() {
   authenticatedUserId = null;
 }
 
-export function sendGameEvent(event: GameEvent) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
-    socket = setupGameSocket(authenticatedUserId || undefined);
-    // Wait for connection to open
-    socket.addEventListener('open', () => {
-      socket?.send(JSON.stringify(event));
-    });
-  } else {
-    socket.send(JSON.stringify(event));
+/**
+ * Send `payload` on `target` only when that exact instance is OPEN and still the
+ * live client socket. If it is CONNECTING, wait for its `open` event.
+ *
+ * Never calls send() while CONNECTING. A replaced or closed socket is ignored.
+ */
+export function sendJsonWhenOpen(
+  target: {
+    readyState: number;
+    send: (data: string) => void;
+    addEventListener: (type: string, listener: () => void) => void;
+    removeEventListener: (type: string, listener: () => void) => void;
+  },
+  payload: string,
+  getLiveSocket: () => unknown,
+): void {
+  const OPEN = typeof WebSocket !== "undefined" ? WebSocket.OPEN : 1;
+  const CONNECTING = typeof WebSocket !== "undefined" ? WebSocket.CONNECTING : 0;
+  let flushed = false;
+  const flush = () => {
+    if (flushed) return;
+    target.removeEventListener("open", onOpen);
+    if (getLiveSocket() !== target || target.readyState !== OPEN) return;
+    flushed = true;
+    target.send(payload);
+  };
+  const onOpen = () => flush();
+
+  if (target.readyState === OPEN) {
+    flush();
+    return;
   }
+  if (target.readyState !== CONNECTING) return;
+
+  target.addEventListener("open", onOpen);
+  // Opened between the CONNECTING check and addEventListener.
+  if ((target.readyState as number) === OPEN) flush();
+}
+
+export function sendGameEvent(event: GameEvent) {
+  const payload = JSON.stringify(event);
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(payload);
+    return;
+  }
+
+  if (socket && socket.readyState === WebSocket.CONNECTING) {
+    sendJsonWhenOpen(socket, payload, () => socket);
+    return;
+  }
+
+  const pending = setupGameSocket(authenticatedUserId || undefined);
+  sendJsonWhenOpen(pending, payload, () => socket);
 }
 
 // Event listener registration functions

@@ -1,5 +1,17 @@
+import type { CSSProperties } from "react";
 import type { ReactionParticle } from "@/lib/watch-reactions";
 import { TeamAvatar } from "@/components/championship/TeamAvatar";
+
+/** Custom properties the burst CSS reads; not in the stock CSSProperties map. */
+type CheerParticleStyle = CSSProperties & {
+  "--cheer-x": string;
+  "--cheer-wave": string;
+  "--cheer-rise": string;
+  "--cheer-rot": string;
+  "--cheer-scale": string;
+  "--cheer-duration": string;
+  "--cheer-delay": string;
+};
 
 /**
  * Broadcast scoreboard — and the single canvas for audience reactions.
@@ -139,7 +151,7 @@ export function WatchScoreboard({
                   "--cheer-scale": String(particle.scale),
                   "--cheer-duration": `${particle.duration}s`,
                   "--cheer-delay": `${particle.delay}s`,
-                } as React.CSSProperties
+                } as CheerParticleStyle
               }
             >
               {particle.emoji}

@@ -16,6 +16,16 @@ import { WatchTossPanel, type WatchToss, type WatchTossResult } from "@/componen
 import { WatchSupport } from "@/components/watch/WatchSupport";
 import { appendBurst, buildBurst, burstTtlMs, dropParticles, type ReactionParticle } from "@/lib/watch-reactions";
 import { WatchTicker } from "@/components/watch/WatchTicker";
+import { WatchSoundControl } from "@/components/watch/WatchSoundControl";
+import {
+  applyWatchSound,
+  emptyWatchSoundState,
+  isAutoplayBlocked,
+  shouldShowWatchSoundControl,
+  streamHasAudioTrack,
+  watchSoundKind,
+  type WatchSoundState,
+} from "@/lib/watch-sound";
 
 type MatchPayload = { match: any; teamA: any; teamB: any };
 
@@ -64,6 +74,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   currentQuestionIdRef.current = liveQuestionDetail?.questionId ?? null;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamError, setStreamError] = useState("");
+  const [sound, setSound] = useState<WatchSoundState>(emptyWatchSoundState);
   // Set when the server's existing reaction throttle kicks in; disables the
   // controls briefly instead of silently dropping taps.
   const [reactionCooldown, setReactionCooldown] = useState(false);
@@ -84,20 +95,36 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   }, [overlay]);
 
   useEffect(() => {
+    setSound(emptyWatchSoundState());
+  }, [data?.match?.streamUrl, data?.match?.status]);
+
+  const noteAutoplayBlocked = (error: unknown) => {
+    if (isAutoplayBlocked(error)) {
+      setSound(current => ({ ...current, playbackBlocked: true, soundOn: false }));
+    }
+  };
+
+  const refreshAudioAvailability = (video: HTMLVideoElement) => {
+    const available = streamHasAudioTrack(video);
+    if (available === null) return;
+    setSound(current => ({ ...current, audioAvailable: available }));
+  };
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video || !data?.match?.streamUrl || data.match.status !== "live") return;
     const url = data.match.streamUrl;
     setStreamError("");
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
-      video.play().catch(() => undefined);
+      video.play().catch(noteAutoplayBlocked);
       return () => { video.removeAttribute("src"); video.load(); };
     }
     if (Hls.isSupported()) {
       const hls = new Hls({ liveSyncDurationCount: 2, maxBufferLength: 10 });
       hls.loadSource(url);
       hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => undefined));
+      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(noteAutoplayBlocked));
       hls.on(Hls.Events.ERROR, (_event, details) => {
         if (details.fatal) {
           if (details.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
@@ -339,6 +366,20 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     };
   }, [matchId, refetch, data?.teamA?.id, overlay]);
 
+  const toggleWatchSound = () => {
+    const video = videoRef.current;
+    const kind = watchSoundKind(sound);
+    if (!video || kind === "none") return;
+    const nextOn = kind !== "on";
+    setSound(current => ({
+      ...current,
+      soundOn: nextOn,
+      everEnabled: current.everEnabled || nextOn,
+      playbackBlocked: nextOn ? false : current.playbackBlocked,
+    }));
+    void applyWatchSound(video, nextOn).catch(noteAutoplayBlocked);
+  };
+
   // The existing reaction event. `reactionId` is optional and resolved against
   // the server's whitelist; omitting it keeps the original crest behaviour.
   const support = (team: any, reactionId?: string) =>
@@ -409,14 +450,15 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
 
   // The stream element is unchanged - same condition, same ref, same handlers -
   // so the HLS effect above keeps driving it exactly as before.
-  const media =
-    status === "live" && data.match.streamUrl ? (
+  const hasStreamVideo = status === "live" && !!data.match.streamUrl;
+  const media = hasStreamVideo ? (
       <video
         ref={videoRef}
         autoPlay
-        muted
+        muted={!sound.soundOn}
         playsInline
         controls={false}
+        onLoadedMetadata={event => refreshAudioAvailability(event.currentTarget)}
         onPause={e => e.currentTarget.play().catch(() => undefined)}
         className="h-full w-full bg-black object-contain"
       />
@@ -494,6 +536,9 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               }
               overlays={
                 <>
+                  {shouldShowWatchSoundControl(hasStreamVideo) && (
+                    <WatchSoundControl kind={watchSoundKind(sound)} onToggle={toggleWatchSound} />
+                  )}
                   {streamError && (
                     <div className="absolute inset-x-4 bottom-4 rounded-xl border border-red-400/30 bg-red-950/90 p-3 text-center text-sm text-red-100">
                       {streamError}

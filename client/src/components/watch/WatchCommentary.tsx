@@ -26,25 +26,25 @@ const TONES: Record<CommentaryEntry["tone"], { row: string; chip: string; label:
  */
 export function WatchCommentary({ entries }: { entries: CommentaryEntry[] }) {
   return (
-    <section className="champ-panel rounded-2xl p-4 sm:p-5" aria-label="Live commentary">
-      <div className="flex items-center gap-2">
+    <section className="watch-commentary champ-panel rounded-2xl p-3 sm:p-4" aria-label="Live commentary">
+      <div className="flex shrink-0 items-center gap-2">
         <Radio className="h-3.5 w-3.5 text-[#d4af37]" />
         <h2 className="champ-eyebrow">Live commentary</h2>
       </div>
-      <div className="champ-divider my-3" />
+      <div className="champ-divider my-2.5 shrink-0" />
 
       {entries.length === 0 ? (
-        <p className="py-6 text-center text-sm champ-meta">
+        <p className="py-4 text-center text-sm champ-meta">
           Live commentary will appear here as the match plays.
         </p>
       ) : (
         // Newest first, capped by the page - the rail stays short and scannable.
-        <ul className="space-y-2">
+        <ul className="watch-commentary-list space-y-1.5">
           {entries.map((entry, index) => (
             <li
               key={entry.id}
               // Only the newest line is emphasised; the rest are unchanged.
-              className={`champ-fade-in rounded-xl border bg-white/[0.03] px-3 py-2 ${TONES[entry.tone].row} ${
+              className={`champ-fade-in rounded-lg border bg-white/[0.03] px-2.5 py-1.5 ${TONES[entry.tone].row} ${
                 index === 0 ? "watch-commentary-latest" : ""
               }`}
             >
@@ -58,8 +58,8 @@ export function WatchCommentary({ entries }: { entries: CommentaryEntry[] }) {
                   {new Date(entry.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
                 </span>
               </div>
-              <p className="mt-1.5 text-xs font-bold uppercase tracking-[0.1em]">{entry.label}</p>
-              {entry.detail && <p className="mt-0.5 text-sm text-white/75">{entry.detail}</p>}
+              <p className="mt-1 text-[11px] font-bold uppercase leading-snug tracking-[0.08em]">{entry.label}</p>
+              {entry.detail && <p className="mt-0.5 break-words text-xs text-white/75">{entry.detail}</p>}
             </li>
           ))}
         </ul>

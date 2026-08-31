@@ -61,51 +61,37 @@ export function WatchSupport({
   };
 
   return (
-    <section className="champ-panel rounded-2xl p-4" aria-label="Support your team">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="flex items-center gap-2 champ-eyebrow">
-          <Heart className="h-3 w-3 text-[#d4af37]" /> Support your team
-        </p>
-        <p className="text-[11px] champ-meta" role="status">
-          {cooldown ? "Easy there — give it a second." : "Cheer for your favourite team"}
-        </p>
-      </div>
+    <section className="watch-support-bar" aria-label="Support your team">
+      <p className="hidden items-center gap-1.5 champ-eyebrow sm:flex">
+        <Heart className="h-3 w-3 text-[#d4af37]" /> Support your team
+      </p>
+      <p className="sr-only" role="status">
+        {cooldown ? "Easy there — give it a second." : "Cheer for your favourite team"}
+      </p>
 
-      <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+      <div className="flex min-w-0 flex-1 items-stretch gap-2">
         {teams.map(team => {
           const supported = justSupported === team.id;
           return (
-            <div
-              key={team.id}
-              className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
-            >
-              <div className="flex items-center gap-2">
-                <TeamAvatar logoUrl={team.logoUrl} emoticon={team.emoticon} alt={`${team.name} logo`} className="h-6 w-6 text-lg" />
-                <p className="min-w-0 flex-1 truncate text-sm font-bold text-white">{team.name}</p>
-                <p className="shrink-0 text-[11px] champ-meta tabular-nums">
-                  {supporters[team.id] ?? 0} supporters
-                </p>
-              </div>
-
+            <div key={team.id} className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+              <TeamAvatar logoUrl={team.logoUrl} emoticon={team.emoticon} alt={`${team.name} logo`} className="h-6 w-6 shrink-0 text-lg" />
+              <p className="hidden min-w-0 truncate text-xs font-bold text-white md:block">{team.name}</p>
               <button
                 type="button"
                 onClick={() => send(team)}
                 disabled={cooldown}
                 aria-label={`Support ${team.name}`}
-                className="watch-support mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-bold text-white transition-transform active:scale-[0.97] disabled:opacity-50"
+                className="watch-support flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-bold text-white transition-transform active:scale-[0.97] disabled:opacity-50 sm:flex-none sm:px-3"
               >
                 {supported ? (
                   <>
-                    <Check className="h-4 w-4 text-[#7ee2be]" /> Supported!
+                    <Check className="h-3.5 w-3.5 text-[#7ee2be]" /> Supported
                   </>
                 ) : (
-                  <>
-                    <TeamAvatar logoUrl={team.logoUrl} emoticon={team.emoticon} alt={`${team.name} logo`} className="h-5 w-5 text-base" /> Support {team.name}
-                  </>
+                  <span className="truncate">Support {team.name}</span>
                 )}
               </button>
-
-              <ul className="mt-2 flex flex-wrap gap-1.5">
+              <ul className="flex shrink-0 gap-1">
                 {AUDIENCE_REACTIONS.map(reaction => (
                   <li key={reaction.id}>
                     <button
@@ -114,14 +100,16 @@ export function WatchSupport({
                       disabled={cooldown}
                       aria-label={`Send ${reaction.label} reaction to ${team.name}`}
                       title={reaction.label}
-                      className="watch-support flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full px-2 text-sm text-white/85 transition-transform active:scale-95 disabled:opacity-50"
+                      className="watch-support flex h-9 w-9 items-center justify-center rounded-full text-sm text-white/85 transition-transform active:scale-95 disabled:opacity-50"
                     >
                       <span aria-hidden="true">{reaction.emoji}</span>
-                      <span className="hidden text-xs font-semibold lg:inline">{reaction.label}</span>
                     </button>
                   </li>
                 ))}
               </ul>
+              <p className="hidden shrink-0 text-[10px] champ-meta tabular-nums lg:block">
+                {supporters[team.id] ?? 0}
+              </p>
             </div>
           );
         })}

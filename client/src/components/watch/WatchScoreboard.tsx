@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ReactionParticle } from "@/lib/watch-reactions";
 import { TeamAvatar } from "@/components/championship/TeamAvatar";
 
@@ -53,6 +53,17 @@ export function WatchScoreboard({
    */
   particles?: ReactionParticle[];
 }) {
+  const previousScore = useRef({ a: teamAScore, b: teamBScore });
+  const [scorePulse, setScorePulse] = useState(false);
+
+  useEffect(() => {
+    if (previousScore.current.a === teamAScore && previousScore.current.b === teamBScore) return;
+    previousScore.current = { a: teamAScore, b: teamBScore };
+    setScorePulse(true);
+    const timer = window.setTimeout(() => setScorePulse(false), 700);
+    return () => window.clearTimeout(timer);
+  }, [teamAScore, teamBScore]);
+
   const side = (team: typeof teamA, fallback: string, align: "left" | "right") => {
     const isWinner = status === "completed" && !!winnerTeamId && team?.id === winnerTeamId;
     // While a question is in play, the side answering it holds the eye and the
@@ -65,13 +76,13 @@ export function WatchScoreboard({
           isAnswering ? "watch-team-active" : ""
         } ${isWaiting ? "opacity-70" : ""}`}
       >
-        <div className={`flex items-center gap-2.5 ${align === "right" ? "justify-end" : ""}`}>
-          <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallback} logo`} className="h-8 w-8 shrink-0 text-2xl sm:h-9 sm:w-9 sm:text-3xl" />
+        <div className={`flex items-center gap-2 sm:gap-2.5 ${align === "right" ? "flex-row-reverse justify-start" : ""}`}>
+          <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallback} logo`} className="h-7 w-7 shrink-0 text-xl sm:h-8 sm:w-8 sm:text-2xl" />
           <div className="min-w-0">
-            <p className={`truncate font-bold text-white ${isWinner ? "text-[#f0d58a]" : ""}`}>
+            <p className={`truncate text-xs font-black uppercase tracking-[0.08em] text-white sm:text-sm ${isWinner ? "text-[#f0d58a]" : ""}`}>
               {team?.name ?? fallback}
             </p>
-            <p className="mt-0.5 text-[11px] champ-meta">
+            <p className="mt-0.5 text-[10px] champ-meta sm:text-[11px]">
               {(team && supporters[team.id]) ?? 0} supporters
             </p>
           </div>
@@ -87,19 +98,19 @@ export function WatchScoreboard({
 
   return (
     <section
-      className="champ-panel relative overflow-hidden rounded-2xl p-4 sm:p-6"
+      className="champ-panel relative overflow-hidden rounded-xl px-3 py-2 sm:px-5 sm:py-2.5"
       aria-label="Match scoreboard"
     >
-      <div className="relative flex items-start gap-3 sm:gap-6">
+      <div className="relative flex items-center gap-2 sm:gap-6">
         {side(teamA, "Team A", "left")}
 
         <div className="relative z-[3] shrink-0 text-center">
-          <p className="champ-scoreline text-4xl font-black text-white sm:text-6xl">
+          <p className={`champ-scoreline text-3xl font-black text-white sm:text-4xl lg:text-5xl ${scorePulse ? "watch-score-pulse" : ""}`}>
             {teamAScore}
-            <span className="mx-2 align-middle text-2xl text-white/20 sm:mx-3 sm:text-3xl">:</span>
+            <span className="mx-1.5 align-middle text-xl text-white/20 sm:mx-3 sm:text-3xl">:</span>
             {teamBScore}
           </p>
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
             {status === "completed"
               ? "Final score"
               : liveQuestion

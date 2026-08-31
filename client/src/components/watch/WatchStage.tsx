@@ -14,6 +14,9 @@ import { TeamAvatar } from "@/components/championship/TeamAvatar";
  * finished one) it renders a composed championship card instead of a black
  * rectangle. Everything shown comes from the match payload the page already
  * has; nothing is computed here, including the winner.
+ *
+ * The live question lives in its own section below this stage so viewers can
+ * watch the stream and follow the game at the same time.
  */
 export function WatchStage({
   status,
@@ -33,7 +36,6 @@ export function WatchStage({
   scheduledLabel,
   media,
   overlays,
-  questionPanel,
 }: {
   status: string;
   /** Has play actually begun? A fixture is "live" before any captain starts it. */
@@ -57,20 +59,16 @@ export function WatchStage({
   media?: ReactNode;
   /** Stream error notice, positioned over the stage. */
   overlays?: ReactNode;
-  /** The live question broadcast, when the page has received one. */
-  questionPanel?: ReactNode;
 }) {
   // THE ONE PLACE THE VISUAL STAGE IS DECIDED.
   //
   //   waiting  - fixture open, captains have not started play yet
-  //   toss/    - play running: whichever panel the page supplies
-  //   question
+  //   live     - play running (question lives in the section below)
   //   completed / upcoming - unchanged
   //
   // `status` alone cannot make this call: it reads "live" from the moment an
   // admin opens the fixture, while the team_battles row is still forming.
   const awaitingKickoff = status === "live" && !gameplayStarted;
-  const showQuestion = status === "live" && gameplayStarted && !!questionPanel;
 
   const bothCaptainsReady = !!captains?.teamACaptainReady && !!captains?.teamBCaptainReady;
   const someCaptainHere = !!captains?.teamACaptainReady || !!captains?.teamBCaptainReady;
@@ -89,9 +87,10 @@ export function WatchStage({
           : "Stream begins soon";
 
   return (
-    // 16:9 only while a video is playing. With a question panel inside, a fixed
-    // ratio would either clip the options on a phone or leave a half-empty box
-    // on a desktop, so the composed stage sizes to its content instead.
+    // 16:9 only while a video is playing so the stream never becomes a tall
+    // portrait box on a phone. The composed fallback sizes to its content.
+    // The <video> is taken out of flow in CSS so HLS metadata / ABR size
+    // changes cannot widen this box or the page.
     <section className={`watch-stage ${media ? "aspect-video" : "min-h-[15rem]"}`}>
       {media ? (
         media
@@ -105,9 +104,8 @@ export function WatchStage({
               <p className="champ-eyebrow">FaithIQ Championship</p>
             </div>
 
-            <div className={`mx-auto h-px max-w-[10rem] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent ${showQuestion ? "my-3" : "my-4"}`} />
+            <div className="mx-auto my-4 h-px max-w-[10rem] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent" />
 
-            {!showQuestion && (
             <span
               className={`mx-auto grid h-14 w-14 place-items-center rounded-full border ${
                 status === "completed"
@@ -119,18 +117,15 @@ export function WatchStage({
             >
               {status === "completed" ? <Trophy className="h-6 w-6" /> : <Radio className="h-6 w-6" />}
             </span>
-            )}
 
-            {!showQuestion && (
             <h2 className="mt-4 text-xl font-black uppercase tracking-[0.14em] text-white sm:text-2xl">
               {heading}
             </h2>
-            )}
 
-            {status !== "upcoming" && !showQuestion && (
+            {status !== "upcoming" && (
               <div className="mt-5 flex items-center justify-center gap-3 sm:gap-6">
                 <span className="flex min-w-0 flex-1 items-center justify-end gap-2">
-                  <TeamAvatar logoUrl={teamALogoUrl} emoticon={teamAEmoticon} alt={`${teamAName ?? "Team A"} logo`} className="h-6 w-6 text-xl" />
+                  <TeamAvatar logoUrl={teamALogoUrl} emoticon={teamAEmoticon} alt={`${teamAName ?? "Team A"} logo`} className="h-6 w-6 shrink-0 text-xl" />
                   <span className="truncate text-sm font-bold text-white/85 sm:text-base">{teamAName ?? "Team A"}</span>
                 </span>
                 <span className="champ-scoreline shrink-0 text-3xl font-black text-white sm:text-4xl">
@@ -139,7 +134,7 @@ export function WatchStage({
                   {teamBScore}
                 </span>
                 <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <TeamAvatar logoUrl={teamBLogoUrl} emoticon={teamBEmoticon} alt={`${teamBName ?? "Team B"} logo`} className="h-6 w-6 text-xl" />
+                  <TeamAvatar logoUrl={teamBLogoUrl} emoticon={teamBEmoticon} alt={`${teamBName ?? "Team B"} logo`} className="h-6 w-6 shrink-0 text-xl" />
                   <span className="truncate text-sm font-bold text-white/85 sm:text-base">{teamBName ?? "Team B"}</span>
                 </span>
               </div>
@@ -159,15 +154,6 @@ export function WatchStage({
               </p>
             )}
 
-            {/*
-              Live question panel.
-
-              The spectator socket receives the question NUMBER only - the five
-              championship broadcasts carry no question text, options, selected
-              answer or correct answer (see the report). So this shows exactly
-              what is known and says plainly what it is waiting for, rather than
-              rendering an empty frame or inventing a question.
-            */}
             {awaitingKickoff && (
               <div className="mt-4">
                 {someCaptainHere && (
@@ -203,19 +189,9 @@ export function WatchStage({
             )}
 
             {status === "live" && gameplayStarted && (
-              <div className={showQuestion ? "mt-1" : "mt-5"}>
-                {questionPanel ?? (
-                  liveQuestion ? (
-                    <div className="mx-auto max-w-sm rounded-xl border border-[#d4af37]/30 bg-white/[0.04] px-5 py-4">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/40">Now playing</p>
-                      <p className="champ-scoreline mt-1 text-3xl font-black text-white">Question {liveQuestion}</p>
-                      <p className="mt-1.5 text-xs champ-meta">Waiting for the question to be broadcast…</p>
-                    </div>
-                  ) : (
-                    <p className="text-xs champ-meta">Waiting for the next question…</p>
-                  )
-                )}
-              </div>
+              <p className="mt-5 text-xs champ-meta">
+                {liveQuestion ? `Question ${liveQuestion} in play` : "Waiting for the next question…"}
+              </p>
             )}
 
             {status === "upcoming" && (

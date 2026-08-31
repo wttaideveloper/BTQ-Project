@@ -6,7 +6,6 @@ import Hls from "hls.js";
 import { WatchHeader } from "@/components/watch/WatchHeader";
 import { WatchStage } from "@/components/watch/WatchStage";
 import { WatchScoreboard } from "@/components/watch/WatchScoreboard";
-import { WatchCommentary, type CommentaryEntry } from "@/components/watch/WatchCommentary";
 import {
   WatchQuestionPanel,
   type WatchQuestion,
@@ -46,14 +45,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   const [reactions, setReactions] = useState<ReactionParticle[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [currentQuestion, setCurrentQuestion] = useState<number | null>(null);
-  // Commentary is a log of the championship events this page ALREADY receives -
-  // nothing is inferred and nothing is fetched for it. Newest first, capped so a
-  // broadcast left open all evening cannot grow without bound.
-  const [commentary, setCommentary] = useState<CommentaryEntry[]>([]);
-  // Last scores seen, so a score change can be reported as "who gained what"
-  // instead of a bare pair of numbers. Display only.
-  const lastScoreRef = useRef<{ a: number; b: number } | null>(null);
-  const teamNamesRef = useRef<{ a: string; b: string }>({ a: "Team A", b: "Team B" });
   // The question on screen and its result, from the two sanitised championship
   // broadcasts. Keyed by questionId so a late result cannot land on a newer
   // question.
@@ -137,20 +128,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     setStreamError("HLS playback is not supported by this browser.");
   }, [data?.match?.streamUrl, data?.match?.status]);
 
-  // Keep the refs the event handlers read in step with the loaded match.
-  useEffect(() => {
-    if (!data?.match) return;
-    if (!lastScoreRef.current) lastScoreRef.current = { a: data.match.teamAScore, b: data.match.teamBScore };
-    teamNamesRef.current = { a: data.teamA?.name ?? "Team A", b: data.teamB?.name ?? "Team B" };
-  }, [data?.match, data?.teamA?.name, data?.teamB?.name]);
-
-  // Appends one line to the commentary log. Display only: it reads the event
-  // payloads the handlers below already receive and touches no game state.
-  const logCommentary = (entry: Omit<CommentaryEntry, "id" | "at">) => {
-    if (overlay) return; // the OBS overlay renders no commentary
-    setCommentary(current => [{ ...entry, id: Date.now() + Math.random(), at: Date.now() }, ...current].slice(0, 12));
-  };
-
   useEffect(() => {
     setupGameSocket();
     sendGameEvent({ type: "watch_match", matchId });
@@ -170,31 +147,10 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     });
     const offUpdate = onEvent("match_updated", (e) => {
       if (e.match?.id !== matchId) return;
-      // Which side gained, and by how much, read from two consecutive server
-      // payloads. Nothing is scored here - this is the difference between
-      // numbers the server already sent.
-      const previous = lastScoreRef.current;
-      const deltaA = e.match.teamAScore - (previous?.a ?? e.match.teamAScore);
-      const deltaB = e.match.teamBScore - (previous?.b ?? e.match.teamBScore);
-      lastScoreRef.current = { a: e.match.teamAScore, b: e.match.teamBScore };
-
-      const gained =
-        deltaA > 0
-          ? { name: teamNamesRef.current.a, points: deltaA }
-          : deltaB > 0
-            ? { name: teamNamesRef.current.b, points: deltaB }
-            : null;
-
-      logCommentary({
-        tone: "score",
-        label: gained ? `${gained.name} +${gained.points}` : "Score update",
-        detail: `${e.match.teamAScore} – ${e.match.teamBScore}`,
-      });
       refetch();
     });
     const offStart = onEvent("match_started", (e) => {
       if (e.match?.id !== matchId) return;
-      logCommentary({ tone: "live", label: "Match started" });
       refetch();
     });
     // A finished match has no current question. question_ended is only emitted
@@ -202,11 +158,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     // "Question N" after the match was over.
     const offEnd = onEvent("match_ended", (e) => {
       if (e.match?.id !== matchId) return;
-      logCommentary({
-        tone: "final",
-        label: "Match complete",
-        detail: `Final score ${e.match.teamAScore} – ${e.match.teamBScore}`,
-      });
       setCurrentQuestion(null);
       setGameplayStarted(false);
       refetch();
@@ -214,13 +165,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     const offQuestionStarted = onEvent("question_started", (e) => {
       if (e.matchId !== matchId) return;
       setGameplayStarted(true);
-      if (e.questionNumber) {
-        logCommentary({
-          tone: "question",
-          label: `Question ${e.questionNumber}`,
-          detail: e.answeringTeamName ? `${e.answeringTeamName} is answering` : "In play",
-        });
-      }
       setCurrentQuestion(e.questionNumber ?? null);
       // The first fixture question ends the toss display for good.
       setToss(null);
@@ -245,11 +189,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     const offCaptains = onEvent("captains_ready", (e) => {
       if (e.matchId !== matchId) return;
       setCaptains({ teamACaptainReady: !!e.teamACaptainReady, teamBCaptainReady: !!e.teamBCaptainReady });
-      logCommentary({
-        tone: "question",
-        label: e.bothCaptainsReady ? "Both captains ready" : "Captain joined",
-        detail: e.bothCaptainsReady ? "Waiting for the match to start" : "Waiting for the other captain",
-      });
     });
     const offTossStarted = onEvent("toss_started", (e) => {
       if (e.matchId !== matchId) return;
@@ -260,7 +199,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
         questionText: e.questionText,
         options: Array.isArray(e.options) ? e.options : [],
       });
-      logCommentary({ tone: "question", label: "Toss question", detail: "First correct answer wins the toss" });
     });
     // Sent only after finalizeTossWinner has committed the winner.
     const offTossResolved = onEvent("toss_resolved", (e) => {
@@ -271,11 +209,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
         winnerTeamName: e.winnerTeamName,
         firstTurnTeamName: e.firstTurnTeamName,
         correctAnswerId: e.correctAnswerId ?? null,
-      });
-      logCommentary({
-        tone: "final",
-        label: `${e.winnerTeamName ?? "Team"} won the toss`,
-        detail: e.firstTurnTeamName ? `${e.firstTurnTeamName} answers first` : undefined,
       });
     });
 
@@ -292,11 +225,6 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
         correctAnswerId: e.correctAnswerId ?? null,
         isCorrect: !!e.isCorrect,
         pointsAwarded: e.pointsAwarded ?? 0,
-      });
-      logCommentary({
-        tone: e.isCorrect ? "final" : "question",
-        label: `${e.answeringTeamName ?? "Team"} ${e.isCorrect ? "answered correctly" : "answered incorrectly"}`,
-        detail: `+${e.pointsAwarded ?? 0} points`,
       });
     });
     const offQuestionEnded = onEvent("question_ended", (e) => e.matchId === matchId && setCurrentQuestion(null));
@@ -460,13 +388,72 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
         controls={false}
         onLoadedMetadata={event => refreshAudioAvailability(event.currentTarget)}
         onPause={e => e.currentTarget.play().catch(() => undefined)}
-        className="h-full w-full bg-black object-contain"
+        className="block h-full w-full max-w-full bg-black object-contain"
       />
     ) : undefined;
 
+  const bothCaptainsReady = !!captains?.teamACaptainReady && !!captains?.teamBCaptainReady;
+  const someCaptainHere = !!captains?.teamACaptainReady || !!captains?.teamBCaptainReady;
+
+  const liveQuestionBody =
+    toss ? (
+      <WatchTossPanel
+        toss={toss}
+        result={tossResult}
+        winnerEmoticon={
+          tossResult?.winnerTeamId === data.teamA?.id
+            ? data.teamA?.emoticon
+            : tossResult?.winnerTeamId === data.teamB?.id
+              ? data.teamB?.emoticon
+              : undefined
+        }
+        winnerLogoUrl={
+          tossResult?.winnerTeamId === data.teamA?.id
+            ? data.teamA?.logoUrl
+            : tossResult?.winnerTeamId === data.teamB?.id
+              ? data.teamB?.logoUrl
+              : undefined
+        }
+      />
+    ) : liveQuestionDetail ? (
+      <WatchQuestionPanel
+        question={liveQuestionDetail}
+        result={questionResult}
+        teamEmoticon={
+          liveQuestionDetail.answeringTeamId === data.teamA?.id
+            ? data.teamA?.emoticon
+            : liveQuestionDetail.answeringTeamId === data.teamB?.id
+              ? data.teamB?.emoticon
+              : undefined
+        }
+        teamLogoUrl={
+          liveQuestionDetail.answeringTeamId === data.teamA?.id
+            ? data.teamA?.logoUrl
+            : liveQuestionDetail.answeringTeamId === data.teamB?.id
+              ? data.teamB?.logoUrl
+              : undefined
+        }
+      />
+    ) : gameplayStarted && liveQuestion ? (
+      <div className="mt-3 text-center">
+        <p className="champ-scoreline text-2xl font-black text-white">Question {liveQuestion}</p>
+        <p className="mt-1.5 text-xs champ-meta">Waiting for the question to be broadcast…</p>
+      </div>
+    ) : gameplayStarted ? (
+      <p className="mt-3 text-center text-sm champ-meta">Waiting for the next question…</p>
+    ) : (
+      <p className="mt-3 text-center text-sm champ-meta">
+        {bothCaptainsReady
+          ? "Both captains are ready. Waiting for the match to start…"
+          : someCaptainHere
+            ? "Waiting for the other team captain to join…"
+            : "Waiting for the captains to start the match…"}
+      </p>
+    );
+
   return (
-    <main className="champ-portal flex min-h-screen flex-col font-heading">
-      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 sm:py-7">
+    <main className="champ-portal watch-canvas font-heading">
+      <div className="watch-live">
         <WatchHeader
           status={status}
           gameplayStarted={gameplayStarted}
@@ -474,109 +461,80 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
           teamBName={data.teamB?.name}
         />
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="space-y-5">
-            <WatchStage
-              status={status}
-              gameplayStarted={gameplayStarted}
-              captains={captains}
-              teamAName={data.teamA?.name}
-              teamBName={data.teamB?.name}
-              teamAEmoticon={data.teamA?.emoticon}
-              teamBEmoticon={data.teamB?.emoticon}
-              teamALogoUrl={data.teamA?.logoUrl}
-              teamBLogoUrl={data.teamB?.logoUrl}
-              teamAScore={data.match.teamAScore}
-              teamBScore={data.match.teamBScore}
-              winnerName={winnerName}
-              isDraw={isDraw}
-              liveQuestion={liveQuestion}
-              scheduledLabel={scheduledLabel}
-              media={media}
-              questionPanel={
-                status === "live" && toss ? (
-                  <WatchTossPanel
-                    toss={toss}
-                    result={tossResult}
-                    winnerEmoticon={
-                      tossResult?.winnerTeamId === data.teamA?.id
-                        ? data.teamA?.emoticon
-                        : tossResult?.winnerTeamId === data.teamB?.id
-                          ? data.teamB?.emoticon
-                          : undefined
-                    }
-                    winnerLogoUrl={
-                      tossResult?.winnerTeamId === data.teamA?.id
-                        ? data.teamA?.logoUrl
-                        : tossResult?.winnerTeamId === data.teamB?.id
-                          ? data.teamB?.logoUrl
-                          : undefined
-                    }
-                  />
-                ) : status === "live" && liveQuestionDetail ? (
-                  <WatchQuestionPanel
-                    question={liveQuestionDetail}
-                    result={questionResult}
-                    teamEmoticon={
-                      liveQuestionDetail.answeringTeamId === data.teamA?.id
-                        ? data.teamA?.emoticon
-                        : liveQuestionDetail.answeringTeamId === data.teamB?.id
-                          ? data.teamB?.emoticon
-                          : undefined
-                    }
-                    teamLogoUrl={
-                      liveQuestionDetail.answeringTeamId === data.teamA?.id
-                        ? data.teamA?.logoUrl
-                        : liveQuestionDetail.answeringTeamId === data.teamB?.id
-                          ? data.teamB?.logoUrl
-                          : undefined
-                    }
-                  />
-                ) : undefined
-              }
-              overlays={
-                <>
-                  {shouldShowWatchSoundControl(hasStreamVideo) && (
-                    <WatchSoundControl kind={watchSoundKind(sound)} onToggle={toggleWatchSound} />
-                  )}
-                  {streamError && (
-                    <div className="absolute inset-x-4 bottom-4 rounded-xl border border-red-400/30 bg-red-950/90 p-3 text-center text-sm text-red-100">
-                      {streamError}
-                    </div>
-                  )}
-                </>
-              }
-            />
+        <div className="watch-broadcast">
+          <WatchStage
+            status={status}
+            gameplayStarted={gameplayStarted}
+            captains={captains}
+            teamAName={data.teamA?.name}
+            teamBName={data.teamB?.name}
+            teamAEmoticon={data.teamA?.emoticon}
+            teamBEmoticon={data.teamB?.emoticon}
+            teamALogoUrl={data.teamA?.logoUrl}
+            teamBLogoUrl={data.teamB?.logoUrl}
+            teamAScore={data.match.teamAScore}
+            teamBScore={data.match.teamBScore}
+            winnerName={winnerName}
+            isDraw={isDraw}
+            liveQuestion={liveQuestion}
+            scheduledLabel={scheduledLabel}
+            media={media}
+            overlays={
+              <>
+                {shouldShowWatchSoundControl(hasStreamVideo) && (
+                  <WatchSoundControl kind={watchSoundKind(sound)} onToggle={toggleWatchSound} />
+                )}
+                {streamError && (
+                  <div className="absolute inset-x-3 bottom-3 rounded-xl border border-red-400/30 bg-red-950/90 p-3 text-center text-sm text-red-100 sm:inset-x-4 sm:bottom-4">
+                    {streamError}
+                  </div>
+                )}
+              </>
+            }
+          />
 
-            <WatchScoreboard
-              status={status}
+          <aside className="watch-question-rail min-w-0" aria-label="Current question">
+            <p className="champ-eyebrow shrink-0">Current question</p>
+            <div className="champ-divider my-2 shrink-0" />
+            <div className="watch-question-body min-h-0 min-w-0">
+              {status === "live" ? liveQuestionBody : status === "completed" ? (
+                <p className="text-center text-sm champ-meta">
+                  {isDraw ? "Match complete · Draw" : winnerName ? `Match complete · ${winnerName} won` : "Match complete"}
+                </p>
+              ) : (
+                <p className="text-center text-sm champ-meta">
+                  {scheduledLabel ? `Scheduled for ${scheduledLabel}` : "Waiting for kick-off."}
+                </p>
+              )}
+            </div>
+          </aside>
+        </div>
+
+        <div className="watch-floor">
+          <WatchScoreboard
+            status={status}
+            teamA={data.teamA}
+            teamB={data.teamB}
+            teamAScore={data.match.teamAScore}
+            teamBScore={data.match.teamBScore}
+            supporters={counts}
+            winnerTeamId={data.match.winnerTeamId}
+            liveQuestion={liveQuestion}
+            answeringTeamId={questionResult ? undefined : liveQuestionDetail?.answeringTeamId}
+            particles={reactions}
+          />
+
+          {/* Audience support. Live only - the server accepts reactions for a
+              live match only, so the controls follow the same rule. */}
+          {status === "live" && (
+            <WatchSupport
               teamA={data.teamA}
               teamB={data.teamB}
-              teamAScore={data.match.teamAScore}
-              teamBScore={data.match.teamBScore}
               supporters={counts}
-              winnerTeamId={data.match.winnerTeamId}
-              liveQuestion={liveQuestion}
-              answeringTeamId={questionResult ? undefined : liveQuestionDetail?.answeringTeamId}
-              particles={reactions}
+              cooldown={reactionCooldown}
+              onSupport={support}
             />
-
-            {/* Audience support. Live only - the server accepts reactions for a
-                live match only, so the controls follow the same rule. */}
-            {status === "live" && (
-              <WatchSupport
-                teamA={data.teamA}
-                teamB={data.teamB}
-                supporters={counts}
-                cooldown={reactionCooldown}
-                onSupport={support}
-              />
-            )}
-          </div>
-
-          <aside className="lg:sticky lg:top-5 lg:self-start">
-            <WatchCommentary entries={commentary} />
-          </aside>
+          )}
         </div>
       </div>
 

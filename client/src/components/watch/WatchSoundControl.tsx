@@ -22,10 +22,10 @@ export function WatchSoundControl({
       aria-label={copy.aria}
       aria-pressed={kind === "on"}
       onClick={onToggle}
-      className="pointer-events-auto absolute right-3 top-3 z-20 inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-full border border-amber-400/40 bg-[#110b2e]/90 px-3 text-xs font-bold text-amber-100 shadow-lg backdrop-blur-sm hover:border-amber-300/70 hover:bg-[#171238] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
+      className="pointer-events-auto absolute right-2 top-2 z-20 inline-flex min-h-11 min-w-0 max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-full border border-amber-400/40 bg-[#110b2e]/90 px-3 text-xs font-bold text-amber-100 shadow-lg backdrop-blur-sm hover:border-amber-300/70 hover:bg-[#171238] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-70 sm:right-3 sm:top-3"
     >
       <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-      <span>{copy.label}</span>
+      <span className="truncate">{copy.label}</span>
     </button>
   );
 }

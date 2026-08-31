@@ -47,7 +47,7 @@ export function WatchTossPanel({
     : null;
 
   return (
-    <div className="champ-fade-in mx-auto w-full max-w-2xl text-left">
+    <div className="champ-fade-in mx-auto w-full min-w-0 text-left">
       <div className="flex justify-center">
         <span className="watch-turn-live inline-flex items-center gap-2 rounded-full border border-[#d4af37]/55 bg-[#d4af37]/12 px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-[#f0d58a] sm:text-sm">
           <Trophy className="h-3.5 w-3.5" />
@@ -56,19 +56,19 @@ export function WatchTossPanel({
       </div>
 
       {toss.questionText && (
-        <p className="mt-2.5 text-center text-base font-bold leading-snug text-white sm:text-lg">
+        <p className="mt-2 text-center text-sm font-bold leading-snug text-white lg:text-base">
           {toss.questionText}
         </p>
       )}
 
-      <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+      <div className="watch-answer-grid mt-2 grid gap-1.5">
         {toss.options.map((option, index) => {
           const isCorrectAnswer = !!resolved && resolved.correctAnswerId === option.id;
           const dimmed = !!resolved && !isCorrectAnswer;
           return (
             <div
               key={option.id}
-              className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors ${
+              className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
                 isCorrectAnswer
                   ? "border-[#d4af37]/55 bg-[#d4af37]/12"
                   : dimmed
@@ -77,15 +77,15 @@ export function WatchTossPanel({
               }`}
             >
               <span
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[11px] font-black ${
+                className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[11px] font-black ${
                   isCorrectAnswer ? "border-white/25 bg-white/10 text-white" : "border-[#d4af37]/35 bg-[#1a0d3d] text-white/80"
                 }`}
               >
                 {LETTERS[index] ?? index + 1}
               </span>
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white/90">{option.text}</span>
+              <span className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug text-white/90">{option.text}</span>
               {isCorrectAnswer && (
-                <span className="flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#f0d58a]">
+                <span className="mt-0.5 flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#f0d58a]">
                   <Check className="h-3.5 w-3.5" strokeWidth={3} />
                   Correct
                 </span>

@@ -55,7 +55,7 @@ export function WatchQuestionPanel({
   const resolved = result?.questionId === question.questionId ? result : null;
 
   return (
-    <div className="champ-fade-in mx-auto w-full max-w-2xl text-left">
+    <div className="champ-fade-in mx-auto w-full min-w-0 text-left">
       {question.questionNumber && (
         <p className="text-center text-[10px] font-black uppercase tracking-[0.22em] text-white/35">
           Question {question.questionNumber}
@@ -68,7 +68,7 @@ export function WatchQuestionPanel({
       {question.answeringTeamName && (
         <div className="mt-1.5 flex justify-center">
           <span
-            className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.16em] transition-colors sm:text-sm ${
+            className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.16em] transition-colors sm:text-sm ${
               resolved
                 ? "border-white/15 bg-white/[0.05] text-white/70"
                 : "watch-turn-live border-[#d4af37]/50 bg-[#d4af37]/12 text-[#f0d58a]"
@@ -79,20 +79,22 @@ export function WatchQuestionPanel({
                 <TeamAvatar logoUrl={teamLogoUrl} emoticon={teamEmoticon} alt={`${question.answeringTeamName} logo`} className="h-5 w-5 text-base" />
               </span>
             )}
-            {resolved
-              ? `${question.answeringTeamName} answered`
-              : `${possessive(question.answeringTeamName)} turn`}
+            <span className="min-w-0 break-words">
+              {resolved
+                ? `${question.answeringTeamName} answered`
+                : `${possessive(question.answeringTeamName)} turn`}
+            </span>
           </span>
         </div>
       )}
 
       {question.questionText && (
-        <p className="mt-2.5 text-center text-base font-bold leading-snug text-white sm:text-lg">
+        <p className="mt-2 text-center text-sm font-bold leading-snug text-white lg:text-base">
           {question.questionText}
         </p>
       )}
 
-      <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+      <div className="watch-answer-grid mt-2 grid gap-1.5">
         {question.options.map((option, index) => {
           const isSelected = resolved?.selectedAnswerId === option.id;
           const isCorrectAnswer = !!resolved && resolved.correctAnswerId === option.id;
@@ -101,7 +103,7 @@ export function WatchQuestionPanel({
           return (
             <div
               key={option.id}
-              className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors ${
+              className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
                 isSelected && resolved?.isCorrect
                   ? "border-[#4fd1a5]/60 bg-[#4fd1a5]/12"
                   : isSelected
@@ -114,7 +116,7 @@ export function WatchQuestionPanel({
               }`}
             >
               <span
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[11px] font-black ${
+                className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[11px] font-black ${
                   isSelected || isCorrectAnswer
                     ? "border-white/25 bg-white/10 text-white"
                     : "border-[#d4af37]/35 bg-[#1a0d3d] text-white/80"
@@ -122,10 +124,10 @@ export function WatchQuestionPanel({
               >
                 {LETTERS[index] ?? index + 1}
               </span>
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white/90">{option.text}</span>
+              <span className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug text-white/90">{option.text}</span>
               {isSelected && (
                 <span
-                  className={`flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] ${
+                  className={`mt-0.5 flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] ${
                     resolved?.isCorrect ? "text-[#7ee2be]" : "text-[#e2a3ad]"
                   }`}
                 >
@@ -134,7 +136,7 @@ export function WatchQuestionPanel({
                 </span>
               )}
               {!isSelected && isCorrectAnswer && (
-                <span className="flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#f0d58a]">
+                <span className="mt-0.5 flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#f0d58a]">
                   <Check className="h-3.5 w-3.5" strokeWidth={3} />
                   Correct
                 </span>

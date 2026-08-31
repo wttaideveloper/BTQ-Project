@@ -34,6 +34,7 @@ function test(name: string, fn: () => void) {
 const root = process.cwd();
 const watchMatch = readFileSync(resolve(root, "client/src/pages/WatchMatch.tsx"), "utf8");
 const overlay = readFileSync(resolve(root, "client/src/pages/WatchMatch.tsx"), "utf8");
+const watchCss = readFileSync(resolve(root, "client/src/index.css"), "utf8");
 const overlayStart = overlay.indexOf("if (overlay) return (");
 const overlayEnd = overlay.indexOf("Everything below is read from the match payload", overlayStart);
 const overlayBlock = overlay.slice(overlayStart, overlayEnd);
@@ -118,6 +119,17 @@ test("WatchMatch still uses the saved HLS URL and both players", () => {
   assert.match(watchMatch, /hls\.destroy\(\)/);
   assert.match(watchMatch, /WatchSoundControl/);
   assert.match(watchMatch, /isAutoplayBlocked/);
+});
+
+test("HLS video cannot contribute intrinsic width to the Watch Live grid", () => {
+  assert.match(watchCss, /\.watch-stage > video/);
+  assert.match(watchCss, /\.watch-stage\.aspect-video/);
+  assert.match(watchMatch, /max-w-full/);
+  assert.match(watchMatch, /object-contain/);
+  assert.equal(watchMatch.includes("videoWidth"), false);
+  const videoRule = watchCss.slice(watchCss.indexOf(".watch-stage > video"), watchCss.indexOf(".watch-score-pulse"));
+  assert.match(videoRule, /position:\s*absolute/);
+  assert.match(videoRule, /max-width:\s*100%/);
 });
 
 test("overlay mode does not mount the sound control or video", () => {

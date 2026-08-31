@@ -175,6 +175,15 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     return publicFields;
   };
 
+  const toPublicChampionship = <T extends { commentatorUserId?: number | null }>(championship: T, includeAssignment: boolean) => {
+    if (includeAssignment) return championship;
+    const { commentatorUserId: _hidden, ...publicFields } = championship;
+    return publicFields;
+  };
+
+  const isAdminRequest = (req: { isAuthenticated?: () => boolean; user?: { isAdmin?: boolean | null } }) =>
+    !!req.isAuthenticated?.() && !!req.user?.isAdmin;
+
   const assertUsersExist = async (ids: number[]) => {
     if (!ids.length) return;
     const found = await db.select({ id: users.id }).from(users).where(inArray(users.id, ids));
@@ -184,9 +193,10 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     }
   };
 
-  app.get("/api/championships", async (_req, res) => {
+  app.get("/api/championships", async (req, res) => {
     await completeExpiredChampionships();
-    res.json(await db.select().from(championships));
+    const rows = await db.select().from(championships);
+    res.json(rows.map(row => toPublicChampionship(row, isAdminRequest(req))));
   });
   app.get("/api/championships/me/dashboard", async (req, res) => {
     if (!req.isAuthenticated() || !req.user?.id) return res.status(401).json({ message: "Authentication required" });
@@ -201,7 +211,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     // POST /api/championship-matches/:id/join, which checks membership, so it
     // is withheld here too. See toPublicMatch.
     const visible = team ? matches.filter(match => match.teamAId === team.id || match.teamBId === team.id) : matches;
-    res.json({ championship, team, teams, matches: visible.map(toPublicMatch) });
+    res.json({ championship: toPublicChampionship(championship, false), team, teams, matches: visible.map(toPublicMatch) });
   });
   app.get("/api/championships/features", ensureAdmin, (_req, res) => {
     res.json({ autoStartEnabled: isChampionshipAutoStartEnabled() });
@@ -262,6 +272,36 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
         .where(eq(championships.id, req.params.id)).returning();
       if (!row) return res.status(404).json({ message: "Championship not found" });
       notifyChampionshipScheduleChanged();
+      res.json(row);
+    } catch (e) { fail(res, e); }
+  });
+  app.put("/api/championships/:id/commentator", ensureAdmin, async (req, res) => {
+    try {
+      const body = z.object({
+        commentatorUserId: z.number().int().positive().nullable(),
+      }).parse(req.body);
+      const [championship] = await db.select().from(championships).where(eq(championships.id, req.params.id));
+      if (!championship) return res.status(404).json({ message: "Championship not found" });
+
+      if (body.commentatorUserId == null) {
+        const [row] = await db.update(championships).set({
+          commentatorUserId: null,
+          updatedAt: new Date(),
+        }).where(eq(championships.id, championship.id)).returning();
+        return res.json(row);
+      }
+
+      const [commentator] = await db.select().from(users).where(eq(users.id, body.commentatorUserId));
+      if (!commentator) return res.status(404).json({ message: "User not found" });
+      if (commentator.isAdmin) {
+        return res.status(400).json({ message: "An admin account cannot be assigned as commentator" });
+      }
+
+      await db.update(users).set({ isCommentator: true }).where(eq(users.id, commentator.id));
+      const [row] = await db.update(championships).set({
+        commentatorUserId: commentator.id,
+        updatedAt: new Date(),
+      }).where(eq(championships.id, championship.id)).returning();
       res.json(row);
     } catch (e) { fail(res, e); }
   });
@@ -329,7 +369,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
       championship.status === "completed" || matches.every(m => m.status === "completed");
     // This endpoint is public (it backs /championships/:id), so matches are
     // returned without the internal Team Battle session key. See toPublicMatch.
-    res.json({ championship, teams, matches: matches.map(toPublicMatch), standings,
+    res.json({ championship: toPublicChampionship(championship, isAdminRequest(req)), teams, matches: matches.map(toPublicMatch), standings,
       champion: hasMatches && championshipFinished ? standings[0] ?? null : null });
   });
 

@@ -16,6 +16,7 @@
     "db:setup-db": "tsx server/setup-database.ts",
     "db:init-full": "npm run db:setup-db && npm run db:init",
     "db:migrate-ready": "tsx server/migrate-ready-timestamps.ts",
+    "seed:commentator": "tsx scripts/seed-default-commentator.ts",
     "migrate:team-battles-game-type": "tsx scripts/migrate-team-battles-game-type.ts",
     "migrate:add-current-team-battle-mode": "tsx scripts/migrate-add-current-team-battle-mode.ts",
     "preview": "vite preview --port 4173 --strictPort"

@@ -345,6 +345,7 @@ class PostgreSQLDatabase implements IDatabase {
         country: user.country,
         isEmailVerified: user.isEmailVerified ?? false,
         isAdmin: user.isAdmin ?? false,
+        isCommentator: user.isCommentator ?? false,
         isOnline: false,
         lastSeen: new Date(),
         totalGames: 0,
@@ -3921,6 +3922,26 @@ class PostgreSQLDatabase implements IDatabase {
       } catch (migrationErr) {
         console.error(
           "Migration error for user profile columns (non-fatal):",
+          migrationErr instanceof Error ? migrationErr.message : "Unknown error"
+        );
+      }
+
+      try {
+        await db.execute(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS is_commentator BOOLEAN DEFAULT FALSE;
+        `);
+        await db.execute(`
+          ALTER TABLE championships ADD COLUMN IF NOT EXISTS commentator_user_id INTEGER REFERENCES users(id);
+        `);
+        await db.execute(`
+          CREATE INDEX IF NOT EXISTS championships_commentator_user_idx
+          ON championships(commentator_user_id)
+          WHERE commentator_user_id IS NOT NULL;
+        `);
+        console.log("✅ Migration completed: commentator columns ready");
+      } catch (migrationErr) {
+        console.error(
+          "Migration error for commentator columns (non-fatal):",
           migrationErr instanceof Error ? migrationErr.message : "Unknown error"
         );
       }

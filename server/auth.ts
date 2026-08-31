@@ -18,6 +18,7 @@ import {
   sanitizeUserForAdmin,
   sanitizeUserForDirectory,
 } from "./user-profile";
+import { seedDefaultCommentator } from "./commentator-seed";
 
 declare global {
   namespace Express {
@@ -174,6 +175,7 @@ export function setupAuth(app: Express) {
           profileImage,
           isEmailVerified: false,
           isAdmin: false,
+          isCommentator: false,
         });
 
         await recordLogin(user.id);
@@ -382,7 +384,21 @@ export function setupAuth(app: Express) {
       delete updates.password;
       delete updates.id;
 
+      const nextIsCommentator =
+        updates.isCommentator === undefined ? undefined : Boolean(updates.isCommentator);
+      if (nextIsCommentator !== undefined) {
+        updates.isCommentator = nextIsCommentator;
+      }
+
       const updatedUser = await database.updateUser(userId, updates);
+      if (nextIsCommentator === false) {
+        const { championships } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        await database.db
+          .update(championships)
+          .set({ commentatorUserId: null, updatedAt: new Date() })
+          .where(eq(championships.commentatorUserId, userId));
+      }
       res.json(sanitizeUserForAdmin(updatedUser));
     } catch (err) {
       res.status(500).json({ message: "Failed to update user" });
@@ -390,6 +406,7 @@ export function setupAuth(app: Express) {
   });
 
   createInitialAdmin();
+  void createInitialCommentator();
 }
 
 async function createInitialAdmin() {
@@ -407,5 +424,21 @@ async function createInitialAdmin() {
     }
   } catch (err) {
     console.error("Failed to create initial admin user:", err);
+  }
+}
+
+async function createInitialCommentator() {
+  try {
+    await seedDefaultCommentator({
+      getUserByUsername: username => database.getUserByUsername(username),
+      createUser: user => database.createUser(user),
+      updateUser: (id, updates) => database.updateUser(id, updates),
+      hashPassword,
+      resolveDefaultAvatarPath,
+      warn: message => console.warn(message),
+      info: message => console.log(message),
+    });
+  } catch (err) {
+    console.error("[Auth] Failed to create or update default commentator user:", err);
   }
 }

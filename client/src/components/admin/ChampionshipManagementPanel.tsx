@@ -934,6 +934,49 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
           <label className="text-sm font-semibold text-slate-700 lg:col-span-2">Description <span className="font-normal text-slate-400">(optional)</span>
             <Textarea className="mt-1 font-normal" rows={3} value={editForm.description} onChange={event => setEdit("description", event.target.value)} />
           </label>
+          <div className="lg:col-span-2 rounded-xl border bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-700">Commentator</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Assign one commentator for this championship. They can send the next question during a live match.
+              Assigning a player also grants them the commentator role.
+            </p>
+            <div className="mt-3 max-w-lg">
+              <PlayerSearchSelect
+                players={eligiblePlayers}
+                value={detail?.championship?.commentatorUserId ? String(detail.championship.commentatorUserId) : ""}
+                onChange={id => action.mutate({
+                  method: "PUT",
+                  url: `/api/championships/${selected}/commentator`,
+                  body: { commentatorUserId: id ? Number(id) : null },
+                  success: id ? "Commentator assigned" : "Commentator removed",
+                })}
+                emptyMessage="No player accounts available"
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {detail?.championship?.commentatorUserId && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={action.isPending}
+                  onClick={() => action.mutate({
+                    method: "PUT",
+                    url: `/api/championships/${selected}/commentator`,
+                    body: { commentatorUserId: null },
+                    success: "Commentator removed",
+                  })}
+                >
+                  Remove commentator
+                </Button>
+              )}
+              {detail?.championship?.commentatorUserId && (
+                <p className="self-center text-xs text-slate-500">
+                  Assigned: {playerLabel(users.find((user: { id: number }) => user.id === detail.championship.commentatorUserId) || { id: detail.championship.commentatorUserId })}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-3 border-t pt-4">
           <div className="flex flex-wrap items-center gap-3">

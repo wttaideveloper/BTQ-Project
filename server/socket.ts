@@ -22,6 +22,12 @@ import {
   timePerQuestionToMs,
   type GameSettingsConfig,
 } from "@shared/game-settings";
+import {
+  CommentatorAdvanceError,
+  evaluateCommentatorAdvance,
+  sessionLooksLikeChampionship,
+  shouldWaitForCommentatorAdvance,
+} from "./commentator-advance";
 
 type SessionWithPlatformSettings = (GameSession | ActiveGameSession) & {
   platformSettings?: GameSettingsConfig;
@@ -241,6 +247,17 @@ interface GameEvent {
   /** Server-decided: may this recipient press Start Match? */
   canStart?: boolean;
   captains?: { teamACaptainReady: boolean; teamBCaptainReady: boolean } | null;
+  waitingForAdvance?: boolean;
+  lastResult?: {
+    questionId?: string;
+    questionNumber?: number;
+    answeringTeamId?: string;
+    answeringTeamName?: string;
+    selectedAnswerId?: string | null;
+    correctAnswerId?: string | null;
+    isCorrect: boolean;
+    pointsAwarded: number;
+  } | null;
   removedMemberId?: number;
   disconnectedUserId?: number;
   inviteeId?: number;
@@ -285,6 +302,17 @@ const championshipCaptainArrivals = new Map<string, Set<number>>();
 const championshipCaptainReadiness = new Map<string, { teamACaptainReady: boolean; teamBCaptainReady: boolean }>();
 
 const championshipGameplayStarted = new Set<string>();
+const championshipWaitingForAdvance = new Set<string>();
+const liveResultState = new Map<string, {
+  questionId?: string;
+  questionNumber?: number;
+  answeringTeamId?: string;
+  answeringTeamName?: string;
+  selectedAnswerId?: string | null;
+  correctAnswerId?: string | null;
+  isCorrect: boolean;
+  pointsAwarded: number;
+}>();
 
 const liveQuestionState = new Map<string, {
   questionId: string;
@@ -308,6 +336,8 @@ export function broadcastChampionshipEvent(event: Record<string, unknown>) {
   // are re-mapped to id/text here as well - so this map can never hold
   // correctness metadata even if the event shape changes later.
   if (matchId && event.type === "question_started") {
+    championshipWaitingForAdvance.delete(matchId);
+    liveResultState.delete(matchId);
     liveQuestionState.set(matchId, {
       questionId: String(event.questionId),
       questionNumber: event.questionNumber as number | undefined,
@@ -336,6 +366,20 @@ export function broadcastChampionshipEvent(event: Record<string, unknown>) {
   if (matchId && event.type === "match_ended") {
     championshipGameplayStarted.delete(matchId);
     championshipCaptainReadiness.delete(matchId);
+    championshipWaitingForAdvance.delete(matchId);
+    liveResultState.delete(matchId);
+  }
+  if (matchId && event.type === "question_answered") {
+    liveResultState.set(matchId, {
+      questionId: event.questionId ? String(event.questionId) : undefined,
+      questionNumber: event.questionNumber as number | undefined,
+      answeringTeamId: event.answeringTeamId as string | undefined,
+      answeringTeamName: event.answeringTeamName as string | undefined,
+      selectedAnswerId: (event.selectedAnswerId as string | null | undefined) ?? null,
+      correctAnswerId: (event.correctAnswerId as string | null | undefined) ?? null,
+      isCorrect: !!event.isCorrect,
+      pointsAwarded: Number(event.pointsAwarded ?? 0),
+    });
   }
   if (matchId && event.type === "toss_started") {
     liveQuestionState.set(matchId, {
@@ -420,6 +464,8 @@ async function handleWatchMatch(clientId: string, event: GameEvent) {
     // reconnects mid-match is not told the game has yet to start.
     gameplayStarted: championshipGameplayStarted.has(matchId),
     captains: championshipCaptainReadiness.get(matchId) ?? null,
+    waitingForAdvance: championshipWaitingForAdvance.has(matchId),
+    lastResult: liveResultState.get(matchId) ?? null,
   });
 }
 
@@ -790,6 +836,76 @@ export function isChampionshipBattle(battleId: string | null | undefined): boole
   return typeof battleId === "string" && battleId.startsWith(CHAMPIONSHIP_BATTLE_ID_PREFIX);
 }
 
+async function markChampionshipWaitingForAdvance(gameSession: ActiveGameSession): Promise<void> {
+  try {
+    const match = await championshipMatchForSession(gameSession);
+    if (match?.id) championshipWaitingForAdvance.add(match.id);
+  } catch (error) {
+    console.error("[Championship] Failed to mark waiting-for-advance:", error);
+  }
+}
+
+function findLiveSessionForChampionshipMatch(gameSessionId: string | null | undefined): ActiveGameSession | undefined {
+  if (!gameSessionId) return undefined;
+  for (const session of gameSessions.values()) {
+    if (session.gameType !== "team_battle") continue;
+    if (session.teams?.[0]?.gameSessionId === gameSessionId) return session;
+  }
+  return undefined;
+}
+
+/**
+ * Commentator NEXT QUESTION. Reuses sendTeamBattleQuestion() after the current
+ * question has already been scored. Championship matches only — regular Team
+ * Battle never calls this.
+ */
+export async function advanceChampionshipQuestion(matchId: string): Promise<{ ok: true }> {
+  const [match] = await database.db
+    .select()
+    .from(championshipMatches)
+    .where(eq(championshipMatches.id, matchId));
+  if (!match) {
+    throw new CommentatorAdvanceError(404, "Match not found");
+  }
+
+  const session = findLiveSessionForChampionshipMatch(match.gameSessionId);
+  if (!session) {
+    throw new CommentatorAdvanceError(
+      409,
+      "The live game session is not available. If the server recently restarted, this match must be started again.",
+    );
+  }
+
+  const decision = evaluateCommentatorAdvance({
+    matchStatus: match.status,
+    gameplayStarted: championshipGameplayStarted.has(match.id),
+    phase: (session as { phase?: string }).phase,
+    isProcessingAnswers: !!(session as { isProcessingAnswers?: boolean }).isProcessingAnswers,
+    inFlight: !!session.commentatorAdvanceInFlight,
+    waitingForCommentator: !!session.waitingForCommentatorAdvance,
+    hasQuestionTimeout: !!session.questionTimeout,
+    nextIndex: session.currentQuestionIndex ?? 0,
+    questionCount: session.questions?.length ?? 0,
+  });
+  if (!decision.ok) {
+    throw new CommentatorAdvanceError(decision.status, decision.message);
+  }
+
+  session.commentatorAdvanceInFlight = true;
+  session.waitingForCommentatorAdvance = false;
+  championshipWaitingForAdvance.delete(match.id);
+  try {
+    sendTeamBattleQuestion(session.id);
+  } catch (error) {
+    session.waitingForCommentatorAdvance = true;
+    championshipWaitingForAdvance.add(match.id);
+    throw error;
+  } finally {
+    session.commentatorAdvanceInFlight = false;
+  }
+  return { ok: true };
+}
+
 /**
  * Complete the Championship match behind a finished Team Battle session.
  *
@@ -902,6 +1018,9 @@ interface ActiveGameSession {
   category?: string;
   difficulty?: string;
   questionTimeout?: NodeJS.Timeout;
+  /** Championship only: scored, waiting for commentator NEXT QUESTION. */
+  waitingForCommentatorAdvance?: boolean;
+  commentatorAdvanceInFlight?: boolean;
   // ========================================================================
   // PLAYER LIFECYCLE: tracks players who have permanently LEFT the battle.
   // Lifecycle: JOIN → ACTIVE → LEFT → (ARCHIVED on battle end)
@@ -7453,6 +7572,8 @@ function sendTeamBattleQuestion(gameId: string) {
     return;
   }
 
+  gameSession.waitingForCommentatorAdvance = false;
+
   // If this session is configured for rapid-fire, delegate to the rapid pipeline
   if ((gameSession as any).mode === "rapid_fire" || (gameSession as any).gameType === "rapid_fire") {
     try {
@@ -7927,10 +8048,23 @@ async function processTeamBattleAnswers(gameId: string) {
     return;
   }
 
+  const remainingQuestions = gameSession.questions.length - nextIndex;
+  const waitForCommentator = shouldWaitForCommentatorAdvance({
+    isChampionship: sessionLooksLikeChampionship(gameSession.teams),
+    remainingQuestions,
+  });
+
   if (nextIndex >= gameSession.questions.length) {
     // Battle completed - give teams a moment to see final results
+    gameSession.waitingForCommentatorAdvance = false;
     (gameSession as any).isProcessingAnswers = false; // Reset flag
     setTimeout(() => endTeamBattle(gameId), 2000);
+  } else if (waitForCommentator) {
+    // Championship only: hold here until the assigned commentator taps NEXT QUESTION.
+    // Regular Team Battle never takes this branch.
+    (gameSession as any).isProcessingAnswers = false;
+    gameSession.waitingForCommentatorAdvance = true;
+    void markChampionshipWaitingForAdvance(gameSession);
   } else {
     // Next question - send after a brief delay to show results
     (gameSession as any).isProcessingAnswers = false; // Reset flag before sending next question

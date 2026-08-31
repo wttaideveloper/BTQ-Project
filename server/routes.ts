@@ -14,6 +14,7 @@ import fs from "fs";
 import path from "path";
 import { log } from "./logger";
 import { registerChampionshipRoutes } from "./championship-routes";
+import { registerCommentatorRoutes } from "./commentator-routes";
 
 /**
  * Helper function to extract user IDs from teammates array.
@@ -97,6 +98,16 @@ function ensureAdmin(req: Request, res: Response, next: NextFunction) {
     .json({ message: "You do not have permission to access this resource" });
 }
 
+function ensureCommentator(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated() && req.user && req.user.isCommentator && !req.user.isAdmin) {
+    return next();
+  }
+  if (!req.isAuthenticated() || !req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  res.status(403).json({ message: "Commentator access required" });
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
@@ -134,6 +145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // API Routes
   registerChampionshipRoutes(app, ensureAdmin);
+  registerCommentatorRoutes(app, ensureCommentator);
   // Debug endpoint to clear game state - Admin only
   app.post("/api/debug/clear-game-state", ensureAdmin, async (req, res) => {
     try {
@@ -1652,6 +1664,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "Phone",
         "Country",
         "Admin",
+        "Commentator",
         "Email Verified",
         "Online",
         "In Team Battle",
@@ -1672,6 +1685,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           user.phone ?? "",
           user.country ?? "",
           user.isAdmin ? "Yes" : "No",
+          user.isCommentator ? "Yes" : "No",
           user.isEmailVerified ? "Yes" : "No",
           user.isOnline ? "Yes" : "No",
           user.isInTeamBattle ? "Yes" : "No",

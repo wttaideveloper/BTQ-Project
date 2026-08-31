@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -12,7 +12,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { adminFetch, getQueryFn } from "@/lib/queryClient";
+import { adminFetch, apiRequest, getQueryFn } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, Search, Users, Download } from "lucide-react";
 import { buildUsersCsv, downloadCsv } from "@/lib/csv-export";
 
@@ -26,6 +27,7 @@ type AdminUser = {
   bio: string | null;
   country: string | null;
   isAdmin: boolean;
+  isCommentator?: boolean | null;
   isEmailVerified: boolean | null;
   isOnline: boolean | null;
   isInTeamBattle: boolean | null;
@@ -67,6 +69,8 @@ function StatusBadge({
 export function UserManagementPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const {
     data: users = [],
@@ -78,6 +82,22 @@ export function UserManagementPanel() {
     queryKey: ["/api/users"],
     queryFn: getQueryFn({ on401: "throw" }),
     refetchInterval: 10000,
+  });
+
+  const toggleCommentator = useMutation({
+    mutationFn: async ({ id, isCommentator }: { id: number; isCommentator: boolean }) => {
+      const response = await apiRequest("PUT", `/api/users/${id}`, { isCommentator });
+      return response.json();
+    },
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: variables.isCommentator ? "Commentator role granted" : "Commentator role removed",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not update user", description: error.message, variant: "destructive" });
+    },
   });
 
   const filteredUsers = useMemo(() => {
@@ -221,6 +241,23 @@ export function UserManagementPanel() {
                         <Badge className="mt-1 bg-purple-100 text-purple-700 hover:bg-purple-100">
                           Admin
                         </Badge>
+                      )}
+                      {user.isCommentator && !user.isAdmin && (
+                        <Badge className="mt-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
+                          Commentator
+                        </Badge>
+                      )}
+                      {!user.isAdmin && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="mt-1 h-7 px-2 text-xs"
+                          disabled={toggleCommentator.isPending}
+                          onClick={() => toggleCommentator.mutate({ id: user.id, isCommentator: !user.isCommentator })}
+                        >
+                          {user.isCommentator ? "Remove commentator" : "Make commentator"}
+                        </Button>
                       )}
                     </TableCell>
                     <TableCell>

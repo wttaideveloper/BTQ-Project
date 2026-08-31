@@ -116,6 +116,7 @@ type UserForCsv = {
   phone: string | null;
   country: string | null;
   isAdmin: boolean;
+  isCommentator?: boolean | null;
   isEmailVerified: boolean | null;
   isOnline: boolean | null;
   isInTeamBattle: boolean | null;
@@ -136,6 +137,7 @@ export function buildUsersCsv(users: UserForCsv[]): string {
     "Phone",
     "Country",
     "Admin",
+    "Commentator",
     "Email Verified",
     "Online",
     "In Team Battle",
@@ -156,6 +158,7 @@ export function buildUsersCsv(users: UserForCsv[]): string {
       user.phone ?? "",
       user.country ?? "",
       user.isAdmin ? "Yes" : "No",
+      user.isCommentator ? "Yes" : "No",
       user.isEmailVerified ? "Yes" : "No",
       user.isOnline ? "Yes" : "No",
       user.isInTeamBattle ? "Yes" : "No",

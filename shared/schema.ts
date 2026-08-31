@@ -206,6 +206,7 @@ export const users = pgTable("users", {
   isEmailVerified: boolean("is_email_verified").default(false),
   lastLoginAt: timestamp("last_login_at"),
   isAdmin: boolean("is_admin").default(false),
+  isCommentator: boolean("is_commentator").default(false),
   isOnline: boolean("is_online").default(false),
   isInTeamBattle: boolean("is_in_team_battle").default(false), // ✅ NEW: Track Team Battle availability
   lastSeen: timestamp("last_seen").defaultNow(),
@@ -359,6 +360,7 @@ export const championships = pgTable("championships", {
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   status: text("status").notNull().default("draft"),
+  commentatorUserId: integer("commentator_user_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -537,6 +539,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
   country: true,
   isEmailVerified: true,
   isAdmin: true,
+  isCommentator: true,
 });
 
 export const insertQuestionSchema = createInsertSchema(questions);

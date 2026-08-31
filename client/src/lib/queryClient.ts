@@ -24,10 +24,15 @@ function isAdminRoute(pathname = typeof window !== "undefined" ? window.location
   return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
+function isCommentatorRoute(pathname: string) {
+  return pathname === "/commentator" || pathname.startsWith("/commentator/");
+}
+
 function isPublicRoute(pathname: string) {
   return (
     pathname === "/auth" ||
     pathname === "/admin/login" ||
+    pathname === "/commentator/login" ||
     pathname.startsWith("/watch/") ||
     pathname.startsWith("/overlay/") ||
     pathname.startsWith("/championships/") ||
@@ -51,7 +56,13 @@ export function handleSessionExpiry(res: Response) {
   }
 
   clearStaleAuthState();
-  window.location.replace(isAdminRoute(pathname) ? "/admin/login" : "/auth");
+  window.location.replace(
+    isAdminRoute(pathname)
+      ? "/admin/login"
+      : isCommentatorRoute(pathname)
+        ? "/commentator/login"
+        : "/auth",
+  );
   return true;
 }
 

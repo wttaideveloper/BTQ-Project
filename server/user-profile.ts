@@ -38,6 +38,7 @@ export function sanitizeUser(user: User) {
     bio: user.bio,
     country: user.country,
     isAdmin: user.isAdmin,
+    isCommentator: user.isCommentator,
     isEmailVerified: user.isEmailVerified,
     isOnline: user.isOnline,
     isInTeamBattle: user.isInTeamBattle,

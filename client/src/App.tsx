@@ -3,12 +3,15 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "./hooks/use-auth";
-import { AdminGate } from "./components/ProtectedRoute";
+import { AdminGate, CommentatorGate } from "./components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Game from "@/pages/Game";
 import AdminPanel from "@/pages/AdminPanel";
 import AdminLoginPage from "@/pages/AdminLoginPage";
+import CommentatorLoginPage from "@/pages/CommentatorLoginPage";
+import CommentatorDashboard from "@/pages/CommentatorDashboard";
+import CommentatorMatchDesk from "@/pages/CommentatorMatchDesk";
 import AuthPage from "@/pages/AuthPage";
 import Leaderboard from "@/pages/Leaderboard";
 import TeamBattleGame from "@/pages/TeamBattleGame";
@@ -106,6 +109,14 @@ function Router() {
     );
   }
 
+  if (location === "/commentator/login") {
+    return (
+      <Switch>
+        <Route path="/commentator/login" component={CommentatorLoginPage} />
+      </Switch>
+    );
+  }
+
   if (location === "/admin") {
     return <AdminRootRedirect />;
   }
@@ -122,6 +133,21 @@ function Router() {
           </AdminGate>
         </Route>
       </Switch>
+    );
+  }
+
+  if (location === "/commentator" || location.startsWith("/commentator/")) {
+    if (isLoading) {
+      return <AuthLoadingScreen />;
+    }
+    return (
+      <CommentatorGate>
+        <Switch>
+          <Route path="/commentator" component={CommentatorDashboard} />
+          <Route path="/commentator/match/:matchId" component={CommentatorMatchDesk} />
+          <Route component={NotFound} />
+        </Switch>
+      </CommentatorGate>
     );
   }
 

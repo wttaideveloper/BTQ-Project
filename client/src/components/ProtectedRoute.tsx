@@ -30,6 +30,21 @@ export function AdminGate({ children }: AdminGateProps) {
   return <>{children}</>;
 }
 
+/** Commentator-only wrapper — admins and players are sent to the commentator login. */
+export function CommentatorGate({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <AdminGateLoading />;
+  }
+
+  if (!user?.isCommentator || user.isAdmin) {
+    return <Redirect to="/commentator/login" />;
+  }
+
+  return <>{children}</>;
+}
+
 /** @deprecated Use the auth gate in App.tsx Router instead. Kept for compatibility. */
 export function ProtectedRoute({
   path: _path,

@@ -9,7 +9,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { onEvent, sendGameEvent, setupGameSocket } from "@/lib/socket";
 import { FaithIQLockup } from "@/components/championship/game/FaithIQTreeMark";
 import { TeamAvatar } from "@/components/championship/TeamAvatar";
-import { CommentatorMicControl } from "@/components/commentary/CommentatorMicControl";
 import type { WatchQuestion, WatchQuestionOption, WatchQuestionResult } from "@/components/watch/WatchQuestionPanel";
 import type { WatchToss, WatchTossResult } from "@/components/watch/WatchTossPanel";
 
@@ -356,9 +355,6 @@ export default function CommentatorMatchDesk() {
             </Button>
           )}
         </div>
-        {matchId && (
-          <CommentatorMicControl matchId={matchId} matchLive={isLive} />
-        )}
       </section>
     </main>
   );

@@ -1,10 +1,18 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { CalendarDays, Loader2, LogOut, Mic, Radio, Trophy } from "lucide-react";
+import { CalendarDays, Loader2, LogOut, Mic, Radio, RefreshCw, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { formatKickoff } from "@/lib/championship";
+import {
+  COMMENTATOR_DESK_POLL_MS,
+  commentatorDeskLists,
+  commentatorDeskVisibleData,
+  formatCommentatorDeskUpdatedAt,
+  shouldAcceptCommentatorDeskRefresh,
+} from "@/lib/commentator-desk";
 import { FaithIQLockup } from "@/components/championship/game/FaithIQTreeMark";
 import { TeamAvatar } from "@/components/championship/TeamAvatar";
 import { onEvent, setupGameSocket } from "@/lib/socket";
@@ -34,9 +42,13 @@ type CommentatorDashboardPayload = {
 export default function CommentatorDashboard() {
   const [, setLocation] = useLocation();
   const { user, logoutMutation } = useAuth();
-  const { data, isLoading, refetch } = useQuery<CommentatorDashboardPayload>({
+  const { toast } = useToast();
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshInFlightRef = useRef(false);
+  const { data, dataUpdatedAt, isLoading, isError, refetch } = useQuery<CommentatorDashboardPayload>({
     queryKey: ["/api/commentator/dashboard"],
-    refetchInterval: 10_000,
+    refetchInterval: COMMENTATOR_DESK_POLL_MS,
+    staleTime: 5_000,
   });
 
   useEffect(() => {
@@ -53,10 +65,29 @@ export default function CommentatorDashboard() {
     };
   }, [refetch]);
 
-  const liveMatches = data?.liveMatches ?? [];
-  const upcomingMatches = data?.upcomingMatches ?? [];
-  const recentMatches = data?.recentMatches ?? [];
-  const empty = !isLoading && liveMatches.length === 0 && upcomingMatches.length === 0 && recentMatches.length === 0;
+  const handleRefresh = async () => {
+    if (!shouldAcceptCommentatorDeskRefresh(refreshInFlightRef.current)) return;
+    refreshInFlightRef.current = true;
+    setRefreshing(true);
+    try {
+      const result = await refetch();
+      if (result.error) {
+        toast({
+          title: "Could not refresh",
+          description: result.error instanceof Error ? result.error.message : "Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      refreshInFlightRef.current = false;
+      setRefreshing(false);
+    }
+  };
+
+  const visible = commentatorDeskVisibleData(data, isError);
+  const { liveMatches, upcomingMatches, recentMatches, isEmpty, hasLiveMatch } = commentatorDeskLists(visible);
+  const empty = !isLoading && isEmpty;
+  const updatedLabel = formatCommentatorDeskUpdatedAt(dataUpdatedAt);
 
   return (
     <main className="champ-portal min-h-screen font-heading">
@@ -84,7 +115,26 @@ export default function CommentatorDashboard() {
           <Mic className="h-4 w-4" />
           FaithIQ Commentator
         </p>
-        <h1 className="mt-2 text-3xl font-black text-white sm:text-4xl">Commentator Desk</h1>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <h1 className="min-w-0 text-3xl font-black text-white sm:text-4xl">Commentator Desk</h1>
+          <div className="flex shrink-0 flex-col items-stretch gap-1 sm:items-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="border-white/20 bg-white/5 text-white hover:bg-white/10 focus-visible:ring-[#f0d58a]"
+              onClick={() => void handleRefresh()}
+              disabled={refreshing}
+              aria-label="Refresh commentator desk"
+              aria-busy={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            {updatedLabel ? (
+              <p className="text-right text-[11px] text-white/40">{updatedLabel}</p>
+            ) : null}
+          </div>
+        </div>
         <p className="mt-2 max-w-xl text-sm text-white/60">
           Open a live championship match to send the next question. You can commentate any championship match.
         </p>
@@ -104,7 +154,7 @@ export default function CommentatorDashboard() {
           </div>
         )}
 
-        {!isLoading && liveMatches.length > 0 && (
+        {!isLoading && hasLiveMatch && (
           <MatchSection
             icon={<Radio className="h-4 w-4" />}
             title={liveMatches.length === 1 ? "Live match" : "Live matches"}

@@ -191,7 +191,7 @@ await test("player widget and commentator desk use WebRTC, not cloned voice", ()
   assert.match(publisher, /getUserMedia/);
   assert.match(publisher, /track\.enabled = enabled/);
   assert.doesNotMatch(publisher, /elevenlabs|clone voice|speechSynthesis/i);
-  assert.match(desk, /CommentatorMicControl/);
+  assert.doesNotMatch(desk, /CommentatorMicControl/);
   assert.match(mic, /Start Commentary/);
   assert.match(mic, /Mute Mic/);
   assert.match(mic, /connection_established/);

@@ -763,12 +763,12 @@ export function ChampionshipManagementPanel({ resetSignal = 0 }: { resetSignal?:
       }}>
         <Edit3 size={15} /> Edit
       </Button>
-      <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
+      {/* <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button> */}
     </>}
     {match.status === "live" && <>
       <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={() => scrollToSection(SECTION.live)}><Radio size={15} /> Manage Match</Button>
       <Button asChild size="sm" variant="outline"><a href={`/watch/${match.id}`} target="_blank" rel="noreferrer"><Eye size={15} /> Watch Live</a></Button>
-      <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button>
+      {/* <Button asChild size="sm" variant="outline"><a href={`/overlay/${match.id}`} target="_blank" rel="noreferrer"><MonitorPlay size={15} /> Open Overlay</a></Button> */}
     </>}
     {match.status === "completed" && <>
       {!options?.hideResultLink && <Button size="sm" variant="outline" onClick={() => scrollToSection(SECTION.results)}><Trophy size={15} /> View Result</Button>}

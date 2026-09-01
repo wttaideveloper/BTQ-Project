@@ -17,8 +17,13 @@ export class CommentatorAdvanceError extends Error {
   }
 }
 
-export function isChampionshipTeamBattleId(battleId: string | null | undefined): boolean {
+export function isChampionshipTeamBattleId(battleId: string | null | undefined): battleId is string {
   return typeof battleId === "string" && battleId.startsWith("championship-");
+}
+
+export function championshipMatchIdFromBattleId(battleId: string | null | undefined): string | null {
+  if (!isChampionshipTeamBattleId(battleId)) return null;
+  return battleId.slice("championship-".length);
 }
 
 export function sessionLooksLikeChampionship(teams: Array<{ teamBattleId?: string | null }> | null | undefined): boolean {

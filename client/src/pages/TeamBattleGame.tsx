@@ -51,6 +51,8 @@ import { ChampionshipGameHeader } from "@/components/championship/game/Champions
 import { ChampionshipScoreboard } from "@/components/championship/game/ChampionshipScoreboard";
 import { ChampionshipResult, ChampionshipStatusPanel } from "@/components/championship/game/ChampionshipResult";
 import { ChampionshipPreMatch, type CaptainReadiness } from "@/components/championship/game/ChampionshipPreMatch";
+import { ChampionshipLiveVideo } from "@/components/championship/game/ChampionshipLiveVideo";
+import { PlayerCommentaryReceiver } from "@/components/commentary/PlayerCommentaryReceiver";
 
 interface TeamMember {
   userId: number;
@@ -140,6 +142,12 @@ function isChampionshipTeamBattle(state: GameState): boolean {
   return teams.some(team => team?.teamBattleId?.startsWith(CHAMPIONSHIP_BATTLE_PREFIX));
 }
 
+function championshipMatchIdFromState(state: GameState): string | null {
+  const teams = [state.playerTeam, state.opposingTeam, ...(state.teams ?? [])];
+  const battleId = teams.find(team => team?.teamBattleId?.startsWith(CHAMPIONSHIP_BATTLE_PREFIX))?.teamBattleId;
+  return battleId ? battleId.slice(CHAMPIONSHIP_BATTLE_PREFIX.length) : null;
+}
+
 export default function TeamBattleGame() {
   const [_, setLocation] = useLocation();
   const { user } = useAuth();
@@ -167,6 +175,7 @@ export default function TeamBattleGame() {
   const gameStateRef = useRef<GameState>(gameState);
   // Presentation switch only - it selects a skin and changes no behaviour.
   const isChampionshipMatch = isChampionshipTeamBattle(gameState);
+  const championshipMatchId = championshipMatchIdFromState(gameState);
   const isRapidFireRef = useRef<boolean>(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -1650,8 +1659,10 @@ export default function TeamBattleGame() {
 
     return (
       <div
-        className={`max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative text-white w-full min-w-0 overflow-x-hidden ${
-          isChampionshipMatch ? "" : "bg-gradient-to-br from-secondary to-secondary-dark"
+        className={`max-w-5xl mx-auto relative text-white w-full min-w-0 overflow-x-hidden ${
+          isChampionshipMatch
+            ? "px-3 pb-3 pt-1 sm:px-4 sm:pb-4"
+            : "bg-gradient-to-br from-secondary to-secondary-dark p-3 sm:p-4 md:p-6"
         }`}
       >
         <TeamBattleQuestionBoard
@@ -1809,8 +1820,10 @@ export default function TeamBattleGame() {
 
     return (
       <div
-        className={`max-w-5xl mx-auto p-3 sm:p-4 md:p-6 relative text-white w-full min-w-0 overflow-x-hidden ${
-          isChampionshipMatch ? "" : "bg-gradient-to-br from-secondary to-secondary-dark"
+        className={`max-w-5xl mx-auto relative text-white w-full min-w-0 overflow-x-hidden ${
+          isChampionshipMatch
+            ? "px-3 pb-3 pt-1 sm:px-4 sm:pb-4"
+            : "bg-gradient-to-br from-secondary to-secondary-dark p-3 sm:p-4 md:p-6"
         }`}
       >
         <div className="mb-3 text-center">
@@ -2701,6 +2714,11 @@ export default function TeamBattleGame() {
       {gameState.phase === "playing" && currentRapidQuestion && !isTossOverlayActive && renderRapidQuestionPhase()}
       {gameState.phase === "question" && !isTossOverlayActive && renderQuestionPhase()}
       {gameState.phase === "toss" && !showTossInstruction && !showTossRetryInstruction && !showTossResult && renderTossPhase()}
+      {isChampionshipMatch && championshipMatchId && gameState.phase !== "waiting" && gameState.phase !== "finished" && (
+        <div className="mx-auto mb-2 mt-2 flex w-full max-w-5xl min-w-0 justify-center px-3 sm:mb-3 sm:mt-3 sm:justify-end sm:px-4 md:px-6 lg:px-8">
+          <ChampionshipLiveVideo matchId={championshipMatchId} />
+        </div>
+      )}
       {/* Results phase removed - goes directly to next question */}
       {gameState.phase === "finished" && renderFinishedPhase()}
 
@@ -2895,6 +2913,9 @@ export default function TeamBattleGame() {
         </DialogContent>
       </Dialog>
 
+      {isChampionshipMatch && championshipMatchId && gameState.phase !== "finished" && (
+        <PlayerCommentaryReceiver matchId={championshipMatchId} />
+      )}
     </div>
   );
 }

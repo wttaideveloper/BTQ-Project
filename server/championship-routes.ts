@@ -8,6 +8,7 @@ import {
   championships, championshipMatches, championshipTeams, users,
 } from "@shared/schema";
 import { broadcastChampionshipEvent } from "./socket";
+import { stopCommentaryForMatch } from "./commentary-signaling";
 import {
   buildRoundRobinSchedule,
   localDateString,
@@ -672,6 +673,7 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
         ...scores, winnerTeamId, status: "completed", completedAt: new Date(), updatedAt: new Date(),
       }).where(eq(championshipMatches.id, match.id)).returning();
       broadcastChampionshipEvent({ type: "match_ended", match: row });
+      stopCommentaryForMatch(match.id);
       notifyChampionshipScheduleChanged();
       res.json(row);
     } catch (error) { fail(res, error); }

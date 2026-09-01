@@ -99,7 +99,7 @@ export function ChampionshipQuestionBoard({
       )}
 
       {/* Ivory question surface. */}
-      <div className="relative mt-1 rounded-t-[2rem] border-t border-[#d8b25f]/70 champ-card px-3 pb-5 pt-8 sm:rounded-t-[3rem] sm:px-6 sm:pb-7 sm:pt-10 md:px-10">
+      <div className="relative mt-1 rounded-t-[2rem] border-t border-[#d8b25f]/70 champ-card px-3 pb-4 pt-7 sm:rounded-t-[3rem] sm:px-6 sm:pb-5 sm:pt-8 md:px-8">
         {/* Question number medallion, centred on the cream edge. */}
         <div className="absolute -top-5 left-1/2 flex -translate-x-1/2 items-center gap-3">
           <span className="hidden h-px w-12 bg-gradient-to-r from-transparent to-[#d8b25f] sm:block" />
@@ -110,7 +110,7 @@ export function ChampionshipQuestionBoard({
         </div>
 
         {/* Progress + timer. */}
-        <div className="mx-auto mb-4 flex max-w-md flex-col items-center gap-2 sm:mb-6">
+        <div className="mx-auto mb-3 flex max-w-md flex-col items-center gap-2 sm:mb-4">
           {!isToss && (
             <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#1b2559]/50 tabular-nums">
               Question {String(questionNumber).padStart(2, "0")} / {totalQuestions}
@@ -155,7 +155,7 @@ export function ChampionshipQuestionBoard({
           <p className="mt-2 text-center text-sm italic text-[#1b2559]/70">"{question.context}"</p>
         )}
 
-        <div className="mt-5 grid grid-cols-1 gap-2.5 sm:mt-7 sm:grid-cols-2 sm:gap-3.5">
+        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:mt-5 sm:grid-cols-2 sm:gap-3">
           {answers.map((answer, index) => {
             const isSelected = selectedAnswerId === answer.id;
             const isDisabled = isQuestionLocked || isReadOnly;

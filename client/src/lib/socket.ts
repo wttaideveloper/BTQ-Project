@@ -34,6 +34,13 @@ export interface GameEvent {
   matchId?: string;
   emoticon?: string;
   username?: string;
+  peerId?: string;
+  sdp?: string;
+  candidate?: { candidate?: string; sdpMid?: string | null; sdpMLineIndex?: number | null };
+  kind?: "offer" | "answer" | "ice";
+  iceServers?: Array<{ urls: string | string[]; username?: string; credential?: string }>;
+  live?: boolean;
+  reason?: string;
   finalAnswer?: {
     questionId: string;
     answerId: string;
@@ -427,6 +434,11 @@ export function onError(callback: (error: any) => void) {
   'invitation_declined',       // Inviter notified when invitee declines
   'invitation_expired',        // Invitee notified when slot is filled
   'championship_match_started',
+  'commentary_status',
+  'commentary_signal',
+  'commentary_listener_joined',
+  'commentary_listener_left',
+  'commentary_error',
 ].forEach((key) => {
   if (!eventListeners[key]) eventListeners[key] = [];
 });

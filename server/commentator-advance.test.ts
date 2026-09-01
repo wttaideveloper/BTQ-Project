@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  championshipMatchIdFromBattleId,
   evaluateCommentatorAdvance,
   isChampionshipTeamBattleId,
   sessionLooksLikeChampionship,
@@ -36,6 +37,8 @@ await test("championship battle ids are detected without treating regular Team B
   assert.equal(isChampionshipTeamBattleId("3f1c8e2a-9b44-4d11-a111-222233334444"), false);
   assert.equal(sessionLooksLikeChampionship([{ teamBattleId: "championship-m1" }]), true);
   assert.equal(sessionLooksLikeChampionship([{ teamBattleId: "3f1c8e2a-9b44-4d11-a111-222233334444" }]), false);
+  assert.equal(championshipMatchIdFromBattleId("championship-abc"), "abc");
+  assert.equal(championshipMatchIdFromBattleId("3f1c8e2a-9b44-4d11-a111-222233334444"), null);
 });
 
 await test("championship matches wait for commentator only when a next question exists", () => {

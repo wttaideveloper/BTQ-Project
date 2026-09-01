@@ -34,6 +34,7 @@ function test(name: string, fn: () => void) {
 const root = process.cwd();
 const watchMatch = readFileSync(resolve(root, "client/src/pages/WatchMatch.tsx"), "utf8");
 const overlay = readFileSync(resolve(root, "client/src/pages/WatchMatch.tsx"), "utf8");
+const championshipHls = readFileSync(resolve(root, "client/src/lib/championship-hls.ts"), "utf8");
 const watchCss = readFileSync(resolve(root, "client/src/index.css"), "utf8");
 const overlayStart = overlay.indexOf("if (overlay) return (");
 const overlayEnd = overlay.indexOf("Everything below is read from the match payload", overlayStart);
@@ -113,12 +114,15 @@ test("a reported empty audioTracks list is No audio, not Sound On", () => {
 
 test("WatchMatch still uses the saved HLS URL and both players", () => {
   assert.match(watchMatch, /data\.match\.streamUrl/);
-  assert.match(watchMatch, /new Hls\(/);
-  assert.match(watchMatch, /application\/vnd\.apple\.mpegurl/);
+  assert.match(watchMatch, /attachChampionshipHls/);
   assert.match(watchMatch, /playsInline/);
-  assert.match(watchMatch, /hls\.destroy\(\)/);
   assert.match(watchMatch, /WatchSoundControl/);
   assert.match(watchMatch, /isAutoplayBlocked/);
+  assert.match(championshipHls, /new Hls\(/);
+  assert.match(championshipHls, /application\/vnd\.apple\.mpegurl/);
+  assert.match(championshipHls, /hls\.destroy\(\)/);
+  assert.match(championshipHls, /liveSyncDurationCount:\s*2/);
+  assert.match(championshipHls, /maxBufferLength:\s*10/);
 });
 
 test("HLS video cannot contribute intrinsic width to the Watch Live grid", () => {

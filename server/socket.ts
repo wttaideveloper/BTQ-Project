@@ -28,6 +28,13 @@ import {
   sessionLooksLikeChampionship,
   shouldWaitForCommentatorAdvance,
 } from "./commentator-advance";
+import {
+  CommentaryRegistry,
+  getActiveCommentaryRegistry,
+  handleCommentaryDisconnect,
+  setCommentaryRegistry,
+  stopCommentaryForMatch,
+} from "./commentary-signaling";
 
 type SessionWithPlatformSettings = (GameSession | ActiveGameSession) & {
   platformSettings?: GameSettingsConfig;
@@ -262,6 +269,16 @@ interface GameEvent {
   disconnectedUserId?: number;
   inviteeId?: number;
   invitationType?: string;
+  peerId?: string;
+  sdp?: string;
+  candidate?: {
+    candidate?: string;
+    sdpMid?: string | null;
+    sdpMLineIndex?: number | null;
+  };
+  kind?: "offer" | "answer" | "ice";
+  iceServers?: Array<{ urls: string | string[]; username?: string; credential?: string }>;
+  live?: boolean;
 }
 
 // Store active WebSocket clients
@@ -1000,6 +1017,7 @@ async function completeChampionshipMatchForSession(
 
     if (!completedMatch) return;
     broadcastChampionshipEvent({ type: "match_ended", match: completedMatch });
+    stopCommentaryForMatch(match.id);
     void import("./championship-autostart").then(mod => mod.notifyChampionshipScheduleChanged());
   } catch (error) {
     console.error("[Championship] Failed to complete match for finished session:", error);
@@ -1990,6 +2008,11 @@ function resolveHandshakeUserId(req: unknown): Promise<number | null> {
 
 export function setupWebSocketServer(server: Server) {
   const wss = new WebSocketServer({ server, path: "/ws" });
+  setCommentaryRegistry(new CommentaryRegistry({
+    sendToClient: (clientId, message) => sendToClient(clientId, message as unknown as GameEvent),
+    getClient: clientId => clients.get(clientId),
+    listClients: () => clients.values(),
+  }));
 
   wss.on("connection", (ws, req) => {
     const clientId = uuidv4();
@@ -2393,6 +2416,7 @@ export function setupWebSocketServer(server: Server) {
       }
 
       // Remove client from map
+      handleCommentaryDisconnect(clientId);
       clients.delete(clientId);
 
       // Clean up connectionLastSeen
@@ -2436,6 +2460,26 @@ function handleGameEvent(clientId: string, event: GameEvent) {
       break;
     case "watch_match":
       void handleWatchMatch(clientId, event);
+      break;
+    case "commentary_publish":
+      void getActiveCommentaryRegistry()?.publish(clientId, event.matchId);
+      break;
+    case "commentary_unpublish":
+      getActiveCommentaryRegistry()?.unpublish(clientId, event.matchId);
+      break;
+    case "commentary_listen":
+      void getActiveCommentaryRegistry()?.listen(clientId, event.matchId);
+      break;
+    case "commentary_signal":
+      if (event.matchId && event.peerId && event.kind) {
+        getActiveCommentaryRegistry()?.signal(clientId, {
+          matchId: event.matchId,
+          peerId: event.peerId,
+          kind: event.kind,
+          sdp: event.sdp,
+          candidate: event.candidate,
+        });
+      }
       break;
     case "team_reaction":
       void handleTeamReaction(clientId, event);

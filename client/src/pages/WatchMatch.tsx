@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { onEvent, sendGameEvent, setupGameSocket } from "@/lib/socket";
-import Hls from "hls.js";
+import { attachChampionshipHls } from "@/lib/championship-hls";
 import { WatchHeader } from "@/components/watch/WatchHeader";
 import { WatchStage } from "@/components/watch/WatchStage";
 import { WatchScoreboard } from "@/components/watch/WatchScoreboard";
@@ -104,28 +104,11 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !data?.match?.streamUrl || data.match.status !== "live") return;
-    const url = data.match.streamUrl;
     setStreamError("");
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = url;
-      video.play().catch(noteAutoplayBlocked);
-      return () => { video.removeAttribute("src"); video.load(); };
-    }
-    if (Hls.isSupported()) {
-      const hls = new Hls({ liveSyncDurationCount: 2, maxBufferLength: 10 });
-      hls.loadSource(url);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(noteAutoplayBlocked));
-      hls.on(Hls.Events.ERROR, (_event, details) => {
-        if (details.fatal) {
-          if (details.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-          else if (details.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-          else setStreamError("The live stream is temporarily unavailable.");
-        }
-      });
-      return () => hls.destroy();
-    }
-    setStreamError("HLS playback is not supported by this browser.");
+    return attachChampionshipHls(video, data.match.streamUrl, {
+      onPlayError: noteAutoplayBlocked,
+      onFatalError: setStreamError,
+    });
   }, [data?.match?.streamUrl, data?.match?.status]);
 
   useEffect(() => {

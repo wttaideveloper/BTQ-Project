@@ -195,7 +195,7 @@ await test("player widget and commentator desk use WebRTC, not cloned voice", ()
   assert.match(mic, /Start Commentary/);
   assert.match(mic, /Mute Mic/);
   assert.match(mic, /connection_established/);
-  assert.match(game, /PlayerCommentaryReceiver/);
+  assert.doesNotMatch(game, /PlayerCommentaryReceiver/);
   assert.match(receiver, /connection_established/);
 });
 

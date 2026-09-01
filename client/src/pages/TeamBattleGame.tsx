@@ -52,7 +52,6 @@ import { ChampionshipScoreboard } from "@/components/championship/game/Champions
 import { ChampionshipResult, ChampionshipStatusPanel } from "@/components/championship/game/ChampionshipResult";
 import { ChampionshipPreMatch, type CaptainReadiness } from "@/components/championship/game/ChampionshipPreMatch";
 import { ChampionshipLiveVideo } from "@/components/championship/game/ChampionshipLiveVideo";
-import { PlayerCommentaryReceiver } from "@/components/commentary/PlayerCommentaryReceiver";
 
 interface TeamMember {
   userId: number;
@@ -2463,7 +2462,7 @@ export default function TeamBattleGame() {
         {/* Championship header. Same controls, same handlers - the buttons
             below are rendered into the tournament frame instead. */}
         {isChampionshipMatch && (
-          <div className="mb-3 sm:mb-4">
+          <div className="mb-2">
             <ChampionshipGameHeader
               live={gameState.phase === "question" || gameState.phase === "playing" || gameState.phase === "toss"}
               controls={
@@ -2542,8 +2541,8 @@ export default function TeamBattleGame() {
         )}
 
         {/* Team Scores Header - Show during game (normal or rapid fire) - even during preparing/loading phase */}
-        {((gameState.phase === "question") || (gameState.phase === "playing")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && isChampionshipMatch && (
-          <div className="mb-3 sm:mb-4">
+        {((gameState.phase === "question") || (gameState.phase === "playing") || (gameState.phase === "toss")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && isChampionshipMatch && (
+          <div className="mb-2">
             <ChampionshipScoreboard
               playerTeam={gameState.playerTeam}
               opposingTeam={gameState.opposingTeam}
@@ -2551,6 +2550,7 @@ export default function TeamBattleGame() {
               answeringTeamName={gameState.answeringTeamName}
               questionNumber={gameState.questionNumber}
               totalQuestions={gameState.totalQuestions}
+              liveVideo={championshipMatchId ? <ChampionshipLiveVideo matchId={championshipMatchId} /> : null}
             />
           </div>
         )}
@@ -2714,11 +2714,6 @@ export default function TeamBattleGame() {
       {gameState.phase === "playing" && currentRapidQuestion && !isTossOverlayActive && renderRapidQuestionPhase()}
       {gameState.phase === "question" && !isTossOverlayActive && renderQuestionPhase()}
       {gameState.phase === "toss" && !showTossInstruction && !showTossRetryInstruction && !showTossResult && renderTossPhase()}
-      {isChampionshipMatch && championshipMatchId && gameState.phase !== "waiting" && gameState.phase !== "finished" && (
-        <div className="mx-auto mb-2 mt-2 flex w-full max-w-5xl min-w-0 justify-center px-3 sm:mb-3 sm:mt-3 sm:justify-end sm:px-4 md:px-6 lg:px-8">
-          <ChampionshipLiveVideo matchId={championshipMatchId} />
-        </div>
-      )}
       {/* Results phase removed - goes directly to next question */}
       {gameState.phase === "finished" && renderFinishedPhase()}
 
@@ -2913,9 +2908,6 @@ export default function TeamBattleGame() {
         </DialogContent>
       </Dialog>
 
-      {isChampionshipMatch && championshipMatchId && gameState.phase !== "finished" && (
-        <PlayerCommentaryReceiver matchId={championshipMatchId} />
-      )}
     </div>
   );
 }

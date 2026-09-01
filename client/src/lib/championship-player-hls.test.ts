@@ -35,18 +35,15 @@ console.log("championship player HLS");
 
 test("player screen mounts live video only for championship matches", () => {
   assert.match(teamBattleGame, /ChampionshipLiveVideo/);
-  assert.match(teamBattleGame, /isChampionshipMatch && championshipMatchId/);
-  assert.match(teamBattleGame, /<ChampionshipLiveVideo matchId=\{championshipMatchId\} \/>/);
+  assert.match(teamBattleGame, /isChampionshipMatch/);
+  assert.match(teamBattleGame, /liveVideo=\{championshipMatchId \? <ChampionshipLiveVideo matchId=\{championshipMatchId\} \/> : null\}/);
+  assert.equal((teamBattleGame.match(/<ChampionshipLiveVideo /g) || []).length, 1);
 });
 
 test("regular Team Battle and Rapid Fire do not import the HLS player", () => {
   assert.doesNotMatch(gamePage, /ChampionshipLiveVideo/);
   assert.doesNotMatch(gamePage, /attachChampionshipHls/);
-  const mount = teamBattleGame.slice(
-    teamBattleGame.indexOf("isChampionshipMatch && championshipMatchId && gameState.phase !== \"waiting\""),
-    teamBattleGame.indexOf("ChampionshipLiveVideo matchId") + 80,
-  );
-  assert.match(mount, /isChampionshipMatch && championshipMatchId/);
+  assert.match(teamBattleGame, /!isChampionshipMatch && \(/);
 });
 
 test("player HLS reuses Watch Live attach helper and stream URL", () => {
@@ -65,7 +62,7 @@ test("player HLS does not subscribe as a spectator or mix commentator audio", ()
   assert.doesNotMatch(liveVideo, /getUserMedia/);
   assert.match(liveVideo, /Live video unavailable/);
   assert.match(commentary, /commentary_listen/);
-  assert.match(teamBattleGame, /PlayerCommentaryReceiver/);
+  assert.doesNotMatch(teamBattleGame, /PlayerCommentaryReceiver/);
 });
 
 test("Watch Live layout is not replaced by the compact player component", () => {
@@ -73,18 +70,23 @@ test("Watch Live layout is not replaced by the compact player component", () => 
   assert.match(watchMatch, /WatchStage/);
 });
 
-test("player video sits below the question, not between scoreboard and question", () => {
+test("player video sits in the top scoreboard row, not below the question", () => {
+  const scoreboard = read("client/src/components/championship/game/ChampionshipScoreboard.tsx");
   const videoIdx = teamBattleGame.indexOf("<ChampionshipLiveVideo");
-  const waitingIdx = teamBattleGame.indexOf("{gameState.phase === \"waiting\" && renderWaitingPhase()}");
-  const questionIdx = teamBattleGame.indexOf("renderQuestionPhase()");
+  const scoreboardIdx = teamBattleGame.indexOf("<ChampionshipScoreboard");
   const lastQuestionIdx = teamBattleGame.lastIndexOf("renderQuestionPhase()");
-  assert.ok(videoIdx > waitingIdx);
-  assert.ok(videoIdx > lastQuestionIdx);
-  assert.ok(videoIdx > questionIdx);
+  assert.ok(videoIdx > 0);
+  assert.ok(scoreboardIdx > 0);
+  assert.ok(videoIdx > scoreboardIdx);
+  assert.ok(videoIdx < lastQuestionIdx);
+  assert.match(scoreboard, /liveVideo/);
+  assert.match(scoreboard, /md:items-stretch/);
+  assert.match(scoreboard, /md:h-full/);
+  assert.match(scoreboard, /md:flex-row/);
   assert.doesNotMatch(liveVideo, /max-w-3xl/);
   assert.match(liveVideo, /w-\[200px\]/);
-  assert.match(liveVideo, /sm:w-\[280px\]/);
-  assert.match(liveVideo, /lg:w-\[320px\]/);
+  assert.match(liveVideo, /md:w-\[260px\]/);
+  assert.match(liveVideo, /lg:w-\[300px\]/);
   assert.match(liveVideo, /aspect-video/);
 });
 

@@ -97,7 +97,7 @@ export function ChampionshipLiveVideo({ matchId }: { matchId: string }) {
 
   return (
     <section
-      className="w-[200px] max-w-full shrink-0 overflow-hidden rounded-lg border border-[#d8b25f]/35 bg-[#121628]/90 shadow-lg sm:w-[280px] lg:w-[320px]"
+      className="w-[200px] max-w-[220px] shrink-0 overflow-hidden rounded-lg border border-[#d8b25f]/35 bg-[#121628]/90 shadow-lg sm:w-[220px] sm:max-w-[220px] md:w-[260px] md:max-w-[260px] lg:w-[300px] lg:max-w-[320px]"
       aria-label="Live event video"
     >
       <p className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-red-300">

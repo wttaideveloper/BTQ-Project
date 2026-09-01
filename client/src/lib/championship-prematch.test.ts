@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   canCaptainToggleReady,
+  championshipLobbyView,
   championshipPrematchCopy,
   isRosterMemberJoined,
   prematchMembersFromTeam,
@@ -146,6 +147,139 @@ test("captains_ready is not stored as championship READY", () => {
   const readyCase = teamBattleGame.indexOf('case "team_ready_status"');
   const captainsCase = teamBattleGame.indexOf('case "captains_ready"');
   assert.ok(readyCase > 0 && captainsCase > 0);
+});
+
+const lobbyBase = {
+  isChampionship: true,
+  gameplayStarted: false,
+  phase: "playing",
+  hasCurrentQuestion: false,
+  hasRapidQuestion: false,
+  countdown: null as number | null,
+};
+
+test("forming championship join still shows PreMatch", () => {
+  assert.equal(championshipLobbyView(lobbyBase), "prematch");
+});
+
+test("one captain READY still shows PreMatch", () => {
+  assert.equal(championshipLobbyView(lobbyBase), "prematch");
+});
+
+test("both captains READY still shows PreMatch until countdown ends", () => {
+  assert.equal(championshipLobbyView({ ...lobbyBase, countdown: null }), "prematch");
+});
+
+test("active countdown still shows PreMatch", () => {
+  assert.equal(championshipLobbyView({ ...lobbyBase, countdown: 5 }), "prematch");
+  assert.equal(championshipLobbyView({ ...lobbyBase, countdown: 1 }), "prematch");
+});
+
+test("countdown 0 shows preparing, not PreMatch", () => {
+  assert.equal(championshipLobbyView({ ...lobbyBase, countdown: 0 }), "preparing");
+});
+
+test("team_battle_started / gameplayStarted hides PreMatch", () => {
+  assert.equal(championshipLobbyView({ ...lobbyBase, gameplayStarted: true }), "preparing");
+  assert.notEqual(championshipLobbyView({ ...lobbyBase, gameplayStarted: true }), "prematch");
+});
+
+test("playing with no question after start does not show PreMatch", () => {
+  assert.equal(
+    championshipLobbyView({ ...lobbyBase, gameplayStarted: true, phase: "playing" }),
+    "preparing",
+  );
+});
+
+test("toss hides PreMatch", () => {
+  assert.equal(
+    championshipLobbyView({
+      ...lobbyBase,
+      gameplayStarted: true,
+      phase: "toss",
+      hasCurrentQuestion: true,
+    }),
+    "none",
+  );
+  assert.equal(
+    championshipLobbyView({
+      ...lobbyBase,
+      gameplayStarted: true,
+      phase: "toss",
+      hasCurrentQuestion: false,
+    }),
+    "none",
+  );
+});
+
+test("question hides PreMatch", () => {
+  assert.equal(
+    championshipLobbyView({
+      ...lobbyBase,
+      gameplayStarted: true,
+      phase: "question",
+      hasCurrentQuestion: true,
+    }),
+    "none",
+  );
+});
+
+test("stale READY after playing cannot bring PreMatch back", () => {
+  assert.equal(
+    championshipLobbyView({
+      ...lobbyBase,
+      gameplayStarted: true,
+      phase: "playing",
+      countdown: null,
+    }),
+    "preparing",
+  );
+});
+
+test("stale countdown 0 after start cannot bring PreMatch back", () => {
+  assert.equal(
+    championshipLobbyView({
+      ...lobbyBase,
+      gameplayStarted: true,
+      countdown: 0,
+    }),
+    "preparing",
+  );
+});
+
+test("get_game_state after start cannot regress to PreMatch", () => {
+  assert.equal(
+    championshipLobbyView({
+      ...lobbyBase,
+      gameplayStarted: true,
+      phase: "playing",
+      hasCurrentQuestion: false,
+      countdown: null,
+    }),
+    "preparing",
+  );
+});
+
+test("normal Team Battle never uses Championship PreMatch", () => {
+  assert.equal(
+    championshipLobbyView({
+      ...lobbyBase,
+      isChampionship: false,
+      gameplayStarted: false,
+      phase: "playing",
+    }),
+    "none",
+  );
+});
+
+test("TeamBattleGame gates PreMatch on championshipLobbyView, not READY flags", () => {
+  assert.match(teamBattleGame, /championshipLobbyView\(/);
+  assert.match(teamBattleGame, /setChampionshipGameplayStarted\(true\)/);
+  assert.match(teamBattleGame, /championshipLobby === "prematch"/);
+  assert.doesNotMatch(
+    teamBattleGame,
+    /championshipReady\.teamAReady && championshipReady\.teamBReady && championshipCountdown === 0/,
+  );
 });
 
 if (failed > 0) {

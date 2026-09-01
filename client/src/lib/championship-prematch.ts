@@ -83,3 +83,34 @@ export function canCaptainToggleReady(opts: {
   if (opts.countdown != null && opts.countdown > 0) return false;
   return opts.currentUserId === opts.captainId;
 }
+
+export type ChampionshipLobbyView = "prematch" | "preparing" | "none";
+
+/**
+ * READY timestamps stay true after kickoff. They must not decide whether
+ * ChampionshipPreMatch renders. Once gameplay has started (team_battle_started
+ * / toss / question), the lobby is gone for this match.
+ */
+export function championshipLobbyView(opts: {
+  isChampionship: boolean;
+  gameplayStarted: boolean;
+  phase: string;
+  hasCurrentQuestion: boolean;
+  hasRapidQuestion?: boolean;
+  countdown: number | null;
+}): ChampionshipLobbyView {
+  if (!opts.isChampionship) return "none";
+  if (opts.hasCurrentQuestion || opts.hasRapidQuestion) return "none";
+  if (opts.phase === "toss" || opts.phase === "question" || opts.phase === "finished" || opts.phase === "results") {
+    return "none";
+  }
+
+  if (opts.gameplayStarted) {
+    return opts.phase === "playing" || opts.phase === "ready" ? "preparing" : "none";
+  }
+
+  // Championship join lands in phase "playing" before the Team Battle starts.
+  if (opts.phase !== "playing" && opts.phase !== "ready") return "none";
+  if (opts.countdown === 0) return "preparing";
+  return "prematch";
+}

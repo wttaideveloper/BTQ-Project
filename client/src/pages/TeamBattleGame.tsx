@@ -51,6 +51,7 @@ import { ChampionshipGameHeader } from "@/components/championship/game/Champions
 import { ChampionshipScoreboard } from "@/components/championship/game/ChampionshipScoreboard";
 import { ChampionshipResult, ChampionshipStatusPanel } from "@/components/championship/game/ChampionshipResult";
 import { ChampionshipPreMatch } from "@/components/championship/game/ChampionshipPreMatch";
+import { championshipLobbyView } from "@/lib/championship-prematch";
 import { ChampionshipLiveVideo } from "@/components/championship/game/ChampionshipLiveVideo";
 
 interface TeamMember {
@@ -221,6 +222,7 @@ export default function TeamBattleGame() {
   const [championshipPresentUserIds, setChampionshipPresentUserIds] = useState<number[] | null>(null);
   const [championshipCountdown, setChampionshipCountdown] = useState<number | null>(null);
   const [championshipReadyPending, setChampionshipReadyPending] = useState(false);
+  const [championshipGameplayStarted, setChampionshipGameplayStarted] = useState(false);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [showConnectExit, setShowConnectExit] = useState(false);
   const [showRefreshLoader, setShowRefreshLoader] = useState(false);
@@ -292,6 +294,7 @@ export default function TeamBattleGame() {
       isYourTurn: data.isYourTurn !== false,
       answeringTeamName: data.answeringTeamName,
     }));
+    setChampionshipGameplayStarted(true);
 
     setSelectedAnswer(null);
     setHasSubmitted(false);
@@ -410,11 +413,17 @@ export default function TeamBattleGame() {
         const phaseData = await res.json();
         if (cancelled) return;
 
-        const battleActive =
+        const inGame =
           phaseData.status === "playing" ||
-          phaseData.phase === "IN_GAME" ||
+          phaseData.phase === "IN_GAME";
+        const battleActive =
+          inGame ||
           phaseData.status === "ready" ||
           phaseData.phase === "COUNTDOWN";
+
+        if (inGame) {
+          setChampionshipGameplayStarted(true);
+        }
 
         if (battleActive) {
           setGameState((prev) =>
@@ -646,6 +655,7 @@ export default function TeamBattleGame() {
             }));
             setChampionshipCountdown(null);
             setChampionshipReadyPending(false);
+            setChampionshipGameplayStarted(true);
 
             // Directly trigger rapid rules if applicable - redundant safety against effect timing
             if (isRapid) {
@@ -678,6 +688,7 @@ export default function TeamBattleGame() {
               timeLimit: data.timeLimit || 10000,
               isYourTurn: true, // Both teams can answer
             }));
+            setChampionshipGameplayStarted(true);
 
             // Reset answer state for toss
             setSelectedAnswer(null);
@@ -1299,9 +1310,10 @@ export default function TeamBattleGame() {
   // refresh). Reuses captains_ready for presence only; READY is a separate event.
   useEffect(() => {
     if (!isChampionshipMatch || !gameSessionId) return;
+    if (championshipGameplayStarted) return;
     if (gameState.currentQuestion || gameState.phase === "finished") return;
     sendGameEvent({ type: "captains_ready", gameSessionId });
-  }, [isChampionshipMatch, gameSessionId, gameState.phase]);
+  }, [isChampionshipMatch, gameSessionId, gameState.phase, championshipGameplayStarted]);
 
   useEffect(() => {
     if (!isChampionshipMatch || !gameSessionId) return;
@@ -2410,6 +2422,15 @@ export default function TeamBattleGame() {
       ?.username ||
     "Player";
 
+  const championshipLobby = championshipLobbyView({
+    isChampionship: isChampionshipMatch,
+    gameplayStarted: championshipGameplayStarted,
+    phase: gameState.phase,
+    hasCurrentQuestion: !!gameState.currentQuestion,
+    hasRapidQuestion: !!currentRapidQuestion,
+    countdown: championshipCountdown,
+  });
+
 
 
   useEffect(() => {
@@ -2697,28 +2718,25 @@ export default function TeamBattleGame() {
         )}
       </div>
       {gameState.phase === "waiting" && renderWaitingPhase()}
-      {/* Preparing the match. Championship fixtures are always regular team
-          battles, so the rapid-fire rules card below never applies to them. */}
-      {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && isChampionshipMatch && (
-        championshipReady.teamAReady && championshipReady.teamBReady && championshipCountdown === 0 ? (
-          <ChampionshipStatusPanel
-            title="Preparing the match"
-            description="Setting up the board and loading the first question…"
-          />
-        ) : (
-          <ChampionshipPreMatch
-            teamA={championshipTeamsBySide(gameState).teamA}
-            teamB={championshipTeamsBySide(gameState).teamB}
-            teamAReady={championshipReady.teamAReady}
-            teamBReady={championshipReady.teamBReady}
-            presentUserIds={championshipPresentUserIds}
-            countdown={championshipCountdown}
-            currentUserId={user?.id}
-            readyPending={championshipReadyPending}
-            onReady={markChampionshipReady}
-            onUnready={cancelChampionshipReady}
-          />
-        )
+      {championshipLobby === "preparing" && (
+        <ChampionshipStatusPanel
+          title="Preparing the match"
+          description="Setting up the board and loading the first question…"
+        />
+      )}
+      {championshipLobby === "prematch" && (
+        <ChampionshipPreMatch
+          teamA={championshipTeamsBySide(gameState).teamA}
+          teamB={championshipTeamsBySide(gameState).teamB}
+          teamAReady={championshipReady.teamAReady}
+          teamBReady={championshipReady.teamBReady}
+          presentUserIds={championshipPresentUserIds}
+          countdown={championshipCountdown}
+          currentUserId={user?.id}
+          readyPending={championshipReadyPending}
+          onReady={markChampionshipReady}
+          onUnready={cancelChampionshipReady}
+        />
       )}
       {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && !isChampionshipMatch && (
         <div className="max-w-xl mx-auto p-3 sm:p-4 md:p-6">

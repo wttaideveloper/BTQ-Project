@@ -47,8 +47,15 @@ const matchInput = z.object({
 });
 const autoScheduleInput = z.object({
   startAt: z.coerce.date(),
-  breakMinutes: z.coerce.number().int().min(0).max(1440),
+  minimumTeamRestMinutes: z.coerce.number().int().min(0).max(1440).optional(),
+  // Accepted only for clients saved before the terminology change. New clients
+  // send minimumTeamRestMinutes, and no match duration is accepted or used.
+  breakMinutes: z.coerce.number().int().min(0).max(1440).optional(),
   matchesPerDay: z.coerce.number().int().min(1).max(48),
+}).superRefine((value, ctx) => {
+  if (value.minimumTeamRestMinutes === undefined && value.breakMinutes === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["minimumTeamRestMinutes"], message: "Minimum rest between matches is required" });
+  }
 });
 const COMPLETED_CHAMPIONSHIP_MESSAGE = "Auto Schedule is not available for a completed championship.";
 const normalizeChampionshipName = (value: string) => value.trim().toLowerCase();
@@ -124,10 +131,15 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     }
     return buildRoundRobinSchedule(
       ctx.teams.map(team => ({ id: team.id, name: team.name, createdAt: team.createdAt })),
-      ctx.matches.map(match => ({ teamAId: match.teamAId, teamBId: match.teamBId })),
+      ctx.matches.map(match => ({
+        teamAId: match.teamAId,
+        teamBId: match.teamBId,
+        scheduledAt: match.scheduledAt,
+        status: match.status,
+      })),
       {
         startAt: settings.startAt,
-        breakMinutes: settings.breakMinutes,
+        minimumTeamRestMinutes: settings.minimumTeamRestMinutes ?? settings.breakMinutes,
         matchesPerDay: settings.matchesPerDay,
         endDate: ctx.championship.endDate,
       },

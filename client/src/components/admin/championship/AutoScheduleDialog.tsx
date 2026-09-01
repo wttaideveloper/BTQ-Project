@@ -31,6 +31,8 @@ type PreviewResponse = {
     possibleMatches: number;
     newMatches: number;
     skippedMatches: number;
+    minimumTeamRestMinutes: number;
+    matchesPerDay: number;
   };
   matches: PlannedMatch[];
   skipped: SkippedPair[];
@@ -38,7 +40,7 @@ type PreviewResponse = {
 };
 
 const DEFAULTS = {
-  breakMinutes: 10,
+  minimumTeamRestMinutes: 30,
   matchesPerDay: 1,
 };
 
@@ -75,7 +77,7 @@ export function AutoScheduleDialog({
   const { toast } = useToast();
   const [step, setStep] = useState<AutoScheduleStep>("format");
   const [startAt, setStartAt] = useState("");
-  const [breakMinutes, setBreakMinutes] = useState(String(DEFAULTS.breakMinutes));
+  const [minimumTeamRestMinutes, setMinimumTeamRestMinutes] = useState(String(DEFAULTS.minimumTeamRestMinutes));
   const [matchesPerDay, setMatchesPerDay] = useState(String(DEFAULTS.matchesPerDay));
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -84,18 +86,18 @@ export function AutoScheduleDialog({
 
   const possibleMatches = teamCount >= 2 ? (teamCount * (teamCount - 1)) / 2 : 0;
   const minDateTime = formatLocalDateTime(new Date());
-  const breakValue = Number(breakMinutes);
+  const minimumRestValue = Number(minimumTeamRestMinutes);
   const perDayValue = Number(matchesPerDay);
   const settingsValid =
     !!startAt &&
-    Number.isInteger(breakValue) && breakValue >= 0 &&
+    Number.isInteger(minimumRestValue) && minimumRestValue >= 0 &&
     Number.isInteger(perDayValue) && perDayValue >= 1;
   const canGenerate = !!preview && preview.errors.length === 0 && preview.matches.length > 0 && !creating;
   const allAlreadyScheduled = !!preview && preview.errors.length === 0 && preview.matches.length === 0;
 
   const payload = () => ({
     startAt,
-    breakMinutes: breakValue,
+    minimumTeamRestMinutes: minimumRestValue,
     matchesPerDay: perDayValue,
   });
 
@@ -103,7 +105,7 @@ export function AutoScheduleDialog({
     if (!open) return;
     setStep("format");
     setStartAt(formatLocalDateTime(new Date()));
-    setBreakMinutes(String(DEFAULTS.breakMinutes));
+    setMinimumTeamRestMinutes(String(DEFAULTS.minimumTeamRestMinutes));
     setMatchesPerDay(String(DEFAULTS.matchesPerDay));
     setPreview(null);
     setConfirmOpen(false);
@@ -172,7 +174,7 @@ export function AutoScheduleDialog({
           </DialogTitle>
           <DialogDescription>
             {step === "format" && `Generate a Round Robin schedule. ${autoStartCopy}`}
-            {step === "settings" && "Choose when the first match should appear and how fixtures are spaced."}
+            {step === "settings" && "Choose the first match time, team rest, and the daily match limit."}
             {step === "preview" && "Review the generated fixtures before they are created."}
           </DialogDescription>
         </DialogHeader>
@@ -202,7 +204,7 @@ export function AutoScheduleDialog({
           {step === "settings" && (
             <div className="grid gap-4">
               <label className="text-sm font-semibold text-slate-800" htmlFor="auto-schedule-start">
-                Start date and time
+                First match date and time
                 <Input
                   id="auto-schedule-start"
                   className="mt-1 h-11 font-normal"
@@ -213,18 +215,19 @@ export function AutoScheduleDialog({
                 />
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-slate-800" htmlFor="auto-schedule-break">
-                  Break between matches (minutes)
+                <label className="text-sm font-semibold text-slate-800" htmlFor="auto-schedule-rest">
+                  Minimum rest between matches (minutes)
                   <Input
-                    id="auto-schedule-break"
+                    id="auto-schedule-rest"
                     className="mt-1 h-11 font-normal"
                     type="number"
                     min={0}
                     max={1440}
                     inputMode="numeric"
-                    value={breakMinutes}
-                    onChange={event => { setBreakMinutes(event.target.value); setPreview(null); }}
+                    value={minimumTeamRestMinutes}
+                    onChange={event => { setMinimumTeamRestMinutes(event.target.value); setPreview(null); }}
                   />
+                  <span className="mt-1 block text-xs font-normal text-slate-500">Teams will have at least this much time between their matches.</span>
                 </label>
                 <label className="text-sm font-semibold text-slate-800" htmlFor="auto-schedule-per-day">
                   Matches per day
@@ -238,10 +241,11 @@ export function AutoScheduleDialog({
                     value={matchesPerDay}
                     onChange={event => { setMatchesPerDay(event.target.value); setPreview(null); }}
                   />
+                  <span className="mt-1 block text-xs font-normal text-slate-500">Maximum number of matches scheduled per day.</span>
                 </label>
               </div>
               <p className="text-xs text-slate-500">
-                Matches are scheduled starting at the selected time. Each time is an earliest start, not a fixed match length. The next match will not start while another match in this championship is live. The break spaces planned start times on the same day. If a match runs past the next target time, the next match starts after the live match ends.
+                Fixtures are ordered to give teams rest and avoid consecutive appearances where another fixture can be played. Match completion still comes from normal gameplay; no match duration is estimated.
                 {" "}{autoStartCopy}
               </p>
             </div>
@@ -264,6 +268,9 @@ export function AutoScheduleDialog({
                     </div>
                   ))}
                 </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Minimum team rest: {preview.summary.minimumTeamRestMinutes} min · Matches per day: {preview.summary.matchesPerDay}
+                </p>
               </div>
 
               {preview.errors.length > 0 && (

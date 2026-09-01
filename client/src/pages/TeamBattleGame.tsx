@@ -52,6 +52,10 @@ import { ChampionshipScoreboard } from "@/components/championship/game/Champions
 import { ChampionshipResult, ChampionshipStatusPanel } from "@/components/championship/game/ChampionshipResult";
 import { ChampionshipPreMatch } from "@/components/championship/game/ChampionshipPreMatch";
 import { championshipLobbyView } from "@/lib/championship-prematch";
+import {
+  championshipShouldWaitAfterResults,
+  shouldShowChampionshipCommentatorWait,
+} from "@/lib/championship-commentator-wait";
 import { ChampionshipLiveVideo } from "@/components/championship/game/ChampionshipLiveVideo";
 
 interface TeamMember {
@@ -223,6 +227,7 @@ export default function TeamBattleGame() {
   const [championshipCountdown, setChampionshipCountdown] = useState<number | null>(null);
   const [championshipReadyPending, setChampionshipReadyPending] = useState(false);
   const [championshipGameplayStarted, setChampionshipGameplayStarted] = useState(false);
+  const [championshipWaitingForCommentator, setChampionshipWaitingForCommentator] = useState(false);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [showConnectExit, setShowConnectExit] = useState(false);
   const [showRefreshLoader, setShowRefreshLoader] = useState(false);
@@ -256,6 +261,12 @@ export default function TeamBattleGame() {
 
   const isTossOverlayActive =
     showTossInstruction || showTossRetryInstruction || showTossResult;
+  const showChampionshipCommentatorWait = shouldShowChampionshipCommentatorWait({
+    isChampionship: isChampionshipMatch,
+    waitingForCommentator: championshipWaitingForCommentator,
+    phase: gameState.phase,
+    isToss: gameState.phase === "toss" || isTossOverlayActive,
+  });
 
   const dismissTossInstruction = () => {
     if (tossInstructionTimerRef.current) {
@@ -305,6 +316,7 @@ export default function TeamBattleGame() {
     setCorrectAnswerId(null);
     setLastRoundCorrect(null);
     setShowRoundFeedback(false);
+    setChampionshipWaitingForCommentator(false);
   };
 
   const completeTossTransition = () => {
@@ -700,6 +712,7 @@ export default function TeamBattleGame() {
             setCorrectAnswerId(null);
             setLastRoundCorrect(null);
             setShowRoundFeedback(false);
+            setChampionshipWaitingForCommentator(false);
             break;
 
           case "team_battle_toss_result": {
@@ -1051,6 +1064,14 @@ export default function TeamBattleGame() {
             setCurrentRapidQuestion(null);
 
             // Show feedback modal briefly, then next question will come from server
+            setChampionshipWaitingForCommentator(
+              championshipShouldWaitAfterResults({
+                isChampionship: isChampionshipTeamBattle(gameStateRef.current),
+                isRapidFire: isRapidFireRef.current,
+                questionNumber: gameStateRef.current.questionNumber,
+                totalQuestions: gameStateRef.current.totalQuestions,
+              })
+            );
             break;
           }
 
@@ -1086,6 +1107,7 @@ export default function TeamBattleGame() {
               };
             });
             setShowRoundFeedback(false);
+            setChampionshipWaitingForCommentator(false);
             toast({
               title: "Battle Finished!",
             });
@@ -1769,9 +1791,10 @@ export default function TeamBattleGame() {
           isToss={gameState.phase === "toss"}
           answeringTeamName={gameState.answeringTeamName}
           selectedAnswerId={selectedAnswer}
+          waitingForCommentator={showChampionshipCommentatorWait}
         />
 
-        {teamAnswer && !isYourTurn && (
+        {teamAnswer && !isYourTurn && !showChampionshipCommentatorWait && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 p-3 sm:p-4">
             <Card className="max-w-sm w-full mx-auto bg-gradient-to-br from-secondary to-secondary-dark text-white border border-accent/60 shadow-2xl rounded-lg sm:rounded-xl">
               <CardHeader className="p-4 sm:p-6">
@@ -2833,6 +2856,7 @@ export default function TeamBattleGame() {
           }}
           gameMode="team"
           variant={isChampionshipMatch ? "championship" : "default"}
+          waitingForCommentator={showChampionshipCommentatorWait}
         />
       )}
 

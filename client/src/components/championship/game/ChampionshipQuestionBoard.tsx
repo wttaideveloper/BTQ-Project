@@ -1,5 +1,6 @@
 import { Check, Clock, Target, Zap } from "lucide-react";
 import { FaithIQLockup } from "./FaithIQTreeMark";
+import { ChampionshipCommentatorWait } from "./ChampionshipCommentatorWait";
 
 export interface ChampionshipBoardAnswer {
   id: string;
@@ -39,6 +40,7 @@ export function ChampionshipQuestionBoard({
   selectedAnswerId,
   getSuggestionsForAnswer,
   onAnswerClick,
+  waitingForCommentator = false,
 }: {
   question: { id: string; text: string; context?: string | null };
   answers: ChampionshipBoardAnswer[];
@@ -58,6 +60,7 @@ export function ChampionshipQuestionBoard({
   selectedAnswerId: string | null;
   getSuggestionsForAnswer: (answerId: string) => ChampionshipBoardSuggestion[];
   onAnswerClick: (answerId: string) => void;
+  waitingForCommentator?: boolean;
 }) {
   const urgent = timePercentage <= 20;
   const questionNumber = currentQuestionIndex + 1;
@@ -89,7 +92,9 @@ export function ChampionshipQuestionBoard({
         </div>
       </div>
 
-      {isReadOnly && !isToss && (
+      {waitingForCommentator && !isToss && <ChampionshipCommentatorWait tone="board" />}
+
+      {isReadOnly && !isToss && !waitingForCommentator && (
         <div className="flex items-center justify-center gap-2 border-y border-[#d8b25f]/30 bg-[#d8b25f]/10 px-3 py-2 text-center">
           <Clock className="h-3.5 w-3.5 shrink-0 text-[#f0d08a]" />
           <span className="text-xs sm:text-sm font-semibold text-[#f0d08a]">
@@ -120,6 +125,10 @@ export function ChampionshipQuestionBoard({
             <p className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#1b2559]/70">
               <Zap className="h-3.5 w-3.5" /> Be quick · Be correct <Target className="h-3.5 w-3.5" />
             </p>
+          ) : waitingForCommentator ? (
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#1b2559]/55">
+              Answer recorded
+            </p>
           ) : (
             <div className="flex w-full items-center gap-3" role="timer" aria-live="off">
               <span className="h-px flex-1 bg-[#1b2559]/15" />
@@ -136,7 +145,7 @@ export function ChampionshipQuestionBoard({
               <span className="h-px flex-1 bg-[#1b2559]/15" />
             </div>
           )}
-          {!isToss && (
+          {!isToss && !waitingForCommentator && (
             <div className="h-1 w-full overflow-hidden rounded-full bg-[#1b2559]/10">
               <div
                 className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${
@@ -158,7 +167,7 @@ export function ChampionshipQuestionBoard({
         <div className="mt-4 grid grid-cols-1 gap-2.5 sm:mt-5 sm:grid-cols-2 sm:gap-3">
           {answers.map((answer, index) => {
             const isSelected = selectedAnswerId === answer.id;
-            const isDisabled = isQuestionLocked || isReadOnly;
+            const isDisabled = isQuestionLocked || isReadOnly || waitingForCommentator;
             const answerSuggestions = getSuggestionsForAnswer(answer.id);
             return (
               <button
@@ -210,7 +219,9 @@ export function ChampionshipQuestionBoard({
           </span>
         </div>
         <p className="text-[10px] sm:text-xs text-white/55">
-          {isReadOnly
+          {waitingForCommentator
+            ? "Waiting for the commentator to start the next question"
+            : isReadOnly
             ? `Waiting for ${answeringTeamName || "opponent"} to answer…`
             : isCaptain
               ? "Your tap locks in the team answer"

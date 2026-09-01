@@ -22,6 +22,7 @@ interface FeedbackModalProps {
    * Fire, Solo and Challenges keep the existing popup unchanged.
    */
   variant?: 'default' | 'championship';
+  waitingForCommentator?: boolean;
 }
 
 const FeedbackModal: React.FC<FeedbackModalProps> = ({
@@ -33,6 +34,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
   gameMode = 'single', // Default to single player
   questionSessionId, // Session ID for voice
   variant = 'default',
+  waitingForCommentator = false,
 }) => {
   const [userClickedContinue, setUserClickedContinue] = useState(false);
   const [feedbackSessionId] = useState(() => `feedback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
@@ -132,6 +134,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
         correctAnswer={correctAnswer}
         avatarMessage={avatarMessage}
         onContinue={handleContinue}
+        waitingForCommentator={waitingForCommentator}
       />
     );
   }

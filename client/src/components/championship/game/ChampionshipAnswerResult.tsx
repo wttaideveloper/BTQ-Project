@@ -1,6 +1,7 @@
 import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FaithIQTreeMark } from "./FaithIQTreeMark";
+import { ChampionshipCommentatorWait } from "./ChampionshipCommentatorWait";
 
 /**
  * Championship skin for the per-question Correct / Incorrect result.
@@ -19,12 +20,14 @@ export function ChampionshipAnswerResult({
   correctAnswer,
   avatarMessage,
   onContinue,
+  waitingForCommentator = false,
 }: {
   isCorrect: boolean;
   question: string;
   correctAnswer: string;
   avatarMessage: string;
   onContinue: () => void;
+  waitingForCommentator?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-[#09061f]/80 p-3 backdrop-blur-sm">
@@ -77,6 +80,7 @@ export function ChampionshipAnswerResult({
 
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#1b2559]/45">Correct answer</p>
           <p className="mt-1.5 break-words text-xl font-black text-[#1b2559] sm:text-2xl">{correctAnswer}</p>
+          {waitingForCommentator ? <ChampionshipCommentatorWait tone="result" /> : null}
         </div>
 
         {/* Kingdom Genius message - content unchanged, framed as a quote panel. */}

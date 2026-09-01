@@ -53,6 +53,7 @@ interface TeamBattleQuestionBoardProps {
    * Omitted everywhere else, so Team Battle and Rapid Fire are unchanged.
    */
   variant?: "default" | "championship";
+  waitingForCommentator?: boolean;
 }
 
 const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
@@ -76,6 +77,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
   selectedAnswerId = null,
   isToss = false,
   variant = "default",
+  waitingForCommentator = false,
 }) => {
   const [displayTime, setDisplayTime] = useState(timeRemaining);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -371,6 +373,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
         selectedAnswerId={selectedAnswerId}
         getSuggestionsForAnswer={getSuggestionsForAnswer}
         onAnswerClick={handleClick}
+        waitingForCommentator={waitingForCommentator}
       />
     );
   }

@@ -13,7 +13,12 @@ export type MatchStartPopupEvent = {
   teamBName?: string;
   role?: MatchStartPopupRole | string;
   message?: string;
+  /** Present on replay/cache checks. Live start events omit this and stay eligible. */
+  matchStatus?: string;
 };
+
+/** Prefix of the deterministic `championship-{matchId}` team_battles id. */
+export const CHAMPIONSHIP_BATTLE_PREFIX = "championship-";
 
 export type MatchStartPopupItem = {
   id: string;
@@ -70,15 +75,26 @@ export function isAdminAppPath(pathname: string): boolean {
   return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
+/** Actionable live popup is for participating players only, never admins. */
+export function isPlayerMatchStartRecipient(role?: string | null): boolean {
+  return role === "player";
+}
+
 /**
- * Watch Live / Overlay stay silent. Admin and player pages both show the
- * compact match-start card (no full-screen overlay).
+ * Watch Live / Overlay stay silent. Admin Championship Management stays
+ * popup-free; a participating admin can still see the player popup on
+ * player pages. Role is the identity check — path is presentation only.
  */
 export function shouldSuppressMatchStartPopup(
-  _event: Pick<MatchStartPopupEvent, "role">,
+  event: Pick<MatchStartPopupEvent, "role">,
   ctx: { pathname: string; liveDeskPresent?: boolean },
 ): boolean {
+  if (!isPlayerMatchStartRecipient(event.role)) return true;
   return isPublicWatchPath(ctx.pathname);
+}
+
+export function shouldHideMatchStartPopupOnPath(pathname: string): boolean {
+  return isPublicWatchPath(pathname) || isAdminAppPath(pathname);
 }
 
 /** Hide empty strings and UUID-looking values. Real names pass through. */
@@ -166,6 +182,85 @@ export function emptyMatchStartPopupState(seen: string[] = []): MatchStartPopupS
   return { current: null, queue: [], seen };
 }
 
+export function isCompletedChampionshipMatchStatus(status?: string | null): boolean {
+  return status === "completed";
+}
+
+export function isLiveChampionshipMatchStatus(status?: string | null): boolean {
+  return status === "live";
+}
+
+/**
+ * Extract a championship match id from existing lifecycle payloads.
+ * `match_ended` / `match_updated` carry `match.id`; championship Team Battle
+ * finish events carry `championship-{matchId}` on the team rows.
+ */
+export function championshipMatchIdFromLifecycleEvent(event: {
+  matchId?: string;
+  match?: { id?: string; status?: string };
+  yourTeam?: { teamBattleId?: string };
+  playerTeam?: { teamBattleId?: string };
+  finalScores?: Array<{ teamBattleId?: string }>;
+  teams?: Array<{ teamBattleId?: string }>;
+} | null | undefined): string | undefined {
+  if (!event) return undefined;
+  if (typeof event.match?.id === "string" && event.match.id) return event.match.id;
+  if (typeof event.matchId === "string" && event.matchId) return event.matchId;
+  const battleIds = [
+    event.yourTeam?.teamBattleId,
+    event.playerTeam?.teamBattleId,
+    ...(Array.isArray(event.finalScores) ? event.finalScores.map(team => team?.teamBattleId) : []),
+    ...(Array.isArray(event.teams) ? event.teams.map(team => team?.teamBattleId) : []),
+  ];
+  for (const battleId of battleIds) {
+    if (typeof battleId === "string" && battleId.startsWith(CHAMPIONSHIP_BATTLE_PREFIX)) {
+      const matchId = battleId.slice(CHAMPIONSHIP_BATTLE_PREFIX.length);
+      if (matchId) return matchId;
+    }
+  }
+  return undefined;
+}
+
+export function matchStatusFromChampionshipCaches(
+  matchId: string | undefined,
+  caches: {
+    dashboard?: { matches?: Array<{ id?: string; status?: string }> } | null;
+    detail?: { matches?: Array<{ id?: string; status?: string }> } | null;
+  },
+): string | undefined {
+  if (!matchId) return undefined;
+  const rows = [
+    ...(caches.dashboard?.matches ?? []),
+    ...(caches.detail?.matches ?? []),
+  ];
+  return rows.find(match => match.id === matchId)?.status;
+}
+
+/**
+ * Drop the current and queued live-match cards for a finished match and mark
+ * its identities seen so reconnect/replay cannot reopen them.
+ */
+export function clearMatchStartPopupForMatch(
+  state: MatchStartPopupState,
+  matchId: string | undefined | null,
+): MatchStartPopupState {
+  if (!matchId) return state;
+  const belongsToMatch = (item: MatchStartPopupItem) => item.matchId === matchId;
+  let next = markMatchStartPopupIdentities(state, { matchId });
+  if (state.current && belongsToMatch(state.current)) {
+    next = markMatchStartPopupSeen(next, state.current.id);
+  }
+  for (const item of state.queue) {
+    if (belongsToMatch(item)) next = markMatchStartPopupSeen(next, item.id);
+  }
+  const queue = next.queue.filter(item => !belongsToMatch(item));
+  if (next.current && belongsToMatch(next.current)) {
+    const [current, ...rest] = queue;
+    return { current: current ?? null, queue: rest, seen: next.seen };
+  }
+  return { current: next.current, queue, seen: next.seen };
+}
+
 export function enqueueMatchStartPopup(
   state: MatchStartPopupState,
   event: MatchStartPopupEvent,
@@ -173,6 +268,15 @@ export function enqueueMatchStartPopup(
   const identities = matchStartPopupIdentities(event);
   const id = matchStartPopupIdentity(event);
   if (!id || identities.length === 0) return state;
+  // Admins never get the actionable live popup. History notifications remain.
+  if (!isPlayerMatchStartRecipient(event.role)) {
+    return markMatchStartPopupIdentities(state, event);
+  }
+  // Completed / not-live matches must never open a live popup, including
+  // reconnect replay of championship_match_started.
+  if (event.matchStatus && !isLiveChampionshipMatchStatus(event.matchStatus)) {
+    return markMatchStartPopupIdentities(state, event);
+  }
   if (
     identities.some(item => state.seen.includes(item) || state.current?.id === item || state.queue.some(queued => item === queued.id))
     || (event.matchId && (state.current?.matchId === event.matchId || state.queue.some(queued => queued.matchId === event.matchId)))

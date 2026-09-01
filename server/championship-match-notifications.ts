@@ -20,6 +20,25 @@ export const PLAYER_MATCH_START_HREF = "/my-championship";
 
 export type MatchStartAudience = "admin" | "player";
 
+/**
+ * Replayed championship_match_started rows may only open the live popup while
+ * the match is still live. History rows stay in the notifications table.
+ */
+export function shouldReplayChampionshipMatchStart(
+  match: { status?: string | null } | null | undefined,
+): boolean {
+  return match?.status === "live";
+}
+
+/** Socket popup event is for participating players only. Admin rows stay in history. */
+export function shouldEmitMatchStartPopupEvent(role: MatchStartAudience | string | undefined): boolean {
+  return role === "player";
+}
+
+export function matchStartAudienceFromNotificationMessage(message: string | undefined): MatchStartAudience {
+  return message?.includes("Join now") ? "player" : "admin";
+}
+
 export function matchStartNotificationId(matchId: string, userId: number): string {
   return `champ-match-start-${matchId}-${userId}`;
 }
@@ -110,6 +129,7 @@ export async function notifyChampionshipMatchStarted(match: Pick<ChampionshipMat
       // must not create a second row or fire a second socket event.
       continue;
     }
+    if (!shouldEmitMatchStartPopupEvent(recipient.role)) continue;
     sendToUser(recipient.userId, {
       type: CHAMPIONSHIP_MATCH_STARTED_TYPE,
       message: copy.message,

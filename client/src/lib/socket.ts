@@ -20,6 +20,7 @@ export interface GameEvent {
   teamAName?: string;
   teamBName?: string;
   role?: "admin" | "player";
+  matchStatus?: string;
   clientId?: string;
   leaderboard?: any[];
   challengeResult?: any;
@@ -434,6 +435,11 @@ export function onError(callback: (error: any) => void) {
   'invitation_declined',       // Inviter notified when invitee declines
   'invitation_expired',        // Invitee notified when slot is filled
   'championship_match_started',
+  'match_ended',
+  'match_updated',
+  'team_battle_ended',
+  'team_battle_finished',
+  'team_battle_ended_opponent_disconnect',
   'commentary_status',
   'commentary_signal',
   'commentary_listener_joined',

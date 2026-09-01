@@ -29,6 +29,12 @@ import {
   shouldWaitForCommentatorAdvance,
 } from "./commentator-advance";
 import {
+  CHAMPIONSHIP_MATCH_STARTED_TYPE,
+  matchStartAudienceFromNotificationMessage,
+  shouldEmitMatchStartPopupEvent,
+  shouldReplayChampionshipMatchStart,
+} from "./championship-match-notifications";
+import {
   CommentaryRegistry,
   getActiveCommentaryRegistry,
   handleCommentaryDisconnect,
@@ -153,6 +159,7 @@ interface GameEvent {
   teamAName?: string;
   teamBName?: string;
   role?: string;
+  matchStatus?: string;
   // Team-based multiplayer fields
   teamId?: string;
   teamName?: string;
@@ -425,9 +432,19 @@ export function broadcastChampionshipEvent(event: Record<string, unknown>) {
     ? { ...event, match: (({ gameSessionId: _internal, ...rest }) => rest)(event.match as Record<string, unknown>) }
     : event;
 
+  const matchStatus = (event.match as { status?: string } | undefined)?.status;
+  // Spectators still receive by watch_match subscription. Match completion is
+  // also delivered to authenticated sockets so the private match-start popup
+  // can close without a spectator subscription or a new lifecycle channel.
+  const deliverToAuthenticatedUsers =
+    event.type === "match_ended"
+    || (event.type === "match_updated" && !!matchStatus && matchStatus !== "live");
+
   for (const client of clients.values()) {
-    // Targeted by the spectator subscription, not by player game membership.
-    if (client.ws.readyState === WebSocket.OPEN && (!matchId || client.watchMatchId === matchId)) {
+    if (client.ws.readyState !== WebSocket.OPEN) continue;
+    const isSpectatorTarget = !matchId || client.watchMatchId === matchId;
+    const isAuthenticatedLifecycle = deliverToAuthenticatedUsers && typeof client.userId === "number";
+    if (isSpectatorTarget || isAuthenticatedLifecycle) {
       client.ws.send(JSON.stringify(payload));
     }
   }
@@ -2968,19 +2985,48 @@ async function sendUnreadNotifications(userId: number) {
 
     // Send each notification to all of the user's connections
     const connections = userConnections.get(userId) || [];
+    const startMatchIds = [...new Set(
+      notifications
+        .filter(item => item.type === CHAMPIONSHIP_MATCH_STARTED_TYPE && item.challengeId)
+        .map(item => item.challengeId as string),
+    )];
+    const liveMatchIds = new Set<string>();
+    if (startMatchIds.length > 0) {
+      const rows = await database.db
+        .select({ id: championshipMatches.id, status: championshipMatches.status })
+        .from(championshipMatches)
+        .where(inArray(championshipMatches.id, startMatchIds));
+      for (const row of rows) {
+        if (shouldReplayChampionshipMatchStart(row)) liveMatchIds.add(row.id);
+      }
+    }
+
     for (const notification of notifications) {
-      for (const clientId of connections) {
-        if (notification.type === "championship_match_started") {
+      if (notification.type === CHAMPIONSHIP_MATCH_STARTED_TYPE) {
+        // Keep the history row. Only reopen the live popup for participating
+        // players while the match is still live — never for admins.
+        const role = matchStartAudienceFromNotificationMessage(notification.message);
+        if (
+          !shouldEmitMatchStartPopupEvent(role)
+          || !notification.challengeId
+          || !liveMatchIds.has(notification.challengeId)
+        ) {
+          continue;
+        }
+        for (const clientId of connections) {
           sendToClient(clientId, {
-            type: "championship_match_started",
+            type: CHAMPIONSHIP_MATCH_STARTED_TYPE,
             message: notification.message,
             notificationId: notification.id,
             matchId: notification.challengeId,
             challengeId: notification.challengeId,
-            role: notification.message.includes("Join now") ? "player" : "admin",
+            matchStatus: "live",
+            role,
           });
-          continue;
         }
+        continue;
+      }
+      for (const clientId of connections) {
         sendToClient(clientId, {
           type: "notification",
           message: notification.message,

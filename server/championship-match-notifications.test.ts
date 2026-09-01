@@ -13,6 +13,9 @@ import {
   matchStartActionHref,
   matchStartNotificationId,
   resolveMatchStartRecipients,
+  shouldReplayChampionshipMatchStart,
+  shouldEmitMatchStartPopupEvent,
+  matchStartAudienceFromNotificationMessage,
 } from "./championship-match-notifications.ts";
 
 let passed = 0;
@@ -151,21 +154,71 @@ test("client popup ignores public Watch Live paths and public match_started", ()
   assert.doesNotMatch(popupSource, /duration: 8000/);
   assert.match(popupSource, /isPublicWatchPath/);
   assert.match(hookSource, /Join Match/);
-  assert.match(hookSource, /Open Match/);
   assert.match(popupSource, /copy\.action/);
   assert.match(popupSource, /joinPlayerMatch/);
-  assert.match(popupSource, /openAdminMatch/);
+  assert.doesNotMatch(popupSource, /openAdminMatch/);
   assert.match(popupSource, /\/my-championship/);
-  assert.match(popupSource, /\/admin\/dashboard/);
   assert.match(popupSource, /\/api\/championship-matches\/\$\{current\.matchId\}\/join/);
   assert.match(notifySource, /database\.createNotification/);
   assert.match(notifySource, /championshipName/);
   assert.match(hookSource, /enqueueMatchStartPopup/);
+  assert.match(hookSource, /isPlayerMatchStartRecipient/);
 });
 
-test("persistent notification type matches the existing notifications table", () => {
+test("actionable popup is emitted only for participating players", () => {
+  assert.equal(shouldEmitMatchStartPopupEvent("player"), true);
+  assert.equal(shouldEmitMatchStartPopupEvent("admin"), false);
+  assert.equal(matchStartAudienceFromNotificationMessage("Lions vs Eagles has started. Join now to play."), "player");
+  assert.equal(matchStartAudienceFromNotificationMessage("Lions vs Eagles is now LIVE."), "admin");
+  assert.match(notifySource, /shouldEmitMatchStartPopupEvent\(recipient\.role\)/);
+  assert.match(socketSource, /shouldEmitMatchStartPopupEvent/);
+  assert.match(popupSource, /isPlayerMatchStartRecipient/);
+  assert.match(popupSource, /shouldHideMatchStartPopupOnPath/);
+  assert.doesNotMatch(popupSource, /Open Match/);
+});
+
+test("popup closes from existing match_ended and battle finished events", () => {
+  assert.match(popupSource, /onEvent\("match_ended"/);
+  assert.match(popupSource, /onEvent\("match_updated"/);
+  assert.match(popupSource, /onEvent\("team_battle_ended"/);
+  assert.match(popupSource, /clearMatchStartPopupForMatch/);
+  assert.match(hookSource, /clearMatchStartPopupForMatch/);
+  assert.match(hookSource, /championshipMatchIdFromLifecycleEvent/);
+  assert.match(socketSource, /deliverToAuthenticatedUsers/);
+  assert.match(socketSource, /event\.type === "match_ended"/);
+  assert.match(socketSource, /watchMatchId === matchId/);
+});
+
+test("reconnect replay of a completed match does not emit the live popup", () => {
+  assert.equal(shouldReplayChampionshipMatchStart({ status: "live" }), true);
+  assert.equal(shouldReplayChampionshipMatchStart({ status: "completed" }), false);
+  assert.equal(shouldReplayChampionshipMatchStart({ status: "upcoming" }), false);
+  assert.equal(shouldReplayChampionshipMatchStart(null), false);
+  assert.match(socketSource, /shouldReplayChampionshipMatchStart/);
+  assert.match(socketSource, /liveMatchIds/);
+  assert.match(socketSource, /matchStatus: "live"/);
+});
+
+test("match-start notifications stay in the notifications table", () => {
   assert.equal(CHAMPIONSHIP_MATCH_STARTED_TYPE, "championship_match_started");
   assert.match(notifySource, /database\.createNotification/);
+  assert.doesNotMatch(notifySource, /delete\(notifications\)/);
+  assert.doesNotMatch(socketSource, /delete\(notifications\)/);
+  assert.doesNotMatch(notifySource, /db\.delete/);
+});
+
+test("admins remain notification recipients even though they get no popup event", () => {
+  const recipients = resolveMatchStartRecipients({
+    teamACaptainId: 11,
+    teamBCaptainId: 22,
+    teamAMemberIds: [],
+    teamBMemberIds: [],
+    adminIds: [1],
+  });
+  assert.equal(recipients.find(item => item.userId === 1)?.role, "admin");
+  assert.equal(shouldEmitMatchStartPopupEvent("admin"), false);
+  assert.match(notifySource, /database\.createNotification/);
+  assert.match(notifySource, /if \(!shouldEmitMatchStartPopupEvent\(recipient\.role\)\) continue/);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

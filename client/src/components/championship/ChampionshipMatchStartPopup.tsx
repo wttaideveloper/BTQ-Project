@@ -9,16 +9,22 @@ import { markNotificationAsRead, onEvent, setupGameSocket } from "@/lib/socket";
 import { apiRequest } from "@/lib/queryClient";
 import { navigateToTeamBattleGame } from "@/lib/team-battle-navigation";
 import {
+  championshipMatchIdFromLifecycleEvent,
   championshipNameFromCaches,
+  clearMatchStartPopupForMatch,
   dismissMatchStartPopup,
   emptyMatchStartPopupState,
   enqueueMatchStartPopup,
-  focusLiveMatchDesk,
+  isLiveChampionshipMatchStatus,
+  isCompletedChampionshipMatchStatus,
+  isPlayerMatchStartRecipient,
   isPublicWatchPath,
   markMatchStartPopupIdentities,
   matchStartPopupCopy,
+  matchStatusFromChampionshipCaches,
   readSeenPopupIds,
   shouldSuppressMatchStartPopup,
+  shouldHideMatchStartPopupOnPath,
   writeSeenPopupIds,
   type MatchStartPopupEvent,
   type MatchStartPopupState,
@@ -26,8 +32,8 @@ import {
 
 /**
  * Compact championship match-start card for private championship_match_started
- * events. No full-screen backdrop — a trapped overlay painted the admin
- * column black. Delivery stays on sendToUser; this is presentation only.
+ * events. Shown only to participating players. Admins keep notification
+ * history but never get this actionable popup.
  */
 export function ChampionshipMatchStartPopup({ userId }: { userId?: number }) {
   const queryClient = useQueryClient();
@@ -41,6 +47,17 @@ export function ChampionshipMatchStartPopup({ userId }: { userId?: number }) {
   const current = state.current;
   joiningRef.current = joining;
   currentRef.current = current;
+
+  const applyMatchEnded = (matchId: string | undefined) => {
+    if (!matchId) return;
+    joiningRef.current = false;
+    setJoining(false);
+    setState(currentState => {
+      const next = clearMatchStartPopupForMatch(currentState, matchId);
+      if (next.seen !== currentState.seen) writeSeenPopupIds(next.seen);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -60,9 +77,22 @@ export function ChampionshipMatchStartPopup({ userId }: { userId?: number }) {
           : undefined,
         dashboard: queryClient.getQueryData(["/api/championships/me/dashboard"]),
       });
+      const cachedStatus = matchStatusFromChampionshipCaches(data.matchId, {
+        dashboard: queryClient.getQueryData(["/api/championships/me/dashboard"]),
+        detail: data.championshipId
+          ? queryClient.getQueryData(["/api/championships", data.championshipId])
+          : undefined,
+      });
+      // Only a cached "completed" status can suppress a start event. Stale
+      // "upcoming" would hide a genuine live popup.
+      const matchStatus = data.matchStatus
+        ?? (isCompletedChampionshipMatchStatus(cachedStatus) ? cachedStatus : undefined);
 
       setState(currentState => {
-        if (shouldSuppressMatchStartPopup(data, { pathname })) {
+        if (
+          !isPlayerMatchStartRecipient(data.role)
+          || shouldSuppressMatchStartPopup(data, { pathname })
+        ) {
           const next = markMatchStartPopupIdentities(currentState, data);
           if (next.seen !== currentState.seen) writeSeenPopupIds(next.seen);
           return next;
@@ -70,14 +100,37 @@ export function ChampionshipMatchStartPopup({ userId }: { userId?: number }) {
         const next = enqueueMatchStartPopup(currentState, {
           ...data,
           championshipName: data.championshipName || cachedName,
+          matchStatus,
         });
         if (next.seen !== currentState.seen) writeSeenPopupIds(next.seen);
         return next;
       });
     });
 
+    const clearFromLifecycle = (event: Parameters<typeof championshipMatchIdFromLifecycleEvent>[0]) => {
+      applyMatchEnded(championshipMatchIdFromLifecycleEvent(event));
+    };
+
+    const offEnded = onEvent("match_ended", (event) => {
+      clearFromLifecycle(event);
+    });
+    const offUpdated = onEvent("match_updated", (event) => {
+      const status = event?.match?.status;
+      if (status && !isLiveChampionshipMatchStatus(status)) {
+        clearFromLifecycle(event);
+      }
+    });
+    const offBattleEnded = onEvent("team_battle_ended", clearFromLifecycle);
+    const offBattleFinished = onEvent("team_battle_finished", clearFromLifecycle);
+    const offBattleForfeit = onEvent("team_battle_ended_opponent_disconnect", clearFromLifecycle);
+
     return () => {
       offStarted();
+      offEnded();
+      offUpdated();
+      offBattleEnded();
+      offBattleFinished();
+      offBattleForfeit();
     };
   }, [userId, queryClient]);
 
@@ -105,12 +158,6 @@ export function ChampionshipMatchStartPopup({ userId }: { userId?: number }) {
       skipClickAfterMouseDown.current = false;
       return;
     }
-    dismissCurrent();
-  };
-
-  const openAdminMatch = () => {
-    focusLiveMatchDesk({ championshipId: current?.championshipId, matchId: current?.matchId });
-    if (!window.location.pathname.startsWith("/admin")) setLocation("/admin/dashboard");
     dismissCurrent();
   };
 
@@ -142,9 +189,11 @@ export function ChampionshipMatchStartPopup({ userId }: { userId?: number }) {
     }
   };
 
-  const isPlayer = current?.role === "player";
-  const copy = matchStartPopupCopy(isPlayer ? "player" : "admin");
-  const visible = !!current && !isPublicWatchPath(location) && !isPublicWatchPath(window.location.pathname);
+  const copy = matchStartPopupCopy("player");
+  const visible = !!current
+    && current.role === "player"
+    && !shouldHideMatchStartPopupOnPath(location)
+    && !shouldHideMatchStartPopupOnPath(window.location.pathname);
 
   useEffect(() => {
     if (!visible) return;
@@ -244,7 +293,7 @@ export function ChampionshipMatchStartPopup({ userId }: { userId?: number }) {
           <Button
             className="champ-btn-gold h-11 w-full"
             disabled={joining}
-            onClick={() => { if (isPlayer) void joinPlayerMatch(); else openAdminMatch(); }}
+            onClick={() => { void joinPlayerMatch(); }}
           >
             {joining ? "Joining…" : copy.action}
           </Button>

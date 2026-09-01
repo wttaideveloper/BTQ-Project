@@ -31,7 +31,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { markOpenTeamBattleSetup, consumeTeamBattleLaunch } from "@/lib/team-battle-navigation";
 import { setupGameSocket, sendGameEvent, closeGameSocket } from "@/lib/socket";
-import { registerNavigationProtection, unregisterNavigationProtection } from "@/lib/navigationGuard";
+import {
+  beginIntentionalExit,
+  isIntentionalExit,
+  registerNavigationProtection,
+  teamBattleLeaveShouldProtect,
+  unregisterNavigationProtection,
+} from "@/lib/navigationGuard";
 import { apiRequest } from "@/lib/queryClient";
 import TeamBattleQuestionBoard, {
   SuggestionsByAnswerId,
@@ -195,6 +201,7 @@ export default function TeamBattleGame() {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const isExitingRef = useRef<boolean>(false); // Track if user is explicitly exiting
+  const exitCleanupStartedRef = useRef<boolean>(false); // One cleanup/leave per confirmed exit
   const [teamAnswer, setTeamAnswer] = useState<string | null>(null);
   const [memberAnswers, setMemberAnswers] = useState<Record<string, string>>(
     {}
@@ -558,16 +565,12 @@ export default function TeamBattleGame() {
       protectionId,
       () => {
         const currentGameState = gameStateRef.current;
-        const phase = currentGameState.phase;
-        const isFinished = phase === "finished";
-        const hasGameData = !!(currentGameState.playerTeam || currentGameState.teams?.length);
-        const hasGameSession = !!gameSessionId;
-
-        return (
-          hasGameSession &&
-          !isFinished &&
-          ((phase && phase !== "waiting") || hasGameData)
-        );
+        return teamBattleLeaveShouldProtect({
+          hasGameSession: !!gameSessionId,
+          phase: currentGameState.phase,
+          hasGameData: !!(currentGameState.playerTeam || currentGameState.teams?.length),
+          isIntentionalExit: isIntentionalExit() || isExitingRef.current,
+        });
       },
       confirmLeave
     );
@@ -1542,6 +1545,13 @@ export default function TeamBattleGame() {
   };
 
   const handleExitGame = async () => {
+    // Bypass native beforeunload BEFORE any async cleanup or location.replace.
+    // The custom "Exit Team Battle?" modal is already the confirmation.
+    beginIntentionalExit(`team-battle-${gameSessionId}-${user?.id}`);
+
+    if (exitCleanupStartedRef.current) return;
+    exitCleanupStartedRef.current = true;
+
     // Close the confirmation dialog
     setShowExitConfirmation(false);
 
@@ -3006,6 +3016,9 @@ export default function TeamBattleGame() {
             </Button>
             <Button
               onClick={() => {
+                // Flag the leave as intentional before closing the dialog or
+                // starting async cleanup, so beforeunload cannot re-prompt.
+                beginIntentionalExit(`team-battle-${gameSessionId}-${user?.id}`);
                 // Resolve any pending confirm promise (used by global guard)
                 setShowExitConfirmation(false);
                 if (confirmResolverRef.current) {

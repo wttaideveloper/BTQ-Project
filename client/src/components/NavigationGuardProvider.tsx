@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import {
+  applyNativeBeforeUnload,
   findActiveProtection,
+  isIntentionalExit,
 } from "@/lib/navigationGuard";
 
 export default function NavigationGuardProvider({
@@ -23,7 +25,7 @@ export default function NavigationGuardProvider({
 
     const handlePopState = async () => {
       const active = findActiveProtection();
-      if (!active || isExitingRef.current) {
+      if (!active || isExitingRef.current || isIntentionalExit()) {
         // allow navigation
         return;
       }
@@ -48,12 +50,8 @@ export default function NavigationGuardProvider({
     };
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      const active = findActiveProtection();
-      if (active && !isExitingRef.current) {
-        // Ask browser to show native confirmation
-        event.preventDefault();
-        event.returnValue = ""; // legacy for some browsers
-      }
+      if (isExitingRef.current) return;
+      applyNativeBeforeUnload(event);
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -67,5 +65,3 @@ export default function NavigationGuardProvider({
 
   return <>{children}</>;
 }
-
-

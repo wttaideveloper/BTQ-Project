@@ -65,14 +65,24 @@ export function WatchScoreboard({
 }) {
   const previousScore = useRef({ a: teamAScore, b: teamBScore });
   const previousQuestion = useRef(liveQuestion);
-  const [scorePulse, setScorePulse] = useState(false);
+  const previousTurn = useRef(answeringTeamId);
+  const [pulseA, setPulseA] = useState(false);
+  const [pulseB, setPulseB] = useState(false);
   const [questionPulse, setQuestionPulse] = useState(false);
+  const [turnPulse, setTurnPulse] = useState(false);
 
   useEffect(() => {
-    if (previousScore.current.a === teamAScore && previousScore.current.b === teamBScore) return;
+    const prev = previousScore.current;
+    const aChanged = prev.a !== teamAScore;
+    const bChanged = prev.b !== teamBScore;
+    if (!aChanged && !bChanged) return;
     previousScore.current = { a: teamAScore, b: teamBScore };
-    setScorePulse(true);
-    const timer = window.setTimeout(() => setScorePulse(false), 700);
+    if (aChanged) setPulseA(true);
+    if (bChanged) setPulseB(true);
+    const timer = window.setTimeout(() => {
+      setPulseA(false);
+      setPulseB(false);
+    }, 700);
     return () => window.clearTimeout(timer);
   }, [teamAScore, teamBScore]);
 
@@ -84,6 +94,15 @@ export function WatchScoreboard({
     const timer = window.setTimeout(() => setQuestionPulse(false), 700);
     return () => window.clearTimeout(timer);
   }, [liveQuestion]);
+
+  useEffect(() => {
+    if (previousTurn.current === answeringTeamId) return;
+    previousTurn.current = answeringTeamId;
+    if (!answeringTeamId) return;
+    setTurnPulse(true);
+    const timer = window.setTimeout(() => setTurnPulse(false), 560);
+    return () => window.clearTimeout(timer);
+  }, [answeringTeamId]);
 
   const questionLabel = isToss
     ? "Toss"
@@ -111,9 +130,9 @@ export function WatchScoreboard({
             isAnswering ? "watch-team-active" : ""
           }`}
         >
-          <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallback} logo`} className="h-6 w-6 shrink-0 text-lg sm:h-7 sm:w-7 sm:text-xl" />
+          <TeamAvatar logoUrl={team?.logoUrl} emoticon={team?.emoticon} alt={`${team?.name ?? fallback} logo`} className="h-6 w-6 shrink-0 text-lg sm:h-8 sm:w-8 sm:text-2xl" />
           <div className={`min-w-0 ${align === "right" ? "text-right" : ""}`}>
-            <p className={`truncate text-[10px] font-black uppercase tracking-[0.1em] text-white sm:text-xs ${isWinner ? "text-[#f0d58a]" : ""}`}>
+            <p className={`truncate text-[11px] font-black uppercase tracking-[0.12em] text-white sm:text-sm ${isWinner ? "text-[#f0d58a]" : ""}`}>
               {team?.name ?? fallback}
             </p>
             <p className="mt-0.5 hidden text-[9px] champ-meta sm:block">
@@ -185,17 +204,17 @@ export function WatchScoreboard({
             {side(teamA, "Team A", "left")}
           </div>
 
-          <div className="relative z-[3] shrink-0 text-center">
-            <p className={`champ-scoreline text-2xl font-black tabular-nums text-white sm:text-3xl lg:text-4xl ${scorePulse ? "watch-score-pulse" : ""}`}>
-              {teamAScore}
-              <span className="mx-1.5 align-middle text-base text-white/30 sm:mx-2.5 sm:text-2xl">–</span>
-              {teamBScore}
+          <div className="watch-score-center relative z-[3] shrink-0 text-center">
+            <p className="champ-scoreline text-2xl font-black tabular-nums text-white sm:text-3xl lg:text-[2.65rem] lg:leading-none">
+              <span className={`watch-score-num ${pulseA ? "watch-score-pulse" : ""}`}>{teamAScore}</span>
+              <span className="mx-1.5 align-middle text-base text-white/35 sm:mx-2.5 sm:text-2xl">–</span>
+              <span className={`watch-score-num ${pulseB ? "watch-score-pulse" : ""}`}>{teamBScore}</span>
             </p>
-            <p className={`mt-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-[#f0d58a] sm:text-[10px] ${questionPulse ? "watch-score-pulse" : ""}`}>
+            <p className={`mt-1 text-[9px] font-black uppercase tracking-[0.2em] text-[#f0d58a] sm:text-[11px] ${questionPulse ? "watch-score-pulse" : ""}`}>
               {questionLabel}
             </p>
             {answeringTeamName && status === "live" && (
-              <p className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-[0.16em] text-white/70 sm:text-[9px]">
+              <p className={`mt-0.5 truncate text-[8px] font-bold uppercase tracking-[0.16em] text-white/75 sm:text-[10px] ${turnPulse ? "watch-meta-flash" : ""}`}>
                 {possessive(answeringTeamName)} turn
               </p>
             )}

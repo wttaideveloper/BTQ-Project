@@ -898,24 +898,25 @@ html:has(.watch-canvas) #root {
   width: 100%;
   max-width: none;
   overflow: hidden;
-  padding: 0.5rem 1rem 0.5rem;
-  gap: 0.55rem;
+  padding: 0.4rem 0.9rem 0.35rem;
+  gap: 0.4rem;
 }
 .watch-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
   align-items: center;
-  gap: 1rem;
+  gap: 0.85rem;
   flex: 0 0 auto;
   min-width: 0;
-  padding: 0 0.15rem;
+  padding: 0.15rem 0.2rem 0.45rem;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.18);
 }
 
 /* Video is the primary column; current question sits beside it. */
 .watch-broadcast {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(15rem, 26%);
-  gap: 0.85rem;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 27%);
+  gap: 0.55rem;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -927,20 +928,35 @@ html:has(.watch-canvas) #root {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 0.75rem 0.85rem 0.7rem;
-  border-radius: 0.75rem;
-  background: rgba(17, 11, 46, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(16px);
+  padding: 0.8rem 0.9rem 0.75rem;
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(180deg, rgba(39, 28, 84, 0.55) 0%, rgba(17, 11, 46, 0.88) 42%, rgba(12, 8, 32, 0.92) 100%);
+  border: 1px solid rgba(212, 175, 55, 0.24);
+  box-shadow:
+    0 18px 42px -28px rgba(0, 0, 0, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(18px) saturate(1.12);
+}
+.watch-rail-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--cp-gold-soft);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 }
 .watch-question-rail .champ-divider {
-  margin: 0.55rem 0 0.75rem;
+  margin: 0.5rem 0 0.7rem;
   flex-shrink: 0;
 }
 .watch-question-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   scrollbar-width: thin;
@@ -953,31 +969,124 @@ html:has(.watch-canvas) #root {
   min-height: 100%;
   min-width: 0;
 }
+.watch-question-lead {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+}
+.watch-question-number {
+  margin: 0;
+  text-align: center;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cp-gold-soft);
+}
+.watch-question-copy {
+  margin: 0;
+  text-align: center;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+  text-wrap: pretty;
+}
 .watch-answer-grid {
   display: grid;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  gap: 0.68rem;
+  margin-top: 1rem;
   flex: 1 1 auto;
-  align-content: start;
+  align-content: stretch;
+  grid-auto-rows: minmax(3.15rem, 1fr);
   min-height: 0;
+  max-height: 23.5rem;
+}
+.watch-answer-option {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 3.15rem;
+  max-height: 5.75rem;
+  padding: 0.62rem 0.78rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  cursor: default;
+  transition: border-color 220ms ease, background-color 220ms ease, opacity 220ms ease, box-shadow 220ms ease;
+  animation: watchAnswerIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.watch-answer-option:nth-child(1) { animation-delay: 30ms; }
+.watch-answer-option:nth-child(2) { animation-delay: 75ms; }
+.watch-answer-option:nth-child(3) { animation-delay: 120ms; }
+.watch-answer-option:nth-child(4) { animation-delay: 165ms; }
+.watch-answer-option:nth-child(5) { animation-delay: 210ms; }
+.watch-answer-option:nth-child(6) { animation-delay: 255ms; }
+.watch-answer-option:hover {
+  border-color: rgba(212, 175, 55, 0.32);
+  background: rgba(255, 255, 255, 0.055);
+}
+.watch-answer-option[data-state="dimmed"] {
+  pointer-events: none;
+}
+.watch-answer-option[data-state="dimmed"]:hover {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+.watch-answer-letter {
+  display: grid;
+  height: 1.7rem;
+  width: 1.7rem;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 0.2rem;
+  border: 1px solid rgba(212, 175, 55, 0.38);
+  background: #110b2e;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.88);
+}
+.watch-answer-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.94);
 }
 .watch-question-status {
-  margin-top: auto;
-  padding-top: 0.7rem;
-  flex: 0 0 auto;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: flex-end;
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  min-height: 3.75rem;
+  border-top: 1px solid rgba(212, 175, 55, 0.16);
+}
+.watch-status-card {
+  width: 100%;
+  border-radius: 0.35rem;
+  padding: 0.7rem 0.8rem;
+  text-align: center;
 }
 .watch-floor {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.4rem;
   min-width: 0;
 }
 .watch-scoreboard-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 0.4rem 0.85rem;
+  gap: 0.45rem 1rem;
 }
 .watch-scoreboard-team {
   display: flex;
@@ -991,21 +1100,34 @@ html:has(.watch-canvas) #root {
   display: inline-flex;
   max-width: 100%;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.15rem 0.2rem;
-  border-radius: 0.25rem;
+  gap: 0.5rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: 0.2rem;
+  transition: background-color 240ms ease, box-shadow 240ms ease;
+}
+.watch-score-num {
+  display: inline-block;
+  min-width: 1.15ch;
+}
+.watch-score-center {
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
+  text-align: center;
+  padding: 0 0.15rem;
 }
 .watch-support-bar {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.85rem;
   min-width: 0;
   overflow: hidden;
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.65rem;
-  background: rgba(17, 11, 46, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
+  padding: 0.32rem 0.7rem;
+  border-radius: 0.45rem;
+  background: rgba(17, 11, 46, 0.82);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
 }
 .watch-support-teams {
   display: grid;
@@ -1033,8 +1155,11 @@ html:has(.watch-canvas) #root {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 0.55rem;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  box-shadow:
+    0 22px 48px -30px rgba(0, 0, 0, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   background:
     radial-gradient(80% 70% at 50% 0%, rgba(122, 84, 255, 0.22) 0%, transparent 60%),
     linear-gradient(165deg, #1b1142 0%, #0d0a26 55%, #09061f 100%);
@@ -1075,65 +1200,65 @@ html:has(.watch-canvas) #root {
   right: 0;
   bottom: 0;
   z-index: 12;
-  height: min(42%, 13.5rem);
+  height: min(44%, 14.25rem);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 0 0.7rem 0.65rem;
+  padding: 0 0.75rem 0.7rem;
   pointer-events: none;
   background: linear-gradient(
     to top,
-    rgba(8, 6, 28, 0.78) 0%,
-    rgba(8, 6, 28, 0.38) 42%,
+    rgba(8, 6, 28, 0.86) 0%,
+    rgba(8, 6, 28, 0.48) 46%,
     transparent 100%
   );
+  animation: watchLowerIn 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .watch-bug {
   position: relative;
   z-index: 3;
   width: 100%;
-  max-width: 46rem;
+  max-width: 48rem;
   margin-inline: auto;
-  padding: 0.35rem 0.55rem 0.4rem;
-  border-radius: 0.2rem;
-  background: rgba(8, 6, 28, 0.82);
-  border: 1px solid rgba(240, 213, 138, 0.42);
+  padding: 0.42rem 0.7rem 0.48rem;
+  border-radius: 0.15rem;
+  background: rgba(8, 6, 28, 0.78);
+  border: 1px solid rgba(240, 213, 138, 0.46);
   box-shadow:
-    0 10px 28px -16px rgba(0, 0, 0, 0.9),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(14px) saturate(1.15);
+    0 12px 32px -16px rgba(0, 0, 0, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px) saturate(1.2);
 }
 .watch-stream-error {
   bottom: 5.75rem;
-}
-.watch-score-pulse {
-  animation: watchScorePulse 650ms ease-out;
 }
 
 @media (max-width: 1023px) {
   .watch-broadcast {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(7.5rem, 34%);
+    grid-template-rows: minmax(0, 1fr) minmax(8rem, 36%);
+    gap: 0.45rem;
   }
   .watch-header {
     grid-template-columns: minmax(0, 1fr) auto;
+    padding-bottom: 0.35rem;
   }
   .watch-header h1 {
     grid-column: 1 / -1;
     order: 3;
   }
   .watch-support-bar {
-    padding: 0.4rem 0.65rem;
-    gap: 0.65rem;
+    padding: 0.32rem 0.55rem;
+    gap: 0.55rem;
   }
   .watch-support-teams {
-    gap: 0.65rem;
+    gap: 0.55rem;
   }
   .watch-support-team {
     gap: 0.4rem;
   }
   .watch-lower-third {
-    height: min(48%, 11.5rem);
+    height: min(50%, 11.75rem);
     padding: 0 0.45rem 0.45rem;
   }
   .watch-bug {
@@ -1142,87 +1267,166 @@ html:has(.watch-canvas) #root {
   .watch-stream-error {
     bottom: 4.75rem;
   }
+  .watch-answer-grid {
+    gap: 0.45rem;
+    margin-top: 0.6rem;
+    max-height: none;
+    grid-auto-rows: minmax(2.55rem, auto);
+    flex: 0 1 auto;
+  }
+  .watch-answer-option {
+    min-height: 2.55rem;
+    max-height: none;
+    padding: 0.48rem 0.62rem;
+  }
+  .watch-question-copy {
+    font-size: 0.9rem;
+  }
+  .watch-question-status {
+    flex: 0 0 auto;
+    min-height: 0;
+    justify-content: flex-start;
+    margin-top: 0.6rem;
+    padding-top: 0.55rem;
+  }
 }
 
 @media (max-width: 639px) {
   .watch-live {
-    padding: 0.35rem 0.55rem 0.3rem;
-    gap: 0.4rem;
+    padding: 0.3rem 0.5rem 0.25rem;
+    gap: 0.32rem;
   }
   .watch-lower-third {
-    height: min(52%, 10.5rem);
+    height: min(54%, 10.75rem);
   }
   .watch-scoreboard-row {
-    gap: 0.25rem 0.4rem;
+    gap: 0.2rem 0.35rem;
   }
   .watch-bug {
-    padding: 0.22rem 0.3rem 0.25rem;
+    padding: 0.2rem 0.28rem 0.22rem;
   }
   .watch-question-rail {
-    padding: 0.55rem 0.6rem 0.5rem;
-    border-radius: 0.55rem;
+    padding: 0.5rem 0.55rem 0.45rem;
+    border-radius: 0.4rem;
+  }
+  .watch-question-lead {
+    gap: 0.5rem;
+  }
+  .watch-answer-text {
+    font-size: 0.875rem;
   }
 }
 @media (max-height: 800px) {
   .watch-live {
-    padding: 0.45rem 0.9rem 0.4rem;
-    gap: 0.5rem;
+    padding: 0.35rem 0.75rem 0.3rem;
+    gap: 0.35rem;
   }
   .watch-question-rail {
-    padding: 0.7rem 0.85rem 0.6rem;
+    padding: 0.6rem 0.75rem 0.55rem;
   }
   .watch-question-rail .champ-divider {
-    margin: 0.4rem 0 0.5rem;
+    margin: 0.35rem 0 0.45rem;
+  }
+  .watch-question-lead {
+    gap: 0.5rem;
+  }
+  .watch-question-copy {
+    font-size: 0.9rem;
   }
   .watch-answer-grid {
-    gap: 0.4rem;
-    margin-top: 0.5rem;
+    gap: 0.48rem;
+    margin-top: 0.55rem;
+    max-height: 16.5rem;
+    grid-auto-rows: minmax(2.65rem, 1fr);
+  }
+  .watch-answer-option {
+    min-height: 2.65rem;
+    padding: 0.48rem 0.62rem;
   }
   .watch-question-status {
-    padding-top: 0.45rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    min-height: 2.75rem;
   }
   .watch-floor {
-    gap: 0.4rem;
+    gap: 0.3rem;
   }
   .watch-ticker {
-    padding-block: 0.3rem;
+    padding-block: 0.28rem;
   }
 }
 
 @media (min-width: 1280px) {
   .watch-live {
-    padding: 0.65rem 1.25rem 0.55rem;
-    gap: 0.65rem;
+    padding: 0.5rem 1.1rem 0.4rem;
+    gap: 0.45rem;
   }
   .watch-broadcast {
-    grid-template-columns: minmax(0, 1fr) minmax(17rem, 26%);
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 27%);
+    gap: 0.65rem;
   }
   .watch-scoreboard-row {
-    gap: 0.5rem 1.25rem;
+    gap: 0.5rem 1.35rem;
   }
   .watch-support-bar {
-    padding: 0.5rem 0.9rem;
-    gap: 1.15rem;
+    padding: 0.38rem 0.85rem;
+    gap: 1rem;
   }
   .watch-support-teams {
-    gap: 1.15rem 2rem;
+    gap: 1rem 1.75rem;
   }
   .watch-bug {
-    max-width: 52rem;
-    padding: 0.42rem 0.75rem 0.48rem;
+    max-width: 54rem;
+    padding: 0.48rem 0.85rem 0.55rem;
+  }
+}
+
+@media (min-width: 1280px) and (min-height: 801px) {
+  .watch-question-copy {
+    font-size: 1.05rem;
+  }
+  .watch-answer-text {
+    font-size: 1rem;
+  }
+  .watch-answer-grid {
+    gap: 0.78rem;
+    max-height: 25.5rem;
+  }
+}
+
+@media (min-height: 900px) and (min-width: 1024px) {
+  .watch-question-lead {
+    gap: 0.85rem;
+  }
+  .watch-question-copy {
+    font-size: 1.08rem;
+    line-height: 1.45;
+  }
+  .watch-answer-grid {
+    gap: 0.82rem;
+    margin-top: 1.15rem;
+    max-height: 26.5rem;
+    grid-auto-rows: minmax(3.4rem, 1fr);
+  }
+  .watch-answer-option {
+    min-height: 3.4rem;
+    max-height: 6.15rem;
+    padding: 0.72rem 0.9rem;
+  }
+  .watch-question-status {
+    min-height: 4.5rem;
   }
 }
 
 /* Status ribbon that sits over the stage. */
 .watch-ribbon {
-  background: linear-gradient(90deg, rgba(9, 6, 31, 0.72), rgba(9, 6, 31, 0.28) 55%, transparent);
+  background: linear-gradient(90deg, rgba(9, 6, 31, 0.78), rgba(9, 6, 31, 0.28) 55%, transparent);
 }
 
 /* Bottom broadcast ticker. */
 .watch-ticker {
   flex: 0 0 auto;
-  padding-block: 0.45rem;
+  padding-block: 0.38rem;
   border-top: 1px solid rgba(212, 175, 55, 0.28);
   background: linear-gradient(90deg, #0d0a26 0%, #171238 50%, #0d0a26 100%);
 }
@@ -1242,11 +1446,13 @@ html:has(.watch-canvas) #root {
 .watch-support {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(212, 175, 55, 0.28);
-  transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
+  transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 .watch-support:hover {
-  background: rgba(212, 175, 55, 0.14);
-  border-color: rgba(212, 175, 55, 0.6);
+  background: rgba(212, 175, 55, 0.16);
+  border-color: rgba(212, 175, 55, 0.65);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -14px rgba(212, 175, 55, 0.9);
 }
 .watch-support:active { transform: scale(0.94); }
 
@@ -1256,29 +1462,68 @@ html:has(.watch-canvas) #root {
 }
 .watch-turn-pulse {
   display: inline-block;
-  animation: watchTurnPulse 2.4s ease-in-out infinite;
+  animation: watchTurnPulse 2.8s ease-in-out infinite;
 }
 @keyframes watchTurnPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.75; transform: scale(1.08); }
+  50% { opacity: 0.82; transform: scale(1.05); }
 }
 
 /* The side currently answering, on the scoreboard. */
 .watch-team-active {
-  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.5);
-  background: rgba(212, 175, 55, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.55);
+  background: rgba(212, 175, 55, 0.14);
 }
 
+.watch-live-dot {
+  display: inline-block;
+  height: 0.4rem;
+  width: 0.4rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: watchLiveDot 2.1s ease-in-out infinite;
+}
+@keyframes watchLiveDot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55); }
+  50% { opacity: 0.72; box-shadow: 0 0 0 5px rgba(255, 255, 255, 0); }
+}
+
+.watch-score-pulse {
+  animation: watchScorePulse 650ms ease-out;
+}
+.watch-meta-flash {
+  animation: watchMetaFlash 560ms ease-out;
+}
 @keyframes watchScorePulse {
   0%   { transform: scale(1); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); }
-  35%  { transform: scale(1.06); text-shadow: 0 0 22px rgba(212, 175, 55, 0.55); }
+  32%  { transform: scale(1.08); text-shadow: 0 0 22px rgba(212, 175, 55, 0.62); color: #f0d58a; }
   100% { transform: scale(1); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); }
+}
+@keyframes watchMetaFlash {
+  0%   { opacity: 0.55; filter: brightness(1.35); }
+  100% { opacity: 1; filter: none; }
+}
+@keyframes watchLowerIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes watchAnswerIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .watch-ticker-track { animation: none; }
   .watch-turn-pulse { animation: none; }
   .watch-score-pulse { animation: none; }
+  .watch-meta-flash { animation: none; }
+  .watch-live-dot { animation: none; }
+  .watch-lower-third { animation: none; }
+  .watch-answer-option { animation: none; }
+  .watch-support:hover { transform: none; }
+  .watch-support:active { transform: none; }
 }
 
 /* Hotstar-style audience reactions on the live scoreboard.

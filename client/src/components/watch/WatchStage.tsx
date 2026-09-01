@@ -195,7 +195,7 @@ export function WatchStage({
       {status === "live" && gameplayStarted && (
         <div className="watch-ribbon pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5">
           <span className="flex items-center gap-1.5 rounded-sm border border-[#f0576a]/55 bg-[#f0576a] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-white">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> Live
+            <span className="watch-live-dot bg-white text-white" /> Live
           </span>
         </div>
       )}

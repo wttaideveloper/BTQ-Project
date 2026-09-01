@@ -25,7 +25,7 @@ export function WatchHeader({
       <div className="flex min-w-0 items-center gap-2">
         <FaithIQTreeMark className="h-7 w-7 shrink-0 text-white" />
         <div className="min-w-0 leading-none">
-          <p className="text-xs font-black tracking-[0.16em] text-white sm:text-sm">FAITHIQ LIVE</p>
+          <p className="text-xs font-black tracking-[0.18em] text-white sm:text-sm">FAITHIQ LIVE</p>
           <p className="champ-eyebrow mt-1 truncate">FaithIQ Championship</p>
         </div>
       </div>
@@ -39,7 +39,7 @@ export function WatchHeader({
       </h1>
 
       <span
-        className={`inline-flex shrink-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
           live
             ? "border-[#f0576a]/60 bg-[#f0576a] text-white"
             : status === "completed"
@@ -47,7 +47,7 @@ export function WatchHeader({
               : "border-[#e7c766]/35 bg-[#e7c766]/10 text-[#e7c766]"
         }`}
       >
-        <span className={`h-1.5 w-1.5 rounded-full bg-current ${live ? "animate-pulse" : ""}`} />
+        <span className={`h-1.5 w-1.5 rounded-full bg-current ${live ? "watch-live-dot" : ""}`} />
         {live ? "Live" : status === "completed" ? "Completed" : status === "live" ? "Starting soon" : "Upcoming"}
       </span>
     </header>

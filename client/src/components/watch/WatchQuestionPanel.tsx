@@ -33,6 +33,19 @@ function possessive(name: string): string {
   return /s$/i.test(name) ? `${name}'` : `${name}'s`;
 }
 
+function optionState(
+  resolved: WatchQuestionResult | null,
+  optionId: string,
+): "live" | "selected-correct" | "selected-wrong" | "correct" | "dimmed" {
+  if (!resolved) return "live";
+  const isSelected = resolved.selectedAnswerId === optionId;
+  const isCorrectAnswer = resolved.correctAnswerId === optionId;
+  if (isSelected && resolved.isCorrect) return "selected-correct";
+  if (isSelected) return "selected-wrong";
+  if (isCorrectAnswer) return "correct";
+  return "dimmed";
+}
+
 /**
  * The live question, as a spectator sees it.
  *
@@ -62,20 +75,20 @@ export function WatchQuestionPanel({
   });
 
   return (
-    <div className="watch-question-stack champ-fade-in mx-auto w-full min-w-0 text-left">
-      {question.questionNumber && (
-        <p className="text-center text-[10px] font-black uppercase tracking-[0.22em] text-[#f0d58a]">
-          Question {question.questionNumber}
-          {question.totalQuestions ? ` / ${question.totalQuestions}` : ""}
-        </p>
-      )}
+    <div key={question.questionId} className="watch-question-stack champ-fade-in mx-auto w-full min-w-0 text-left">
+      <div className="watch-question-lead">
+        {question.questionNumber && (
+          <p className="watch-question-number">
+            Question {question.questionNumber}
+            {question.totalQuestions ? ` / ${question.totalQuestions}` : ""}
+          </p>
+        )}
 
-      {/* Whose turn it is — the single most important line for a spectator.
-          Built as one string so the possessive never separates from the name. */}
-      {question.answeringTeamName && (
-        <div className="mt-2 flex justify-center">
+        {/* Whose turn it is — the single most important line for a spectator.
+            Built as one string so the possessive never separates from the name. */}
+        {question.answeringTeamName && (
           <span
-            className={`inline-flex max-w-full items-center gap-2 rounded-sm border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] transition-colors sm:text-xs ${
+            className={`inline-flex max-w-full items-center gap-2 rounded-sm border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition-colors sm:text-xs ${
               resolved
                 ? "border-white/15 bg-white/[0.05] text-white/70"
                 : "watch-turn-live border-[#d4af37]/50 bg-[#d4af37]/12 text-[#f0d58a]"
@@ -92,49 +105,48 @@ export function WatchQuestionPanel({
                 : `${possessive(question.answeringTeamName)} turn`}
             </span>
           </span>
-        </div>
-      )}
+        )}
 
-      {question.questionText && (
-        <p className="mt-3 text-center text-sm font-semibold leading-snug text-white lg:text-[0.95rem]">
-          {question.questionText}
-        </p>
-      )}
+        {question.questionText && (
+          <p className="watch-question-copy">{question.questionText}</p>
+        )}
+      </div>
 
       <div className="watch-answer-grid">
         {question.options.map((option, index) => {
+          const state = optionState(resolved, option.id);
           const isSelected = resolved?.selectedAnswerId === option.id;
           const isCorrectAnswer = !!resolved && resolved.correctAnswerId === option.id;
-          const dimmed = !!resolved && !isSelected && !isCorrectAnswer;
 
           return (
             <div
               key={option.id}
-              className={`flex items-start gap-2.5 rounded-md border px-3 py-2 transition-colors ${
-                isSelected && resolved?.isCorrect
+              data-state={state}
+              className={`watch-answer-option ${
+                state === "selected-correct"
                   ? "border-[#4fd1a5]/60 bg-[#4fd1a5]/12"
-                  : isSelected
+                  : state === "selected-wrong"
                     ? "border-[#c76a7a]/55 bg-[#c76a7a]/12"
-                    : isCorrectAnswer
+                    : state === "correct"
                       ? "border-[#d4af37]/55 bg-[#d4af37]/12"
-                      : dimmed
+                      : state === "dimmed"
                         ? "border-white/[0.06] bg-white/[0.02] opacity-60"
-                        : "border-white/10 bg-white/[0.03]"
+                        : ""
               }`}
             >
               <span
-                className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-sm border text-[10px] font-black ${
+                className={`watch-answer-letter ${
                   isSelected || isCorrectAnswer
                     ? "border-white/25 bg-white/10 text-white"
-                    : "border-[#d4af37]/35 bg-[#110b2e] text-white/80"
+                    : ""
                 }`}
               >
                 {LETTERS[index] ?? index + 1}
               </span>
-              <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-white/90">{option.text}</span>
+              <span className="watch-answer-text">{option.text}</span>
               {isSelected && (
                 <span
-                  className={`mt-0.5 flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] ${
+                  className={`flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] ${
                     resolved?.isCorrect ? "text-[#7ee2be]" : "text-[#e2a3ad]"
                   }`}
                 >
@@ -143,7 +155,7 @@ export function WatchQuestionPanel({
                 </span>
               )}
               {!isSelected && isCorrectAnswer && (
-                <span className="mt-0.5 flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#f0d58a]">
+                <span className="flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#f0d58a]">
                   <Check className="h-3.5 w-3.5" strokeWidth={3} />
                   Correct
                 </span>
@@ -157,8 +169,8 @@ export function WatchQuestionPanel({
         <div className="watch-question-status space-y-2">
           <div
             key={`${resolved.questionId}-result`}
-            className={`champ-fade-in rounded-md border px-3 py-2 text-center ${
-              resolved.isCorrect ? "border-[#4fd1a5]/45 bg-[#4fd1a5]/10" : "border-[#c76a7a]/40 bg-[#c76a7a]/10"
+            className={`watch-status-card champ-fade-in ${
+              resolved.isCorrect ? "border border-[#4fd1a5]/45 bg-[#4fd1a5]/10" : "border border-[#c76a7a]/40 bg-[#c76a7a]/10"
             }`}
           >
             <p
@@ -176,9 +188,11 @@ export function WatchQuestionPanel({
           {waitingForCommentator && <ChampionshipCommentatorWait tone="board" />}
         </div>
       ) : (
-        <p className="watch-question-status text-center text-[11px] font-bold uppercase tracking-[0.16em] text-[#f0d58a]">
-          {question.answeringTeamName ? `${question.answeringTeamName} is answering…` : "Waiting for the answer…"}
-        </p>
+        <div className="watch-question-status">
+          <p className="watch-status-card border border-[#d4af37]/30 bg-[#d4af37]/10 text-center text-[11px] font-bold uppercase tracking-[0.16em] text-[#f0d58a] sm:text-xs">
+            {question.answeringTeamName ? `${question.answeringTeamName} is answering…` : "Waiting for the answer…"}
+          </p>
+        </div>
       )}
     </div>
   );

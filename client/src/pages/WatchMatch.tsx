@@ -491,7 +491,10 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
           />
 
           <aside className="watch-question-rail min-w-0" aria-label="Current question">
-            <p className="champ-eyebrow shrink-0">Live question</p>
+            <p className="watch-rail-heading shrink-0">
+              {status === "live" && <span className="watch-live-dot text-[#f0576a]" aria-hidden="true" />}
+              Live question
+            </p>
             <div className="champ-divider shrink-0" />
             <div className="watch-question-body min-h-0 min-w-0">
               {status === "live" ? liveQuestionBody : status === "completed" ? (

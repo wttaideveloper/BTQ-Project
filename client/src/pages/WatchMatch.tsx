@@ -455,11 +455,8 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
             teamBEmoticon={data.teamB?.emoticon}
             teamALogoUrl={data.teamA?.logoUrl}
             teamBLogoUrl={data.teamB?.logoUrl}
-            teamAScore={data.match.teamAScore}
-            teamBScore={data.match.teamBScore}
             winnerName={winnerName}
             isDraw={isDraw}
-            liveQuestion={liveQuestion}
             scheduledLabel={scheduledLabel}
             media={media}
             overlays={
@@ -468,16 +465,33 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
                   <WatchSoundControl kind={watchSoundKind(sound)} onToggle={toggleWatchSound} />
                 )}
                 {streamError && (
-                  <div className="absolute inset-x-3 bottom-3 rounded-xl border border-red-400/30 bg-red-950/90 p-3 text-center text-sm text-red-100 sm:inset-x-4 sm:bottom-4">
+                  <div className="watch-stream-error absolute inset-x-3 z-20 rounded-lg border border-red-400/30 bg-red-950/90 p-3 text-center text-sm text-red-100 sm:inset-x-4">
                     {streamError}
                   </div>
                 )}
               </>
             }
+            lowerThird={
+              <WatchScoreboard
+                status={status}
+                teamA={data.teamA}
+                teamB={data.teamB}
+                teamAScore={data.match.teamAScore}
+                teamBScore={data.match.teamBScore}
+                supporters={counts}
+                winnerTeamId={data.match.winnerTeamId}
+                liveQuestion={liveQuestion}
+                totalQuestions={liveQuestionDetail?.totalQuestions}
+                answeringTeamId={questionResult ? undefined : liveQuestionDetail?.answeringTeamId}
+                answeringTeamName={questionResult ? undefined : liveQuestionDetail?.answeringTeamName}
+                isToss={!!toss && !tossResult}
+                particles={reactions}
+              />
+            }
           />
 
           <aside className="watch-question-rail min-w-0" aria-label="Current question">
-            <p className="champ-eyebrow shrink-0">Current question</p>
+            <p className="champ-eyebrow shrink-0">Live question</p>
             <div className="champ-divider shrink-0" />
             <div className="watch-question-body min-h-0 min-w-0">
               {status === "live" ? liveQuestionBody : status === "completed" ? (
@@ -493,23 +507,10 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
           </aside>
         </div>
 
-        <div className="watch-floor">
-          <WatchScoreboard
-            status={status}
-            teamA={data.teamA}
-            teamB={data.teamB}
-            teamAScore={data.match.teamAScore}
-            teamBScore={data.match.teamBScore}
-            supporters={counts}
-            winnerTeamId={data.match.winnerTeamId}
-            liveQuestion={liveQuestion}
-            answeringTeamId={questionResult ? undefined : liveQuestionDetail?.answeringTeamId}
-            particles={reactions}
-          />
-
-          {/* Audience support. Live only - the server accepts reactions for a
-              live match only, so the controls follow the same rule. */}
-          {status === "live" && (
+        {status === "live" && (
+          <div className="watch-floor">
+            {/* Audience support. Live only - the server accepts reactions for a
+                live match only, so the controls follow the same rule. */}
             <WatchSupport
               teamA={data.teamA}
               teamB={data.teamB}
@@ -517,8 +518,8 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               cooldown={reactionCooldown}
               onSupport={support}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <WatchTicker items={tickerItems} />

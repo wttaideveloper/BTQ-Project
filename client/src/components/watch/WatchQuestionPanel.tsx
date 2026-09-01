@@ -1,5 +1,7 @@
 import { Check, X } from "lucide-react";
 import { TeamAvatar } from "@/components/championship/TeamAvatar";
+import { ChampionshipCommentatorWait } from "@/components/championship/game/ChampionshipCommentatorWait";
+import { championshipShouldWaitAfterResults } from "@/lib/championship-commentator-wait";
 
 export interface WatchQuestionOption {
   id: string;
@@ -53,11 +55,16 @@ export function WatchQuestionPanel({
   teamLogoUrl?: string | null;
 }) {
   const resolved = result?.questionId === question.questionId ? result : null;
+  const waitingForCommentator = !!resolved && championshipShouldWaitAfterResults({
+    isChampionship: true,
+    questionNumber: question.questionNumber,
+    totalQuestions: question.totalQuestions,
+  });
 
   return (
     <div className="watch-question-stack champ-fade-in mx-auto w-full min-w-0 text-left">
       {question.questionNumber && (
-        <p className="text-center text-[10px] font-black uppercase tracking-[0.22em] text-white/35">
+        <p className="text-center text-[10px] font-black uppercase tracking-[0.22em] text-[#f0d58a]">
           Question {question.questionNumber}
           {question.totalQuestions ? ` / ${question.totalQuestions}` : ""}
         </p>
@@ -68,7 +75,7 @@ export function WatchQuestionPanel({
       {question.answeringTeamName && (
         <div className="mt-2 flex justify-center">
           <span
-            className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.16em] transition-colors sm:text-sm ${
+            className={`inline-flex max-w-full items-center gap-2 rounded-sm border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] transition-colors sm:text-xs ${
               resolved
                 ? "border-white/15 bg-white/[0.05] text-white/70"
                 : "watch-turn-live border-[#d4af37]/50 bg-[#d4af37]/12 text-[#f0d58a]"
@@ -89,7 +96,7 @@ export function WatchQuestionPanel({
       )}
 
       {question.questionText && (
-        <p className="mt-3 text-center text-sm font-bold leading-snug text-white lg:text-base">
+        <p className="mt-3 text-center text-sm font-semibold leading-snug text-white lg:text-[0.95rem]">
           {question.questionText}
         </p>
       )}
@@ -103,7 +110,7 @@ export function WatchQuestionPanel({
           return (
             <div
               key={option.id}
-              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
+              className={`flex items-start gap-2.5 rounded-md border px-3 py-2 transition-colors ${
                 isSelected && resolved?.isCorrect
                   ? "border-[#4fd1a5]/60 bg-[#4fd1a5]/12"
                   : isSelected
@@ -112,19 +119,19 @@ export function WatchQuestionPanel({
                       ? "border-[#d4af37]/55 bg-[#d4af37]/12"
                       : dimmed
                         ? "border-white/[0.06] bg-white/[0.02] opacity-60"
-                        : "border-white/12 bg-white/[0.04]"
+                        : "border-white/10 bg-white/[0.03]"
               }`}
             >
               <span
-                className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[11px] font-black ${
+                className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-sm border text-[10px] font-black ${
                   isSelected || isCorrectAnswer
                     ? "border-white/25 bg-white/10 text-white"
-                    : "border-[#d4af37]/35 bg-[#1a0d3d] text-white/80"
+                    : "border-[#d4af37]/35 bg-[#110b2e] text-white/80"
                 }`}
               >
                 {LETTERS[index] ?? index + 1}
               </span>
-              <span className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug text-white/90">{option.text}</span>
+              <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-white/90">{option.text}</span>
               {isSelected && (
                 <span
                   className={`mt-0.5 flex shrink-0 items-center gap-1 text-[9px] font-black uppercase tracking-[0.14em] ${
@@ -147,26 +154,29 @@ export function WatchQuestionPanel({
       </div>
 
       {resolved ? (
-        <div
-          key={`${resolved.questionId}-result`}
-          className={`watch-question-status champ-fade-in rounded-xl border px-4 py-2.5 text-center ${
-            resolved.isCorrect ? "border-[#4fd1a5]/45 bg-[#4fd1a5]/10" : "border-[#c76a7a]/40 bg-[#c76a7a]/10"
-          }`}
-        >
-          <p
-            className={`flex items-center justify-center gap-2 text-sm font-black uppercase tracking-[0.18em] ${
-              resolved.isCorrect ? "text-[#7ee2be]" : "text-[#e2a3ad]"
+        <div className="watch-question-status space-y-2">
+          <div
+            key={`${resolved.questionId}-result`}
+            className={`champ-fade-in rounded-md border px-3 py-2 text-center ${
+              resolved.isCorrect ? "border-[#4fd1a5]/45 bg-[#4fd1a5]/10" : "border-[#c76a7a]/40 bg-[#c76a7a]/10"
             }`}
           >
-            {resolved.isCorrect ? <Check className="h-4 w-4" strokeWidth={3} /> : <X className="h-4 w-4" strokeWidth={3} />}
-            {resolved.isCorrect ? "Correct" : "Incorrect"}
-          </p>
-          <p className="mt-0.5 text-lg font-black text-white tabular-nums">
-            +{resolved.pointsAwarded} <span className="text-xs font-bold text-white/45">points</span>
-          </p>
+            <p
+              className={`flex items-center justify-center gap-2 text-xs font-black uppercase tracking-[0.18em] ${
+                resolved.isCorrect ? "text-[#7ee2be]" : "text-[#e2a3ad]"
+              }`}
+            >
+              {resolved.isCorrect ? <Check className="h-4 w-4" strokeWidth={3} /> : <X className="h-4 w-4" strokeWidth={3} />}
+              {resolved.isCorrect ? "Correct" : "Incorrect"}
+            </p>
+            <p className="mt-0.5 text-base font-black text-white tabular-nums">
+              +{resolved.pointsAwarded} <span className="text-[11px] font-bold text-white/45">points</span>
+            </p>
+          </div>
+          {waitingForCommentator && <ChampionshipCommentatorWait tone="board" />}
         </div>
       ) : (
-        <p className="watch-question-status text-center text-xs champ-meta">
+        <p className="watch-question-status text-center text-[11px] font-bold uppercase tracking-[0.16em] text-[#f0d58a]">
           {question.answeringTeamName ? `${question.answeringTeamName} is answering…` : "Waiting for the answer…"}
         </p>
       )}

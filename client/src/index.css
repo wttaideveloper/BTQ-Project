@@ -866,8 +866,8 @@ button span, .answer-button span {
    /my-championship and the match screen; only the stage frame and the ticker
    are specific to it.
 
-   This is a fixed 16:9 broadcast canvas: header, video + question, scoreboard,
-   support, ticker. The page itself does not scroll.
+   This is a fixed 16:9 broadcast canvas: header, video (with in-video
+   scoreboard) + question rail, support, ticker. The page itself does not scroll.
    ========================================================================== */
 /* Page must never scroll: lock the document while this canvas is mounted. */
 html:has(.watch-canvas),
@@ -877,6 +877,7 @@ html:has(.watch-canvas) #root {
   max-height: 100vh;
   max-height: 100dvh;
   overflow: hidden;
+  overflow-x: hidden;
 }
 .watch-canvas {
   display: flex;
@@ -897,8 +898,8 @@ html:has(.watch-canvas) #root {
   width: 100%;
   max-width: none;
   overflow: hidden;
-  padding: 0.65rem 1.1rem 0.65rem;
-  gap: 0.75rem;
+  padding: 0.5rem 1rem 0.5rem;
+  gap: 0.55rem;
 }
 .watch-header {
   display: grid;
@@ -907,14 +908,14 @@ html:has(.watch-canvas) #root {
   gap: 1rem;
   flex: 0 0 auto;
   min-width: 0;
-  padding: 0.1rem 0.15rem 0.15rem;
+  padding: 0 0.15rem;
 }
 
 /* Video is the primary column; current question sits beside it. */
 .watch-broadcast {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 32%);
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 26%);
+  gap: 0.85rem;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -926,10 +927,11 @@ html:has(.watch-canvas) #root {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 0.9rem 1rem 0.85rem;
-  border-radius: 1rem;
-  background: linear-gradient(160deg, rgba(58, 28, 116, 0.92) 0%, rgba(32, 16, 68, 0.94) 100%);
-  border: 1px solid rgba(216, 178, 95, 0.38);
+  padding: 0.75rem 0.85rem 0.7rem;
+  border-radius: 0.75rem;
+  background: rgba(17, 11, 46, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
 }
 .watch-question-rail .champ-divider {
   margin: 0.55rem 0 0.75rem;
@@ -975,7 +977,7 @@ html:has(.watch-canvas) #root {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 0.75rem 1.5rem;
+  gap: 0.4rem 0.85rem;
 }
 .watch-scoreboard-team {
   display: flex;
@@ -989,9 +991,9 @@ html:has(.watch-canvas) #root {
   display: inline-flex;
   max-width: 100%;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.4rem 0.6rem;
-  border-radius: 0.75rem;
+  gap: 0.45rem;
+  padding: 0.15rem 0.2rem;
+  border-radius: 0.25rem;
 }
 .watch-support-bar {
   display: flex;
@@ -999,10 +1001,11 @@ html:has(.watch-canvas) #root {
   gap: 1rem;
   min-width: 0;
   overflow: hidden;
-  padding: 0.5rem 0.85rem;
-  border-radius: 0.85rem;
-  background: linear-gradient(160deg, rgba(58, 28, 116, 0.92) 0%, rgba(32, 16, 68, 0.94) 100%);
-  border: 1px solid rgba(216, 178, 95, 0.38);
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.65rem;
+  background: rgba(17, 11, 46, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
 }
 .watch-support-teams {
   display: grid;
@@ -1030,12 +1033,11 @@ html:has(.watch-canvas) #root {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  border-radius: 1.25rem;
-  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(212, 175, 55, 0.28);
   background:
-    radial-gradient(80% 70% at 50% 0%, rgba(122, 84, 255, 0.28) 0%, transparent 60%),
+    radial-gradient(80% 70% at 50% 0%, rgba(122, 84, 255, 0.22) 0%, transparent 60%),
     linear-gradient(165deg, #1b1142 0%, #0d0a26 55%, #09061f 100%);
-  box-shadow: 0 30px 80px -50px rgba(0, 0, 0, 1), inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
 }
 
 /*
@@ -1062,6 +1064,48 @@ html:has(.watch-canvas) #root {
   height: 100%;
   object-fit: contain;
 }
+
+/*
+ * Broadcast lower-third: sits INSIDE the video frame, anchored to the bottom.
+ * Not part of the HLS stream. Gradient veil keeps type readable over footage.
+ */
+.watch-lower-third {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 12;
+  height: min(42%, 13.5rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 0.7rem 0.65rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(8, 6, 28, 0.78) 0%,
+    rgba(8, 6, 28, 0.38) 42%,
+    transparent 100%
+  );
+}
+.watch-bug {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
+  padding: 0.35rem 0.55rem 0.4rem;
+  border-radius: 0.2rem;
+  background: rgba(8, 6, 28, 0.82);
+  border: 1px solid rgba(240, 213, 138, 0.42);
+  box-shadow:
+    0 10px 28px -16px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px) saturate(1.15);
+}
+.watch-stream-error {
+  bottom: 5.75rem;
+}
 .watch-score-pulse {
   animation: watchScorePulse 650ms ease-out;
 }
@@ -1069,7 +1113,7 @@ html:has(.watch-canvas) #root {
 @media (max-width: 1023px) {
   .watch-broadcast {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(8rem, 38%);
+    grid-template-rows: minmax(0, 1fr) minmax(7.5rem, 34%);
   }
   .watch-header {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -1088,9 +1132,37 @@ html:has(.watch-canvas) #root {
   .watch-support-team {
     gap: 0.4rem;
   }
+  .watch-lower-third {
+    height: min(48%, 11.5rem);
+    padding: 0 0.45rem 0.45rem;
+  }
+  .watch-bug {
+    padding: 0.28rem 0.4rem 0.32rem;
+  }
+  .watch-stream-error {
+    bottom: 4.75rem;
+  }
 }
 
-/* Short viewports: keep chrome compact so the page still does not scroll. */
+@media (max-width: 639px) {
+  .watch-live {
+    padding: 0.35rem 0.55rem 0.3rem;
+    gap: 0.4rem;
+  }
+  .watch-lower-third {
+    height: min(52%, 10.5rem);
+  }
+  .watch-scoreboard-row {
+    gap: 0.25rem 0.4rem;
+  }
+  .watch-bug {
+    padding: 0.22rem 0.3rem 0.25rem;
+  }
+  .watch-question-rail {
+    padding: 0.55rem 0.6rem 0.5rem;
+    border-radius: 0.55rem;
+  }
+}
 @media (max-height: 800px) {
   .watch-live {
     padding: 0.45rem 0.9rem 0.4rem;
@@ -1119,28 +1191,32 @@ html:has(.watch-canvas) #root {
 
 @media (min-width: 1280px) {
   .watch-live {
-    padding: 0.8rem 1.4rem 0.7rem;
-    gap: 0.85rem;
+    padding: 0.65rem 1.25rem 0.55rem;
+    gap: 0.65rem;
   }
   .watch-broadcast {
-    grid-template-columns: minmax(0, 1fr) minmax(20rem, 32%);
-    gap: 1.15rem;
+    grid-template-columns: minmax(0, 1fr) minmax(17rem, 26%);
+    gap: 1rem;
   }
   .watch-scoreboard-row {
-    gap: 0.85rem 2rem;
+    gap: 0.5rem 1.25rem;
   }
   .watch-support-bar {
-    padding: 0.55rem 1rem;
+    padding: 0.5rem 0.9rem;
     gap: 1.15rem;
   }
   .watch-support-teams {
     gap: 1.15rem 2rem;
   }
+  .watch-bug {
+    max-width: 52rem;
+    padding: 0.42rem 0.75rem 0.48rem;
+  }
 }
 
 /* Status ribbon that sits over the stage. */
 .watch-ribbon {
-  background: linear-gradient(90deg, rgba(9, 6, 31, 0.92), rgba(9, 6, 31, 0.55) 70%, transparent);
+  background: linear-gradient(90deg, rgba(9, 6, 31, 0.72), rgba(9, 6, 31, 0.28) 55%, transparent);
 }
 
 /* Bottom broadcast ticker. */
@@ -1189,8 +1265,8 @@ html:has(.watch-canvas) #root {
 
 /* The side currently answering, on the scoreboard. */
 .watch-team-active {
-  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.45), 0 0 18px -10px rgba(212, 175, 55, 0.7);
-  background: rgba(212, 175, 55, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.5);
+  background: rgba(212, 175, 55, 0.12);
 }
 
 @keyframes watchScorePulse {

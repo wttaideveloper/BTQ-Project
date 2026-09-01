@@ -39,9 +39,9 @@ export function WatchHeader({
       </h1>
 
       <span
-        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${
           live
-            ? "border-[#f0576a]/50 bg-[#f0576a]/15 text-[#ff9aa6]"
+            ? "border-[#f0576a]/60 bg-[#f0576a] text-white"
             : status === "completed"
               ? "border-white/15 bg-white/[0.05] text-white/65"
               : "border-[#e7c766]/35 bg-[#e7c766]/10 text-[#e7c766]"

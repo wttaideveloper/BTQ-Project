@@ -15,8 +15,9 @@ import { TeamAvatar } from "@/components/championship/TeamAvatar";
  * rectangle. Everything shown comes from the match payload the page already
  * has; nothing is computed here, including the winner.
  *
- * The live question lives in its own section below this stage so viewers can
- * watch the stream and follow the game at the same time.
+ * The live question sits beside the stage. Match scores live in a lower-third
+ * overlay inside this frame (passed as `lowerThird`) so they sit on the video
+ * the way a televised broadcast bug does.
  */
 export function WatchStage({
   status,
@@ -28,14 +29,12 @@ export function WatchStage({
   teamBEmoticon,
   teamALogoUrl,
   teamBLogoUrl,
-  teamAScore,
-  teamBScore,
   winnerName,
   isDraw,
-  liveQuestion,
   scheduledLabel,
   media,
   overlays,
+  lowerThird,
 }: {
   status: string;
   /** Has play actually begun? A fixture is "live" before any captain starts it. */
@@ -48,22 +47,21 @@ export function WatchStage({
   teamBEmoticon?: string;
   teamALogoUrl?: string | null;
   teamBLogoUrl?: string | null;
-  teamAScore: number;
-  teamBScore: number;
   /** From match.winnerTeamId, resolved by the page. Null for a draw or an unfinished match. */
   winnerName?: string | null;
   isDraw: boolean;
-  liveQuestion: number | null;
   scheduledLabel?: string | null;
   /** The page's <video> element, when a stream is playing. */
   media?: ReactNode;
-  /** Stream error notice, positioned over the stage. */
+  /** Stream error notice and sound control, positioned over the stage. */
   overlays?: ReactNode;
+  /** Compact in-video scoreboard. Overlay only — not baked into the HLS stream. */
+  lowerThird?: ReactNode;
 }) {
   // THE ONE PLACE THE VISUAL STAGE IS DECIDED.
   //
   //   waiting  - fixture open, captains have not started play yet
-  //   live     - play running (question lives in the section below)
+  //   live     - play running (scores are the in-video lower-third)
   //   completed / upcoming - unchanged
   //
   // `status` alone cannot make this call: it reads "live" from the moment an
@@ -123,16 +121,12 @@ export function WatchStage({
             </h2>
 
             {status !== "upcoming" && (
-              <div className="mt-5 flex items-center justify-center gap-3 sm:gap-6">
+              <div className="mt-5 flex items-center justify-center gap-3 sm:gap-5">
                 <span className="flex min-w-0 flex-1 items-center justify-end gap-2">
                   <TeamAvatar logoUrl={teamALogoUrl} emoticon={teamAEmoticon} alt={`${teamAName ?? "Team A"} logo`} className="h-6 w-6 shrink-0 text-xl" />
                   <span className="truncate text-sm font-bold text-white/85 sm:text-base">{teamAName ?? "Team A"}</span>
                 </span>
-                <span className="champ-scoreline shrink-0 text-3xl font-black text-white sm:text-4xl">
-                  {teamAScore}
-                  <span className="mx-2 align-middle text-lg text-white/25">:</span>
-                  {teamBScore}
-                </span>
+                <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.22em] text-white/30">vs</span>
                 <span className="flex min-w-0 flex-1 items-center gap-2">
                   <TeamAvatar logoUrl={teamBLogoUrl} emoticon={teamBEmoticon} alt={`${teamBName ?? "Team B"} logo`} className="h-6 w-6 shrink-0 text-xl" />
                   <span className="truncate text-sm font-bold text-white/85 sm:text-base">{teamBName ?? "Team B"}</span>
@@ -188,12 +182,6 @@ export function WatchStage({
               </div>
             )}
 
-            {status === "live" && gameplayStarted && (
-              <p className="mt-5 text-xs champ-meta">
-                {liveQuestion ? `Question ${liveQuestion} in play` : "Waiting for the next question…"}
-              </p>
-            )}
-
             {status === "upcoming" && (
               <p className="mt-4 text-xs champ-meta">
                 {scheduledLabel ? `Scheduled for ${scheduledLabel}` : "A kick-off time has not been announced yet."}
@@ -203,21 +191,17 @@ export function WatchStage({
         </div>
       )}
 
-      {/* Live ribbon over the top edge of the stage. */}
+      {/* LIVE bug over the top-left of the stage. Question/score live in the lower-third. */}
       {status === "live" && gameplayStarted && (
-        <div className="watch-ribbon pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 px-4 py-2.5">
-          <span className="flex items-center gap-1.5 rounded-full border border-[#f0576a]/50 bg-[#f0576a]/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ff9aa6]">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> Live
+        <div className="watch-ribbon pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5">
+          <span className="flex items-center gap-1.5 rounded-sm border border-[#f0576a]/55 bg-[#f0576a] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> Live
           </span>
-          {liveQuestion && (
-            <span className="rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/70">
-              Question {liveQuestion}
-            </span>
-          )}
         </div>
       )}
 
       {overlays}
+      {lowerThird}
     </section>
   );
 }

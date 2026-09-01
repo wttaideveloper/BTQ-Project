@@ -50,7 +50,7 @@ import BrandLogo from "@/components/BrandLogo";
 import { ChampionshipGameHeader } from "@/components/championship/game/ChampionshipGameHeader";
 import { ChampionshipScoreboard } from "@/components/championship/game/ChampionshipScoreboard";
 import { ChampionshipResult, ChampionshipStatusPanel } from "@/components/championship/game/ChampionshipResult";
-import { ChampionshipPreMatch, type CaptainReadiness } from "@/components/championship/game/ChampionshipPreMatch";
+import { ChampionshipPreMatch } from "@/components/championship/game/ChampionshipPreMatch";
 import { ChampionshipLiveVideo } from "@/components/championship/game/ChampionshipLiveVideo";
 
 interface TeamMember {
@@ -72,6 +72,7 @@ interface Team {
    * an older cached state may not carry it.
    */
   teamBattleId?: string;
+  teamSide?: "A" | "B";
   captainId: number;
   gameSessionId: string;
   members: TeamMember[];
@@ -147,6 +148,16 @@ function championshipMatchIdFromState(state: GameState): string | null {
   return battleId ? battleId.slice(CHAMPIONSHIP_BATTLE_PREFIX.length) : null;
 }
 
+function championshipTeamsBySide(state: GameState): { teamA?: Team; teamB?: Team } {
+  const listed = (state.teams ?? []).filter((team): team is Team => !!team);
+  const fallback = [state.playerTeam, state.opposingTeam].filter((team): team is Team => !!team);
+  const pool = listed.length >= 2 ? listed : [...listed, ...fallback.filter((team) => !listed.some((row) => row.id === team.id))];
+  return {
+    teamA: pool.find((team) => team.teamSide === "A") ?? pool[0],
+    teamB: pool.find((team) => team.teamSide === "B") ?? pool.find((team) => team.id !== pool[0]?.id),
+  };
+}
+
 export default function TeamBattleGame() {
   const [_, setLocation] = useLocation();
   const { user } = useAuth();
@@ -201,10 +212,15 @@ export default function TeamBattleGame() {
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() =>
     isVoiceEnabled()
   );
-  // Championship pre-match lobby. Readiness is server-sent (captains_ready);
-  // this screen never decides who has arrived or who may start.
-  const [captainReadiness, setCaptainReadiness] = useState<CaptainReadiness | null>(null);
-  const [startingMatch, setStartingMatch] = useState(false);
+  // Championship pre-match: DB ready timestamps + live roster presence.
+  // Arrival (`captains_ready`) is never treated as READY.
+  const [championshipReady, setChampionshipReady] = useState<{
+    teamAReady: boolean;
+    teamBReady: boolean;
+  }>({ teamAReady: false, teamBReady: false });
+  const [championshipPresentUserIds, setChampionshipPresentUserIds] = useState<number[] | null>(null);
+  const [championshipCountdown, setChampionshipCountdown] = useState<number | null>(null);
+  const [championshipReadyPending, setChampionshipReadyPending] = useState(false);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [showConnectExit, setShowConnectExit] = useState(false);
   const [showRefreshLoader, setShowRefreshLoader] = useState(false);
@@ -628,6 +644,8 @@ export default function TeamBattleGame() {
               opposingTeam: newOpposingTeam || prev.opposingTeam,
               gameType: isRapid ? "rapid_fire" : "regular"
             }));
+            setChampionshipCountdown(null);
+            setChampionshipReadyPending(false);
 
             // Directly trigger rapid rules if applicable - redundant safety against effect timing
             if (isRapid) {
@@ -1146,19 +1164,32 @@ export default function TeamBattleGame() {
             break;
 
           case "captains_ready":
-            // Arrival state for the Championship lobby. Starts nothing.
-            setCaptainReadiness({
-              teamACaptainReady: !!data.teamACaptainReady,
-              teamBCaptainReady: !!data.teamBCaptainReady,
-              bothCaptainsReady: !!data.bothCaptainsReady,
-              canStart: !!data.canStart,
-            });
+            // Presence only. READY comes from team_ready_status / DB timestamps.
+            if (Array.isArray(data.presentUserIds)) {
+              setChampionshipPresentUserIds(
+                data.presentUserIds.filter((id: unknown) => typeof id === "number"),
+              );
+            }
             break;
 
+          case "team_ready_status":
+          case "ready_status_response":
+            setChampionshipReady({
+              teamAReady: !!data.teamAReady,
+              teamBReady: !!data.teamBReady,
+            });
+            setChampionshipReadyPending(false);
+            break;
+
+          case "team_battle_countdown": {
+            const seconds = typeof data.seconds === "number" ? data.seconds : 5;
+            setChampionshipCountdown(seconds);
+            setChampionshipReadyPending(false);
+            break;
+          }
+
           case "error":
-            // A rejected start (opponent captain absent, not a captain) must
-            // leave the lobby exactly as it was.
-            setStartingMatch(false);
+            setChampionshipReadyPending(false);
             toast({
               title: "Error",
               description: data.message,
@@ -1264,20 +1295,61 @@ export default function TeamBattleGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.phase, gameState.playerTeam, gameSessionId]);
 
-  // Announce arrival to the Championship lobby (and re-announce after a
-  // refresh). Reuses the captains_ready event; the server ignores it for any
-  // battle that is not a championship fixture.
+  // Announce presence to the Championship lobby (and re-announce after a
+  // refresh). Reuses captains_ready for presence only; READY is a separate event.
   useEffect(() => {
     if (!isChampionshipMatch || !gameSessionId) return;
     if (gameState.currentQuestion || gameState.phase === "finished") return;
     sendGameEvent({ type: "captains_ready", gameSessionId });
   }, [isChampionshipMatch, gameSessionId, gameState.phase]);
 
-  const startChampionshipMatch = () => {
-    if (!gameSessionId || startingMatch) return;
-    setStartingMatch(true);
-    // The EXISTING start event. The server re-checks attendance and captaincy.
-    sendGameEvent({ type: "start_team_battle", gameSessionId });
+  useEffect(() => {
+    if (!isChampionshipMatch || !gameSessionId) return;
+    const teamBattleId = gameState.playerTeam?.teamBattleId;
+    if (!teamBattleId) return;
+    sendGameEvent({
+      type: "get_ready_state",
+      teamBattleId,
+      gameSessionId,
+    });
+  }, [isChampionshipMatch, gameSessionId, gameState.playerTeam?.teamBattleId]);
+
+  useEffect(() => {
+    if (championshipCountdown === null || championshipCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setChampionshipCountdown((prev) => {
+        if (prev === null || prev <= 1) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [championshipCountdown]);
+
+  const markChampionshipReady = () => {
+    const userTeam = gameState.playerTeam;
+    if (!userTeam?.teamBattleId || !userTeam.teamSide || !user?.id || championshipReadyPending) return;
+    setChampionshipReadyPending(true);
+    sendGameEvent({
+      type: "team_battle_ready",
+      gameSessionId: gameSessionId ?? undefined,
+      teamBattleId: userTeam.teamBattleId,
+      teamSide: userTeam.teamSide,
+      userId: user.id,
+    });
+  };
+
+  const cancelChampionshipReady = () => {
+    const userTeam = gameState.playerTeam;
+    if (!userTeam?.teamBattleId || !userTeam.teamSide || !user?.id || championshipReadyPending) return;
+    if (championshipCountdown != null && championshipCountdown > 0) return;
+    setChampionshipReadyPending(true);
+    sendGameEvent({
+      type: "team_battle_unready",
+      gameSessionId: gameSessionId ?? undefined,
+      teamBattleId: userTeam.teamBattleId,
+      teamSide: userTeam.teamSide,
+      userId: user.id,
+    });
   };
 
   const isSoloTeam = () => {
@@ -2541,7 +2613,7 @@ export default function TeamBattleGame() {
         )}
 
         {/* Team Scores Header - Show during game (normal or rapid fire) - even during preparing/loading phase */}
-        {((gameState.phase === "question") || (gameState.phase === "playing") || (gameState.phase === "toss")) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && isChampionshipMatch && (
+        {((gameState.phase === "question") || (gameState.phase === "toss") || (gameState.phase === "playing" && !!gameState.currentQuestion)) && !isTossOverlayActive && gameState.playerTeam && gameState.opposingTeam && isChampionshipMatch && (
           <div className="mb-2">
             <ChampionshipScoreboard
               playerTeam={gameState.playerTeam}
@@ -2628,18 +2700,23 @@ export default function TeamBattleGame() {
       {/* Preparing the match. Championship fixtures are always regular team
           battles, so the rapid-fire rules card below never applies to them. */}
       {gameState.phase === "playing" && !currentRapidQuestion && !gameState.currentQuestion && isChampionshipMatch && (
-        startingMatch && captainReadiness?.bothCaptainsReady ? (
+        championshipReady.teamAReady && championshipReady.teamBReady && championshipCountdown === 0 ? (
           <ChampionshipStatusPanel
             title="Preparing the match"
             description="Setting up the board and loading the first question…"
           />
         ) : (
           <ChampionshipPreMatch
-            readiness={captainReadiness}
-            teamAName={gameState.playerTeam?.name}
-            teamBName={gameState.opposingTeam?.name}
-            starting={startingMatch}
-            onStart={startChampionshipMatch}
+            teamA={championshipTeamsBySide(gameState).teamA}
+            teamB={championshipTeamsBySide(gameState).teamB}
+            teamAReady={championshipReady.teamAReady}
+            teamBReady={championshipReady.teamBReady}
+            presentUserIds={championshipPresentUserIds}
+            countdown={championshipCountdown}
+            currentUserId={user?.id}
+            readyPending={championshipReadyPending}
+            onReady={markChampionshipReady}
+            onUnready={cancelChampionshipReady}
           />
         )
       )}

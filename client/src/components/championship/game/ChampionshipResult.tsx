@@ -122,7 +122,7 @@ export function ChampionshipStatusPanel({
   children?: ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-xl px-3 py-4 sm:px-4">
+    <div className="mx-auto w-full max-w-2xl px-3 py-4 sm:px-4">
       <section className="champ-panel champ-enter overflow-hidden rounded-2xl sm:rounded-3xl">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <FaithIQLockup compact />
@@ -138,7 +138,7 @@ export function ChampionshipStatusPanel({
           </div>
           <h2 className="mt-4 text-xl font-bold text-[#1b2559] sm:text-2xl">{title}</h2>
           <p className="mt-2 text-sm text-[#1b2559]/65">{description}</p>
-          {children && <div className="mt-6 flex justify-center">{children}</div>}
+          {children && <div className="mt-6 flex w-full justify-center">{children}</div>}
         </div>
       </section>
     </div>

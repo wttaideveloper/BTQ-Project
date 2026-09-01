@@ -31,6 +31,8 @@ export interface GameEvent {
   /** Preset audience reaction id, resolved server-side against its whitelist. */
   reactionId?: string;
   teamSide?: "A" | "B";
+  /** Championship lobby: roster user ids bound to this session. */
+  presentUserIds?: number[];
   teamName?: string;
   matchId?: string;
   emoticon?: string;

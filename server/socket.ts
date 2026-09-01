@@ -34,6 +34,7 @@ import {
   shouldEmitMatchStartPopupEvent,
   shouldReplayChampionshipMatchStart,
 } from "./championship-match-notifications";
+import { championshipDbReadyAllowsStart } from "./championship-prematch";
 import {
   CommentaryRegistry,
   getActiveCommentaryRegistry,
@@ -254,11 +255,13 @@ interface GameEvent {
   gameplayStarted?: boolean;
   /** Preset audience reaction id, resolved server-side against AUDIENCE_REACTIONS. */
   reactionId?: string;
-  /** Spectator lifecycle: which side's captain has arrived. */
+  /** Spectator lifecycle: which side's captain has arrived (not DB ready). */
   teamACaptainReady?: boolean;
   teamBCaptainReady?: boolean;
   bothCaptainsReady?: boolean;
-  /** Server-decided: may this recipient press Start Match? */
+  /** Championship lobby: roster members whose sockets are bound to this session. */
+  presentUserIds?: number[];
+  /** Server-decided: may this recipient press Start Match? Unused after DB-ready auto-start. */
   canStart?: boolean;
   captains?: { teamACaptainReady: boolean; teamBCaptainReady: boolean } | null;
   waitingForAdvance?: boolean;
@@ -660,17 +663,52 @@ async function broadcastChampionshipQuestion(
   });
 }
 
+function championshipRosterUserIds(battle: {
+  teamACaptainId?: number | null;
+  teamBCaptainId?: number | null;
+  teamATeammates?: unknown;
+  teamBTeammates?: unknown;
+}): number[] {
+  const ids = new Set<number>();
+  if (typeof battle.teamACaptainId === "number") ids.add(battle.teamACaptainId);
+  if (typeof battle.teamBCaptainId === "number") ids.add(battle.teamBCaptainId);
+  for (const id of extractTeammateIds(battle.teamATeammates as any[] | undefined)) ids.add(id);
+  for (const id of extractTeammateIds(battle.teamBTeammates as any[] | undefined)) ids.add(id);
+  return [...ids];
+}
+
+/** Sockets bound to this session whose user is on the championship roster. */
+function liveSessionPresentUserIds(gameSessionId: string, rosterIds: number[]): number[] {
+  const roster = new Set(rosterIds);
+  const present = new Set<number>();
+  for (const sessionClient of clients.values()) {
+    if (sessionClient.ws.readyState !== WebSocket.OPEN) continue;
+    if (sessionClient.gameSessionId !== gameSessionId) continue;
+    if (typeof sessionClient.userId === "number" && roster.has(sessionClient.userId)) {
+      present.add(sessionClient.userId);
+    }
+  }
+  return [...present];
+}
+
 /**
- * Captain readiness, for /watch spectators.
+ * Captain arrival for /watch spectators, plus lobby `presentUserIds`.
  *
- * Two booleans about the fixture: has each side's captain turned up. Nothing
- * about who they are, what they see, or the session behind them.
+ * `teamACaptainReady` / `teamBCaptainReady` mean the captain has opened the
+ * game (sticky arrival). They are NOT Team Battle READY
+ * (`team_a_ready_at` / `team_b_ready_at`).
  */
 async function broadcastChampionshipCaptains(
   gameSessionId: string,
   teamACaptainReady: boolean,
   teamBCaptainReady: boolean,
-  battle?: { teamACaptainId?: number | null; teamBCaptainId?: number | null },
+  battle?: {
+    teamACaptainId?: number | null;
+    teamBCaptainId?: number | null;
+    teamATeammates?: unknown;
+    teamBTeammates?: unknown;
+  },
+  presentUserIds: number[] = [],
 ) {
   const [match] = await database.db
     .select()
@@ -687,24 +725,42 @@ async function broadcastChampionshipCaptains(
     bothCaptainsReady: teamACaptainReady && teamBCaptainReady,
   };
 
-  // Spectators (watch_match subscribers).
+  // Spectators (watch_match subscribers) — arrival only.
   broadcastChampionshipEvent(payload);
 
-  // The two captains, addressed by user id because a captain waiting in the
-  // pre-game screen has no gameId yet. Same event, same two booleans - it is
-  // what drives their READY / START MATCH state without a poll or a refresh.
-  for (const captainId of [battle?.teamACaptainId, battle?.teamBCaptainId]) {
-    if (typeof captainId === "number") sendToUser(captainId, payload as GameEvent);
+  const rosterPayload = { ...payload, presentUserIds };
+  const recipients = battle ? championshipRosterUserIds(battle) : [];
+  for (const userId of recipients) {
+    sendToUser(userId, rosterPayload as GameEvent);
   }
 }
 
+async function broadcastChampionshipLobbyPresence(battle: {
+  id: string;
+  gameSessionId: string;
+  teamACaptainId?: number | null;
+  teamBCaptainId?: number | null;
+  teamATeammates?: unknown;
+  teamBTeammates?: unknown;
+}): Promise<void> {
+  const rosterIds = championshipRosterUserIds(battle);
+  const presentUserIds = liveSessionPresentUserIds(battle.gameSessionId, rosterIds);
+  const arrived = championshipCaptainArrivals.get(battle.id) ?? new Set<number>();
+  const teamACaptainReady = !!battle.teamACaptainId && arrived.has(battle.teamACaptainId);
+  const teamBCaptainReady = !!battle.teamBCaptainId && arrived.has(battle.teamBCaptainId);
+  await broadcastChampionshipCaptains(
+    battle.gameSessionId,
+    teamACaptainReady,
+    teamBCaptainReady,
+    battle,
+    presentUserIds,
+  );
+}
+
 /**
- * A championship captain has arrived at (or returned to) the pre-game screen.
- *
- * Arrival only - it starts nothing. Recording presence here is what lets the
- * second captain's arrival mark the match READY instead of starting it, and
- * what restores the ready state after a refresh. The authority to actually
- * begin play stays entirely with handleStartTeamBattle and its guard.
+ * A championship roster member has opened (or returned to) the pre-game screen.
+ * Arrival is presence only — it does not mark the team READY. READY is
+ * team_battle_ready → team_a_ready_at / team_b_ready_at.
  */
 async function handleChampionshipCaptainPresence(clientId: string, event: GameEvent) {
   const client = clients.get(clientId);
@@ -714,6 +770,11 @@ async function handleChampionshipCaptainPresence(clientId: string, event: GameEv
   const battle = battles.find((b) => isChampionshipBattle(b.id));
   if (!battle) return;
 
+  const rosterIds = championshipRosterUserIds(battle);
+  if (!rosterIds.includes(client.userId)) return;
+
+  client.gameSessionId = event.gameSessionId;
+
   const isCaptain = battle.teamACaptainId === client.userId || battle.teamBCaptainId === client.userId;
   const arrived = championshipCaptainArrivals.get(battle.id) ?? new Set<number>();
   if (isCaptain) {
@@ -721,15 +782,18 @@ async function handleChampionshipCaptainPresence(clientId: string, event: GameEv
     championshipCaptainArrivals.set(battle.id, arrived);
   }
 
+  const presentUserIds = liveSessionPresentUserIds(event.gameSessionId, rosterIds);
   const teamACaptainReady = !!battle.teamACaptainId && arrived.has(battle.teamACaptainId);
   const teamBCaptainReady = !!battle.teamBCaptainId && arrived.has(battle.teamBCaptainId);
 
-  await broadcastChampionshipCaptains(event.gameSessionId, teamACaptainReady, teamBCaptainReady, battle);
+  await broadcastChampionshipCaptains(
+    event.gameSessionId,
+    teamACaptainReady,
+    teamBCaptainReady,
+    battle,
+    presentUserIds,
+  );
 
-  // Answer the asker directly as well, so a team member sees the same readiness
-  // as their captain. `canStart` is decided here, on the server, from the
-  // battle's captain ids - the UI only reflects it, and handleStartTeamBattle
-  // re-checks it regardless.
   sendToClient(clientId, {
     type: "captains_ready",
     matchId: undefined,
@@ -737,8 +801,23 @@ async function handleChampionshipCaptainPresence(clientId: string, event: GameEv
     teamACaptainReady,
     teamBCaptainReady,
     bothCaptainsReady: teamACaptainReady && teamBCaptainReady,
-    canStart: isCaptain,
+    presentUserIds,
+    canStart: false,
   } as GameEvent);
+
+  try {
+    const readyState = await database.getTeamReadyState(battle.id);
+    sendToClient(clientId, {
+      type: "team_ready_status",
+      teamBattleId: battle.id,
+      gameSessionId: battle.gameSessionId,
+      teamAReady: readyState.teamAReady,
+      teamBReady: readyState.teamBReady,
+      updatedAt: readyState.updatedAt,
+    });
+  } catch {
+    // Presence still stands if the ready read fails.
+  }
 }
 
 /**
@@ -2150,6 +2229,7 @@ export function setupWebSocketServer(server: Server) {
                   if (isChampionshipBattle(battle.id)) {
                     // No roster mutation, no battle deletion, no cancellation
                     // notice - the match is still scheduled and still playable.
+                    void broadcastChampionshipLobbyPresence(battle);
                   }
                   // Check if the disconnected user is a captain
                   else if (battle.teamACaptainId === disconnectUserId) {
@@ -7002,30 +7082,18 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       return;
     }
 
-    // BOTH CAPTAINS MUST BE PRESENT before a Championship fixture may start.
+    // Championship kickoff authority is DB Team Battle READY, not arrival.
     //
-    // Enforced here, on the server, rather than in the UI: the roster checks
-    // below cannot see who has actually turned up, because the admin's
-    // POST /api/championship-matches/:id/start writes both captains and both
-    // rosters when it opens the fixture. Scoped to championship battles by
-    // battle id, so normal Team Battle and Rapid Fire keep their existing
-    // start rules untouched.
+    // Auto-start calls this handler from handleTeamBattleReady after both
+    // team_a_ready_at and team_b_ready_at exist. The old in-memory arrival
+    // map must not block that path (one captain's socket starts the battle).
+    // Scoped to championship battles so normal Team Battle is unchanged.
     if (isChampionshipBattle(battle.id)) {
-      const arrived = championshipCaptainArrivals.get(battle.id) ?? new Set<number>();
-      arrived.add(client.userId);
-      championshipCaptainArrivals.set(battle.id, arrived);
-
-      const teamACaptainHere = !!battle.teamACaptainId && arrived.has(battle.teamACaptainId);
-      const teamBCaptainHere = !!battle.teamBCaptainId && arrived.has(battle.teamBCaptainId);
-
-      // Tell spectators who is here. Two booleans about the fixture - no
-      // player, session or answer data.
-      void broadcastChampionshipCaptains(event.gameSessionId, teamACaptainHere, teamBCaptainHere, battle);
-
-      if (!teamACaptainHere || !teamBCaptainHere) {
+      const readyState = await database.getTeamReadyState(battle.id);
+      if (!championshipDbReadyAllowsStart(readyState)) {
         sendToClient(clientId, {
           type: "error",
-          message: "Waiting for both team captains to join before starting the match.",
+          message: "Both captains must mark ready before the match can start.",
         });
         return;
       }
@@ -9841,6 +9909,10 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
       return;
     }
 
+    // Bind the socket to this session even before an in-memory battle exists
+    // (Championship pre-match). Live presence is derived from this binding.
+    client.gameSessionId = event.gameSessionId;
+
     const opposingTeam = sessionTeams.find((team) => team.id !== userTeam.id);
 
     // Send basic team state back to the client (do not change gameId yet)
@@ -9857,6 +9929,26 @@ async function handleGetGameState(clientId: string, event: GameEvent) {
       gameSessionId: userTeam.gameSessionId,
       teams: sessionTeams,
     });
+
+    const championshipBattle = (
+      await database.getTeamBattlesByGameSession(event.gameSessionId)
+    ).find((b) => isChampionshipBattle(b.id));
+    if (championshipBattle) {
+      try {
+        const readyState = await database.getTeamReadyState(championshipBattle.id);
+        sendToClient(clientId, {
+          type: "team_ready_status",
+          teamBattleId: championshipBattle.id,
+          gameSessionId: championshipBattle.gameSessionId,
+          teamAReady: readyState.teamAReady,
+          teamBReady: readyState.teamBReady,
+          updatedAt: readyState.updatedAt,
+        });
+      } catch {
+        // Teams still restored if ready read fails.
+      }
+      void broadcastChampionshipLobbyPresence(championshipBattle);
+    }
 
     // For team battles, find the active battle session that includes these teams
     const battleSession = Array.from(gameSessions.values()).find(

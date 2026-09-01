@@ -39,7 +39,7 @@ export function ChampionshipCommentatorWait({
             onBoard ? "text-[#f0d08a]/85" : "text-[#1b2559]/70"
           }`}
         >
-          Your answer has been recorded. The commentator will start the next question.
+         The commentator will start the next question shortly.
         </p>
       </div>
     </div>

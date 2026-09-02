@@ -180,7 +180,7 @@ export function useTeamBattleSetup(gameSessionId?: string, gameType?: string) {
     const offJoinRequestCreated = onEvent("join_request_created", () => debouncedRefetch());
     const offJoinRequestUpdated = onEvent("join_request_updated", () => debouncedRefetch());
 
-    // ✅ NEW: Listen for Team Battle availability updates
+    // Listen for Team Battle availability updates
     const offAvailabilityUpdated = onEvent("team_battle_availability_updated", () => {
       refetchOnlineUsers();
     });

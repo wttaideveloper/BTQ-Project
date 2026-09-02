@@ -663,8 +663,6 @@ const Game: React.FC = () => {
       });
     }
 
-    // Log game configuration for debugging
-
     // Initialize voice service and get voice status
     const initializeVoice = async () => {
       try {

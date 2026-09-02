@@ -118,7 +118,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
   app.use("/uploads", express.static(uploadsPath));
 
-  // TEMP: log whether 'current_team_battle_mode' column exists on startup
   (async () => {
     try {
       const conn = postgres(process.env.DATABASE_URL || "");
@@ -127,8 +126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         WHERE table_name = 'users' AND column_name = 'current_team_battle_mode'
         LIMIT 1
       `;
-      if (Array.isArray(exists) && exists.length > 0) {
-      } else {
+      if (!Array.isArray(exists) || exists.length === 0) {
         console.warn("[Startup Check] Column 'current_team_battle_mode' DOES NOT exist on users table");
       }
       await conn.end();
@@ -2271,7 +2269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ✅ NEW: Get Team Battle available users
+  // Get Team Battle available users
   app.get("/api/users/team-battle-available", ensureAuthenticated, async (req, res) => {
     try {
   
@@ -2301,7 +2299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ✅ NEW: Set user Team Battle status
+  // Set user Team Battle status
   app.patch("/api/users/:id/team-battle-status", ensureAuthenticated, async (req, res) => {
     try {
       const userId = parseInt(req.params.id);
@@ -2341,7 +2339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ✅ NEW: Get pending team invitations for user
+  // Get pending team invitations for user
   app.get("/api/users/:id/pending-team-invitations", ensureAuthenticated, async (req, res) => {
     try {
       const userId = parseInt(req.params.id);

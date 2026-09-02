@@ -58,9 +58,7 @@ const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
           normalizePlayerAvgTime(sortedPlayers[1])
       ) < 0.5
     );
-  
-  // Debug logging
-  
+
   // Play victory sounds for game over - Game Show style!
   useEffect(() => {
     if (isGameOver && hasWinner) {

@@ -192,7 +192,7 @@ export interface IDatabase {
   getOnlineUsers(): Promise<User[]>;
   setUserOnline(userId: number, isOnline: boolean): Promise<User>;
 
-  // ✅ NEW: Team Battle availability methods
+  // Team Battle availability methods
   getTeamBattleAvailableUsers(): Promise<User[]>;
   setUserTeamBattleStatus(userId: number, isInTeamBattle: boolean): Promise<User>;
 
@@ -2344,27 +2344,17 @@ class PostgreSQLDatabase implements IDatabase {
     return updated;
   }
 
-  // ✅ NEW: Team Battle availability methods
-  // ✅ Team Battle availability
+  // Team Battle availability
   async getTeamBattleAvailableUsers(requestedGameType?: string): Promise<User[]> {
     const { getOnlineUserIds } = await import("./socket");
 
-    // 1️⃣ Get real-time online users
     const onlineUserIds = getOnlineUserIds().map(id => Number(id));
-    // 🔍 DEBUG: Check DB values before filtering
-    const debugUsers = await sql`
-  SELECT id, is_in_team_battle, current_team_battle_mode
-  FROM users
-  WHERE id = ANY(${onlineUserIds})
-`;
-
-
 
     if (!onlineUserIds || onlineUserIds.length === 0) {
       return [];
     }
 
-    // 2️⃣ Exclusion logic ONLY for normal team_battle
+    // Exclusion logic ONLY for normal team_battle
     let excludedIds: number[] = [];
 
     if (requestedGameType === "team_battle") {
@@ -2886,10 +2876,6 @@ class PostgreSQLDatabase implements IDatabase {
       currentBattle.teamAName !== undefined
     ) {
       safeUpdates.teamAName = currentBattle.teamAName;
-    }
-
-    // ✅ Log the update for debugging
-    if (updates.teamBName || updates.teamBCaptainId) {
     }
 
     await db.update(teamBattles).set(safeUpdates).where(eq(teamBattles.id, id));
@@ -3859,7 +3845,7 @@ class PostgreSQLDatabase implements IDatabase {
         );
       }
 
-      // ✅ NEW: Add is_in_team_battle column to users table
+      // Add is_in_team_battle column to users table
       try {
         console.log("Running migration: Adding is_in_team_battle column to users...");
         await db.execute(`

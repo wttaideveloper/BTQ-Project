@@ -18,7 +18,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
@@ -193,46 +192,6 @@ const TeamBattleSetup: React.FC<{ isRapidFire?: boolean }> = ({ isRapidFire = fa
 
     generateNewSessionId();
   }, [generateNewSessionId]);
-
-  // WebSocket connection for real-time updates (commented out for now)
-  // useEffect(() => {
-  //   if (user && gameSessionId) {
-  //     console.log('Connecting WebSocket for team battle setup');
-  //     const socket = connectSocket();
-  //
-  //     const handleTeamUpdated = (data: any) => {
-  //       console.log('Team updated via WebSocket:', data);
-  //       // Refetch teams when team is updated
-  //       refetchTeams();
-  //     };
-
-  //     const handleTeamCreated = (data: any) => {
-  //       console.log('Team created via WebSocket:', data);
-  //       // Refetch teams when new team is created
-  //       refetchTeams();
-  //     };
-
-  //     const handleInvitationAccepted = (data: any) => {
-  //       console.log('Invitation accepted via WebSocket:', data);
-  //       // Refetch invitations and teams
-  //       refetchInvitations();
-  //       refetchTeams();
-  //     };
-
-  //     // Listen for team-related events
-  //     socket.on('team_updated', handleTeamUpdated);
-  //     socket.on('team_created', handleTeamCreated);
-  //     socket.on('invitation_accepted', handleInvitationAccepted);
-
-  //     return () => {
-  //       console.log('Disconnecting WebSocket for team battle setup');
-  //       socket.off('team_updated', handleTeamUpdated);
-  //       socket.off('team_created', handleTeamCreated);
-  //       socket.off('invitation_accepted', handleInvitationAccepted);
-  //       disconnectSocket();
-  //     };
-  //   }
-  // }, [user, gameSessionId, refetchTeams, refetchInvitations]);
 
   // Set user as online when component mounts
   useEffect(() => {

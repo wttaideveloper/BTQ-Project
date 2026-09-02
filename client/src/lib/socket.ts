@@ -178,10 +178,7 @@ export function setupGameSocket(userId?: number): WebSocket {
   socket.addEventListener('message', (event) => {
     try {
       const data = JSON.parse(event.data);
-      
-      // Log all messages for debugging
-      
-      // CRITICAL FIX #7: Ensure event listeners are properly registered
+
       // Auto-register event type if it doesn't exist (prevents missing events)
       if (!eventListeners[data.type]) {
         eventListeners[data.type] = [];

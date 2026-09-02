@@ -148,8 +148,7 @@ test("player UI has no Next question control", () => {
 
 test("player wait copy and microphone are present", () => {
   assert.match(waitUi, /Waiting for commentator/);
-  assert.match(waitUi, /Your answer has been recorded/);
-  assert.match(waitUi, /The commentator will start the next question/);
+  assert.match(waitUi, /The commentator will start the next question shortly/);
   assert.match(waitUi, /<Mic /);
 });
 

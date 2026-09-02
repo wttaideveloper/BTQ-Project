@@ -578,7 +578,6 @@ export default function TeamBattleGame() {
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        // Debug: log incoming messages for game page handlers
 
         switch (data.type) {
           case "connection_established":

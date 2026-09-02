@@ -137,8 +137,8 @@ wisdomLocal/
 ├── shared/
 │   └── schema.ts              # Drizzle tables, Zod schemas, TypeScript types
 ├── migrations/                # SQL migration files
-├── scripts/                   # One-off migration/debug scripts
-├── attached_assets/             # Original project spec documents
+├── scripts/                   # Migration and seed scripts
+├── attached_assets/           # Runtime image assets (e.g. HP HOLMES.jpg)
 ├── .cursor/rules/             # Cursor AI rules (e.g. toss phase isolation)
 ├── drizzle.config.ts
 ├── vite.config.ts
@@ -649,15 +649,14 @@ NODE_ENV=development
 
 - `migrate-team-battles-game-type.ts`
 - `migrate-add-current-team-battle-mode.ts`
-- `debug-users.ts`
+- `seed-default-commentator.ts`
 - `add-current-team-battle-mode.sql`
 
 ### Root Maintenance Scripts
 
 - `cleanup-old-battles.js` — Remove stale battles
 - `reset-team-battle-status.cjs` — Reset user team battle flags
-- `run-migration.cjs` — Generic migration runner
-- `test-team-join-fix.js` — Team join test script
+- `run-migration.cjs` / `production-migration.cjs` — Team battle availability column migration helpers
 
 ---
 
@@ -701,22 +700,10 @@ See `.cursor/rules/toss-guidelines.mdc` — enforced rule for AI assistants work
 
 ## 18. Related Documentation
 
-The repository contains extensive fix/design docs from team battle development:
-
 | File | Topic |
 |------|-------|
-| `TEAM_BATTLE_FLOW_DIAGRAMS.md` | Team battle flow diagrams (before/after fixes) |
-| `TEAM_BATTLE_FIX_SUMMARY.md` | Summary of team battle fixes |
-| `TEAM_BATTLE_READY_FIX.md` | Ready-state fix details |
-| `TEAM_BATTLE_MODULE_ANALYSIS.md` | Module analysis |
-| `TEAMBATTLE_DESIGN_IMPROVEMENTS.md` | Design improvement notes |
-| `TESTING_GUIDE.md` | Testing procedures |
-| `DEBUG_CHECKLIST.md` | Debug checklist |
-| `MANUAL_DB_FIX.md` | Manual database fixes |
-| `MIGRATION_SUCCESS.md` | Migration notes |
-| `DESIGN_CHANGES_SUMMARY.md` | Design change log |
-| `BATTLE_START_FIX.md` | Battle start fix |
-| `FINAL_FIX_COMPLETE.md` / `COMPLETE_FIX_FINAL.md` | Fix completion notes |
+| `README.md` | Project summary and getting started |
+| `USER_FLOW.md` | Plain-English walkthrough of how players use the app |
 
 ---
 

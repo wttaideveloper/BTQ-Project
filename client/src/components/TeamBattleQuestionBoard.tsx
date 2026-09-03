@@ -47,10 +47,10 @@ interface TeamBattleQuestionBoardProps {
   isToss?: boolean;
   /**
    * Presentation skin. "championship" swaps ONLY the markup for the FaithIQ
-   * Championship look; every hook above it - timer, voice narration, sounds,
-   * suggestion handling and the answer click semantics - stays in this
-   * component, so a Championship match and a Team Battle run identical logic.
-   * Omitted everywhere else, so Team Battle and Rapid Fire are unchanged.
+   * Championship look; timer, sounds, suggestion handling and answer click
+   * semantics stay in this component. Cloned/TTS question voice is suppressed
+   * for championship so live HLS and commentator audio are the only broadcast
+   * audio. Omitted everywhere else, so Team Battle and Rapid Fire are unchanged.
    */
   variant?: "default" | "championship";
   waitingForCommentator?: boolean;
@@ -121,6 +121,17 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
 
   // Voice narration effect - similar to GameBoard
   useEffect(() => {
+    // Championship: live HLS + commentator WebRTC are the audio source.
+    // Cancel any pending cloned/TTS request and never start a new one.
+    // variant === "championship" is the existing detection passed from
+    // TeamBattleGame's isChampionshipTeamBattle() (`championship-` battle id).
+    if (variant === "championship") {
+      voiceService.stopAllAudio(false);
+      hasReadQuestionRef.current = true;
+      questionSessionIdRef.current = null;
+      return;
+    }
+
     if (isReadOnly || isPaused) return; // Don't read if it's not our turn or paused
 
     // Generate unique session ID for this question
@@ -192,7 +203,7 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
       };
     } else if (isVoiceEnabled() && hasReadQuestionRef.current) {
     }
-  }, [question.id, question.text, currentQuestionIndex, isPaused, isReadOnly]);
+  }, [question.id, question.text, currentQuestionIndex, isPaused, isReadOnly, variant]);
 
   // Timer effect.
   //
@@ -349,9 +360,9 @@ const TeamBattleQuestionBoard: React.FC<TeamBattleQuestionBoardProps> = ({
     return suggestions[answerId] || [];
   };
 
-  // Championship skin. Everything above this line - the timer, the voice
-  // session, the countdown sounds and handleClick - has already run and is
-  // handed over as values, so the two skins can never diverge in behaviour.
+  // Championship skin. Everything above this line - the timer, countdown
+  // sounds and handleClick - has already run and is handed over as values.
+  // Cloned/TTS question voice is skipped for this skin.
   if (variant === "championship") {
     return (
       <ChampionshipQuestionBoard

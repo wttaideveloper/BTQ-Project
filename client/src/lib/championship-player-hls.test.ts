@@ -54,6 +54,11 @@ test("player HLS reuses Watch Live attach helper and stream URL", () => {
   assert.match(watchMatch, /attachChampionshipHls/);
   assert.match(helper, /new Hls\(/);
   assert.match(helper, /liveSyncDurationCount:\s*2/);
+  assert.match(helper, /maxBufferLength:\s*10/);
+  const mseIdx = helper.indexOf("if (Hls.isSupported())");
+  const nativeIdx = helper.indexOf("video.canPlayType(");
+  assert.ok(mseIdx > 0 && nativeIdx > mseIdx, "hls.js MSE path must run before native HLS fallback");
+  assert.match(helper, /status === 403 \|\| status === 404/);
 });
 
 test("player HLS does not subscribe as a spectator or mix commentator audio", () => {

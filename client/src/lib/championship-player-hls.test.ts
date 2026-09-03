@@ -5,6 +5,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  championshipHlsHttpFailureMessage,
+  HLS_EXTERNAL_HTTP_FAILURE,
+  HLS_EXTERNAL_NOT_FOUND,
+  HLS_GENERIC_PLAYBACK_FAILURE,
+  isNonRetryableHlsHttpStatus,
+} from "./championship-hls.ts";
 
 let passed = 0;
 let failed = 0;
@@ -55,10 +62,14 @@ test("player HLS reuses Watch Live attach helper and stream URL", () => {
   assert.match(helper, /new Hls\(/);
   assert.match(helper, /liveSyncDurationCount:\s*2/);
   assert.match(helper, /maxBufferLength:\s*10/);
+  assert.match(helper, /enableWorker:\s*false/);
   const mseIdx = helper.indexOf("if (Hls.isSupported())");
   const nativeIdx = helper.indexOf("video.canPlayType(");
   assert.ok(mseIdx > 0 && nativeIdx > mseIdx, "hls.js MSE path must run before native HLS fallback");
-  assert.match(helper, /status === 403 \|\| status === 404/);
+  assert.match(helper, /isNonRetryableHlsHttpStatus\(status\)/);
+  assert.match(helper, /hls\.stopLoad\(\)/);
+  assert.match(watchMatch, /streamError && \(/);
+  assert.match(liveVideo, /streamError && \(/);
 });
 
 test("player HLS does not subscribe as a spectator or mix commentator audio", () => {
@@ -68,6 +79,21 @@ test("player HLS does not subscribe as a spectator or mix commentator audio", ()
   assert.match(liveVideo, /Live video unavailable/);
   assert.match(commentary, /commentary_listen/);
   assert.doesNotMatch(teamBattleGame, /PlayerCommentaryReceiver/);
+});
+
+test("fatal HLS HTTP/CORS failures do not retry and surface Live video unavailable", () => {
+  assert.equal(isNonRetryableHlsHttpStatus(0), true);
+  assert.equal(isNonRetryableHlsHttpStatus(403), true);
+  assert.equal(isNonRetryableHlsHttpStatus(404), true);
+  assert.equal(isNonRetryableHlsHttpStatus(500), false);
+  assert.equal(isNonRetryableHlsHttpStatus(undefined), false);
+  assert.equal(championshipHlsHttpFailureMessage(403), HLS_EXTERNAL_HTTP_FAILURE);
+  assert.equal(championshipHlsHttpFailureMessage(0), HLS_EXTERNAL_HTTP_FAILURE);
+  assert.equal(championshipHlsHttpFailureMessage(404), HLS_EXTERNAL_NOT_FOUND);
+  assert.match(HLS_EXTERNAL_HTTP_FAILURE, /Live video unavailable/);
+  assert.match(HLS_EXTERNAL_HTTP_FAILURE, /HTTP 403 \/ CORS/);
+  assert.match(HLS_GENERIC_PLAYBACK_FAILURE, /Live video unavailable/);
+  assert.notEqual(HLS_EXTERNAL_HTTP_FAILURE, HLS_GENERIC_PLAYBACK_FAILURE);
 });
 
 test("Watch Live layout is not replaced by the compact player component", () => {

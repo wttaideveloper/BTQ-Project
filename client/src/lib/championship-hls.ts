@@ -13,6 +13,28 @@ export const CHAMPIONSHIP_HLS_CONFIG = {
   enableWorker: false,
 } as const;
 
+export const HLS_EXTERNAL_HTTP_FAILURE =
+  "Live video unavailable. The external HLS stream blocked this site (HTTP 403 / CORS).";
+
+export const HLS_EXTERNAL_NOT_FOUND =
+  "Live video unavailable. The external HLS stream was not found (HTTP 404).";
+
+export const HLS_GENERIC_PLAYBACK_FAILURE =
+  "Live video unavailable. Playback failed after the stream was requested.";
+
+export const HLS_UNSUPPORTED_BROWSER =
+  "HLS playback is not supported by this browser.";
+
+/** CORS-blocked CDNs often surface as HTTP 0 instead of a readable 403. */
+export function isNonRetryableHlsHttpStatus(status: number | undefined): boolean {
+  return status === 0 || status === 403 || status === 404;
+}
+
+export function championshipHlsHttpFailureMessage(status: number | undefined): string {
+  if (status === 404) return HLS_EXTERNAL_NOT_FOUND;
+  return HLS_EXTERNAL_HTTP_FAILURE;
+}
+
 export function attachChampionshipHls(
   video: HTMLVideoElement,
   url: string,
@@ -43,10 +65,11 @@ export function attachChampionshipHls(
       if (!details.fatal) return;
       if (details.type === Hls.ErrorTypes.NETWORK_ERROR) {
         const status = details.response?.code;
-        // 403/404 will never recover via startLoad(); retrying left a black
-        // frame and no onFatalError. Other network errors still retry.
-        if (status === 403 || status === 404) {
-          handlers.onFatalError?.("The live stream is temporarily unavailable.");
+        // 403/404 never recover via startLoad(). CORS-blocked CDNs often
+        // report code 0, which previously retried forever on a black frame.
+        if (isNonRetryableHlsHttpStatus(status)) {
+          hls.stopLoad();
+          handlers.onFatalError?.(championshipHlsHttpFailureMessage(status));
           return;
         }
         hls.startLoad();
@@ -56,20 +79,25 @@ export function attachChampionshipHls(
         hls.recoverMediaError();
         return;
       }
-      handlers.onFatalError?.("The live stream is temporarily unavailable.");
+      handlers.onFatalError?.(HLS_GENERIC_PLAYBACK_FAILURE);
     });
     return () => hls.destroy();
   }
 
   if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    const onNativeError = () => {
+      handlers.onFatalError?.(HLS_EXTERNAL_HTTP_FAILURE);
+    };
+    video.addEventListener("error", onNativeError);
     video.src = url;
     play();
     return () => {
+      video.removeEventListener("error", onNativeError);
       video.removeAttribute("src");
       video.load();
     };
   }
 
-  handlers.onFatalError?.("HLS playback is not supported by this browser.");
+  handlers.onFatalError?.(HLS_UNSUPPORTED_BROWSER);
   return () => undefined;
 }

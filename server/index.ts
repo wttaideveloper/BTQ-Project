@@ -157,7 +157,10 @@ app.use((req, res, next) => {
   startChampionshipLifecycle();
   startChampionshipAutoStart();
 
-  server.listen(port, "localhost", () => {
+  // Every interface unless HOST says otherwise. "localhost" resolves to the
+  // IPv6 loopback on Node 20, which nothing on IPv4 can reach, inside a
+  // container least of all.
+  server.listen(port, process.env.HOST || "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
 })();

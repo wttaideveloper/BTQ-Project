@@ -226,6 +226,43 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     const visible = team ? matches.filter(match => match.teamAId === team.id || match.teamBId === team.id) : matches;
     res.json({ championship: toPublicChampionship(championship, false), team, teams, matches: visible.map(toPublicMatch) });
   });
+  // The Go Live button. The mixer's director (deploy/isp/director in the
+  // LiveboxMix repository) follows the live match and puts it on the stream;
+  // these three calls read its state and flip it on or off. DIRECTOR_URL is
+  // where it listens; without one the button reports the broadcast as not
+  // configured rather than failing.
+  const directorUrl = (process.env.DIRECTOR_URL || "").replace(/\/$/, "");
+  const director = async (method: "GET" | "POST", path: string) => {
+    if (!directorUrl) return { status: 503, body: { error: "no DIRECTOR_URL configured" } };
+    const r = await fetch(`${directorUrl}${path}`, { method, signal: AbortSignal.timeout(8000) });
+    const body = await r.json().catch(() => ({}));
+    return { status: r.status, body };
+  };
+  app.get("/api/broadcast", ensureAdmin, async (_req, res) => {
+    try {
+      const { status, body } = await director("GET", "/state");
+      res.status(status).json({ configured: !!directorUrl, ...body });
+    } catch (e: any) {
+      res.status(502).json({ configured: !!directorUrl, error: `director unreachable: ${e?.message || e}` });
+    }
+  });
+  app.post("/api/broadcast/go-live", ensureAdmin, async (_req, res) => {
+    try {
+      const { status, body } = await director("POST", "/on");
+      res.status(status).json(body);
+    } catch (e: any) {
+      res.status(502).json({ error: `director unreachable: ${e?.message || e}` });
+    }
+  });
+  app.post("/api/broadcast/off-air", ensureAdmin, async (_req, res) => {
+    try {
+      const { status, body } = await director("POST", "/off");
+      res.status(status).json(body);
+    } catch (e: any) {
+      res.status(502).json({ error: `director unreachable: ${e?.message || e}` });
+    }
+  });
+
   app.get("/api/championships/features", ensureAdmin, (_req, res) => {
     res.json({ autoStartEnabled: isChampionshipAutoStartEnabled() });
   });

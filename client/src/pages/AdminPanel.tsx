@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { BroadcastControls } from '@/components/broadcast-controls';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -1154,7 +1155,14 @@ const AdminPanel: React.FC = () => {
                 <AdminLeaderboardPanel />
               </div>
             )}
-            {activeTab === "championships" && <ChampionshipManagementPanel resetSignal={championshipsResetSignal} />}
+            {activeTab === "championships" && (
+              <>
+                <div className="px-4 pt-4 md:px-8 md:pt-8">
+                  <BroadcastControls />
+                </div>
+                <ChampionshipManagementPanel resetSignal={championshipsResetSignal} />
+              </>
+            )}
 
             {/* Voices Tab Content */}
             {activeTab === "voices" && (

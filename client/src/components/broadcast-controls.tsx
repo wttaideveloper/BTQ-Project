@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -15,6 +17,9 @@ type BroadcastState = {
   match?: string | null;
   error?: string | null;
   stream_url?: string;
+  /** The admin's RTMP destination with its stream key masked, or "". */
+  destination?: string;
+  outputs?: { id: string; host?: string | null; state?: string; reconnects?: number; builtin?: boolean }[];
 };
 
 export function BroadcastControls() {
@@ -51,8 +56,47 @@ export function BroadcastControls() {
     onError: (e: Error) => toast({ title: "Broadcast", description: e.message, variant: "destructive" }),
   });
 
+  // The RTMP destination. Typed here, sent once on Save; the server never
+  // returns the key, so the field is empty again after a save and the masked
+  // address is shown beside it.
+  const [url, setUrl] = useState("");
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setUrl("");
+  }, [editing]);
+  const setDestination = useMutation({
+    mutationFn: async (next: string) => {
+      const r = await apiRequest("POST", "/api/broadcast/destination", { url: next });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error || `${r.status}`);
+      }
+      return next;
+    },
+    onSuccess: (next) => {
+      toast({
+        title: next ? "Destination saved" : "Destination removed",
+        description: next
+          ? "The stream now also goes to that RTMP server. The Watch page keeps working as before."
+          : "The stream goes only to the built-in server behind the Watch page.",
+      });
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/broadcast"] });
+    },
+    onError: (e: Error) => toast({ title: "Destination", description: e.message, variant: "destructive" }),
+  });
+
   const s = state.data;
   const onAir = !!s?.following;
+  const destOut = s?.outputs?.find((o) => !o.builtin);
+  const destState =
+    destOut?.state === "live"
+      ? "connected"
+      : destOut?.state === "reconnecting" || destOut?.state === "connecting"
+        ? destOut.state
+        : destOut?.state === "failed"
+          ? "failed"
+          : null;
   const notConfigured = s && s.configured === false;
   const label = state.isLoading
     ? "Checking the stream"
@@ -99,6 +143,79 @@ export function BroadcastControls() {
           <a href={s.stream_url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 underline">
             Watch the stream
           </a>
+        )}
+        {!notConfigured && (
+          <div className="basis-full mt-2 pt-3 border-t border-slate-100">
+            <div className="text-sm font-medium text-slate-700">RTMP destination</div>
+            <p className="text-xs text-slate-500 mb-2">
+              The stream always goes to the built-in server behind the Watch page. Add the RTMP address of
+              YouTube, Facebook or any other server, with its stream key (rtmp://host/app/key), to send it there
+              as well.
+            </p>
+            {editing ? (
+              <form
+                className="flex flex-wrap items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setDestination.mutate(url.trim());
+                }}
+              >
+                <Input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="rtmp://a.rtmp.youtube.com/live2/your-stream-key"
+                  className="max-w-md font-mono text-sm"
+                  autoFocus
+                />
+                <Button type="submit" size="sm" disabled={setDestination.isPending || !url.trim()}>
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                  Cancel
+                </Button>
+              </form>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                {s?.destination ? (
+                  <>
+                    <code className="px-2 py-1 rounded bg-slate-100 text-xs">{s.destination}</code>
+                    {destState && (
+                      <span
+                        className={
+                          destState === "connected"
+                            ? "text-green-700"
+                            : destState === "failed"
+                              ? "text-red-600"
+                              : "text-amber-600"
+                        }
+                      >
+                        {destState}
+                        {destOut?.reconnects ? ` (${destOut.reconnects} reconnects)` : ""}
+                      </span>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                      Change
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={setDestination.isPending}
+                      onClick={() => setDestination.mutate("")}
+                    >
+                      Remove
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-slate-500">None: only the Watch page.</span>
+                    <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                      Add destination
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

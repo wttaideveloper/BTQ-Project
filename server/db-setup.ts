@@ -40,6 +40,70 @@ async function setupDatabase() {
     `);
 
     await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS country TEXT;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_email_verified BOOLEAN DEFAULT FALSE;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_commentator BOOLEAN DEFAULT FALSE;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT FALSE;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_in_team_battle BOOLEAN DEFAULT FALSE;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS current_team_battle_mode TEXT;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS total_games INTEGER DEFAULT 0;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS wins INTEGER DEFAULT 0;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS losses INTEGER DEFAULT 0;
+    `);
+
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS draws INTEGER DEFAULT 0;
+    `);
+
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS sessions (
         sid TEXT PRIMARY KEY,
         sess JSON NOT NULL,
@@ -387,6 +451,10 @@ async function setupDatabase() {
     await db.execute(`
       CREATE UNIQUE INDEX IF NOT EXISTS championship_matches_game_session_id_key
       ON championship_matches(game_session_id);
+    `);
+
+    await db.execute(`
+      ALTER TABLE team_battles ADD COLUMN IF NOT EXISTS game_session_id TEXT;
     `);
 
     await db.execute(`

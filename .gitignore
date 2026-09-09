@@ -15,4 +15,4 @@ vite.config.ts.*
 
 # Config directories with secrets
 .config/
-.config/**
+.config/**.omc/

@@ -38,6 +38,24 @@ export function emptyWatchSoundState(): WatchSoundState {
   return { soundOn: false, everEnabled: false, playbackBlocked: false, audioAvailable: null };
 }
 
+/**
+ * True when the page was opened by the broadcast mixer rather than a viewer:
+ * `?broadcast=1` in the URL (the director adds it), or a LiveboxMix browser.
+ * There is nobody at that browser to press Enable Sound, and the browser is
+ * allowed to autoplay with sound, so the video starts unmuted and the sound
+ * control stays out of the picture.
+ */
+export function isBroadcastCapture(search: string, userAgent: string): boolean {
+  const q = new URLSearchParams(search).get("broadcast");
+  if (q === "1" || q === "true") return true;
+  return /liveboxmix/i.test(userAgent);
+}
+
+/** Initial sound state for a broadcast capture: sound on from the first frame. */
+export function broadcastWatchSoundState(): WatchSoundState {
+  return { soundOn: true, everEnabled: true, playbackBlocked: false, audioAvailable: null };
+}
+
 export function shouldShowWatchSoundControl(hasVideo: boolean): boolean {
   return hasVideo;
 }

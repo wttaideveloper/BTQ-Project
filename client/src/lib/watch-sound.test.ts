@@ -14,6 +14,8 @@ import {
   streamHasAudioTrack,
   watchSoundCopy,
   watchSoundKind,
+  isBroadcastCapture,
+  broadcastWatchSoundState,
 } from "./watch-sound.ts";
 
 let passed = 0;
@@ -144,3 +146,18 @@ test("overlay mode does not mount the sound control or video", () => {
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
+
+test("broadcast capture: ?broadcast=1 from the director, or the mixer's browser by user agent", () => {
+  assert.equal(isBroadcastCapture("?broadcast=1", "Mozilla/5.0 Chrome"), true);
+  assert.equal(isBroadcastCapture("?x=1&broadcast=true", "Mozilla/5.0 Chrome"), true);
+  assert.equal(isBroadcastCapture("", "Mozilla/5.0 Chrome LiveboxMix/0.1"), true);
+});
+
+test("a viewer is not a broadcast capture", () => {
+  assert.equal(isBroadcastCapture("", "Mozilla/5.0 Chrome"), false);
+  assert.equal(isBroadcastCapture("?broadcast=0", "Mozilla/5.0 Chrome"), false);
+});
+
+test("a broadcast capture starts with Sound On", () => {
+  assert.equal(watchSoundKind(broadcastWatchSoundState()), "on");
+});

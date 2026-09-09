@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { onEvent, sendGameEvent, setupGameSocket } from "@/lib/socket";
@@ -21,6 +21,8 @@ import {
   emptyWatchSoundState,
   isAutoplayBlocked,
   shouldShowWatchSoundControl,
+  isBroadcastCapture,
+  broadcastWatchSoundState,
   streamHasAudioTrack,
   watchSoundKind,
   type WatchSoundState,
@@ -65,7 +67,14 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   currentQuestionIdRef.current = liveQuestionDetail?.questionId ?? null;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streamError, setStreamError] = useState("");
-  const [sound, setSound] = useState<WatchSoundState>(emptyWatchSoundState);
+  // The mixer opens this page to put it on air. Start with sound there;
+  // a real viewer's browser still needs the click.
+  const broadcast = useMemo(
+    () => typeof window !== "undefined" && isBroadcastCapture(window.location.search, navigator.userAgent),
+    [],
+  );
+  const initialSound = broadcast ? broadcastWatchSoundState : emptyWatchSoundState;
+  const [sound, setSound] = useState<WatchSoundState>(initialSound);
   // Set when the server's existing reaction throttle kicks in; disables the
   // controls briefly instead of silently dropping taps.
   const [reactionCooldown, setReactionCooldown] = useState(false);
@@ -86,7 +95,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
   }, [overlay]);
 
   useEffect(() => {
-    setSound(emptyWatchSoundState());
+    setSound(initialSound());
   }, [data?.match?.streamUrl, data?.match?.status]);
 
   const noteAutoplayBlocked = (error: unknown) => {
@@ -105,6 +114,8 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
     const video = videoRef.current;
     if (!video || !data?.match?.streamUrl || data.match.status !== "live") return;
     setStreamError("");
+    video.muted = !broadcast;
+    if (broadcast) video.volume = 1;
     return attachChampionshipHls(video, data.match.streamUrl, {
       onPlayError: noteAutoplayBlocked,
       onFatalError: setStreamError,
@@ -461,7 +472,7 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
             media={media}
             overlays={
               <>
-                {shouldShowWatchSoundControl(hasStreamVideo) && (
+                {shouldShowWatchSoundControl(hasStreamVideo) && !broadcast && (
                   <WatchSoundControl kind={watchSoundKind(sound)} onToggle={toggleWatchSound} />
                 )}
                 {streamError && (

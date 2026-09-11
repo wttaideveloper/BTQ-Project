@@ -20,7 +20,7 @@ import { database } from "./database";
 import { championships, championshipMatches, championshipTeams } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { getSpectatorKind } from "./spectator";
-import { TEAM_BATTLE_KIND } from "./spectator-team-battle";
+import { TEAM_BATTLE_KIND, isChampionshipBattleId } from "./spectator-team-battle";
 import { teamBattles } from "@shared/schema";
 
 const db = database.db;
@@ -179,11 +179,15 @@ export async function listLiveEvents(): Promise<LiveEvent[]> {
     .where(eq(teamBattles.status, "playing"));
 
   for (const b of battles as any[]) {
-    if (typeof b.id === "string" && b.id.startsWith("championship-")) continue;
+    if (isChampionshipBattleId(b.id)) continue;
+    const rapid = b.gameType === "rapid_fire";
     events.push({
       id: b.id,
-      kind: b.gameType === "rapid_fire" ? "rapid-fire" : TEAM_BATTLE_KIND,
-      title: `${b.teamAName ?? "Team A"} v ${b.teamBName ?? "Team B"}`,
+      // The channel kind, which is what the page and the subscription use.
+      // Rapid fire is a mode of a team battle, not a kind of its own, so it
+      // says so in the title rather than pretending to be a separate channel.
+      kind: TEAM_BATTLE_KIND,
+      title: `${b.teamAName ?? "Team A"} v ${b.teamBName ?? "Team B"}${rapid ? " (rapid fire)" : ""}`,
       // Every kind names the page that renders it, so the director never has
       // to know what kind of thing it is putting on air.
       watchPath: `/live/${TEAM_BATTLE_KIND}/${b.id}`,

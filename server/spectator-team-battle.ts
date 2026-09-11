@@ -22,9 +22,16 @@ import { database } from "./database";
 
 export const TEAM_BATTLE_KIND = "team-battle";
 
-/** Championship battles carry this prefix and belong to the other path. */
-const isChampionship = (id: string | null | undefined): boolean =>
+/**
+ * Championship battles carry this prefix and belong to the other path.
+ *
+ * Exported because the live event list needs the same test. Two copies of the
+ * prefix in two files would drift the first time the convention changes.
+ */
+export const isChampionshipBattleId = (id: string | null | undefined): boolean =>
   typeof id === "string" && id.startsWith("championship-");
+
+const isChampionship = isChampionshipBattleId;
 
 /**
  * The battle row id behind an in-memory session.

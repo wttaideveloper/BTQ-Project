@@ -3,14 +3,16 @@
  * streaming system. Run with: npx tsx client/src/lib/championship-player-hls.test.ts
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   championshipHlsHttpFailureMessage,
   HLS_EXTERNAL_HTTP_FAILURE,
   HLS_EXTERNAL_NOT_FOUND,
   HLS_GENERIC_PLAYBACK_FAILURE,
+  isHlsManifestUrl,
   isNonRetryableHlsHttpStatus,
+  PROGRESSIVE_PLAYBACK_FAILURE,
 } from "./championship-hls.ts";
 
 let passed = 0;
@@ -94,6 +96,38 @@ test("fatal HLS HTTP/CORS failures do not retry and surface Live video unavailab
   assert.match(HLS_EXTERNAL_HTTP_FAILURE, /HTTP 403 \/ CORS/);
   assert.match(HLS_GENERIC_PLAYBACK_FAILURE, /Live video unavailable/);
   assert.notEqual(HLS_EXTERNAL_HTTP_FAILURE, HLS_GENERIC_PLAYBACK_FAILURE);
+});
+
+test("an mp4 is played by the element itself and never handed to hls.js", () => {
+  assert.equal(isHlsManifestUrl("https://quiz.example.com/media/promo.mp4"), false);
+  assert.equal(isHlsManifestUrl("https://quiz.example.com/media/promo.webm"), false);
+  assert.equal(isHlsManifestUrl("https://stream.example.com/live.m3u8"), true);
+  assert.equal(isHlsManifestUrl("https://stream.example.com/live.mpd"), true);
+  // A signed or cache-busted manifest is still a manifest.
+  assert.equal(isHlsManifestUrl("https://stream.example.com/live.m3u8?token=abc"), true);
+  assert.equal(isHlsManifestUrl("https://stream.example.com/LIVE.M3U8"), true);
+  // The .mp4 file itself must never reach loadSource, which reads a playlist.
+  const guard = helper.indexOf("if (!isHlsManifestUrl(url))");
+  const mse = helper.indexOf("if (Hls.isSupported())");
+  assert.ok(guard > 0, "progressive branch must exist");
+  assert.ok(mse > guard, "the progressive branch must run before hls.js is constructed");
+  assert.match(PROGRESSIVE_PLAYBACK_FAILURE, /Live video unavailable/);
+});
+
+test("a clip that ends starts again, so video outlasts the match", () => {
+  assert.match(helper, /video\.loop = true/);
+  // Set before either branch: a clip has to loop and a live stream never
+  // reaches an end to loop from, so neither path wants it off.
+  const loop = helper.indexOf("video.loop = true");
+  assert.ok(loop > 0 && loop < helper.indexOf("if (!isHlsManifestUrl(url))"));
+});
+
+test("the championship video ships with the client and is served same-origin", () => {
+  const video = resolve(root, "client/public/media/hbtv-ai-cloud-gaming.mp4");
+  const { size } = statSync(video);
+  assert.ok(size > 1_000_000, "the clip must be the real file, not a placeholder");
+  // A manifest here would be played once and never looped by the mixer.
+  assert.match(video, /\.mp4$/);
 });
 
 test("Watch Live layout is not replaced by the compact player component", () => {

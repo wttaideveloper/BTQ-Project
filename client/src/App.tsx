@@ -25,6 +25,7 @@ import { stopSpeaking } from "./lib/sounds";
 import NavigationGuardProvider from "@/components/NavigationGuardProvider";
 import { Loader2 } from "lucide-react";
 import WatchMatch from "@/pages/WatchMatch";
+import WatchLive from "@/pages/WatchLive";
 import Championship from "@/pages/Championship";
 import ChampionshipTeam from "@/pages/ChampionshipTeam";
 import MyChampionship from "@/pages/MyChampionship";
@@ -89,6 +90,8 @@ function Router() {
   // every hook call above and must not introduce hooks of their own here.
   if (location.startsWith("/watch/")) return <Switch><Route path="/watch/:matchId"><WatchMatch /></Route></Switch>;
   if (location.startsWith("/overlay/")) return <Switch><Route path="/overlay/:matchId"><WatchMatch overlay /></Route></Switch>;
+  if (location.startsWith("/live/")) return <Switch><Route path="/live/:kind/:id"><WatchLive /></Route></Switch>;
+  if (location.startsWith("/live-overlay/")) return <Switch><Route path="/live-overlay/:kind/:id"><WatchLive overlay /></Route></Switch>;
   if (location.startsWith("/championships/")) return <Switch><Route path="/championships/:id" component={Championship} /></Switch>;
   if (location.startsWith("/championship-teams/")) return <Switch><Route path="/championship-teams/:id" component={ChampionshipTeam} /></Switch>;
 

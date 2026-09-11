@@ -19,6 +19,9 @@ import type { Express, RequestHandler } from "express";
 import { database } from "./database";
 import { championships, championshipMatches, championshipTeams } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
+import { getSpectatorKind } from "./spectator";
+import { TEAM_BATTLE_KIND } from "./spectator-team-battle";
+import { teamBattles } from "@shared/schema";
 
 const db = database.db;
 
@@ -161,6 +164,33 @@ export async function listLiveEvents(): Promise<LiveEvent[]> {
     }
   }
 
+  // Ad hoc team battles and rapid fire. Championship fixtures are backed by a
+  // battle row too, prefixed "championship-", and are already listed above; if
+  // they were not excluded every fixture would appear twice.
+  const battles = await db
+    .select({
+      id: teamBattles.id,
+      startedAt: teamBattles.startedAt,
+      teamAName: teamBattles.teamAName,
+      teamBName: teamBattles.teamBName,
+      gameType: teamBattles.gameType,
+    })
+    .from(teamBattles)
+    .where(eq(teamBattles.status, "playing"));
+
+  for (const b of battles as any[]) {
+    if (typeof b.id === "string" && b.id.startsWith("championship-")) continue;
+    events.push({
+      id: b.id,
+      kind: b.gameType === "rapid_fire" ? "rapid-fire" : TEAM_BATTLE_KIND,
+      title: `${b.teamAName ?? "Team A"} v ${b.teamBName ?? "Team B"}`,
+      // Every kind names the page that renders it, so the director never has
+      // to know what kind of thing it is putting on air.
+      watchPath: `/live/${TEAM_BATTLE_KIND}/${b.id}`,
+      startedAt: b.startedAt ? new Date(b.startedAt).toISOString() : null,
+    });
+  }
+
   events.sort((x, y) => (y.startedAt || "").localeCompare(x.startedAt || ""));
   return events;
 }
@@ -192,6 +222,27 @@ const ensureAgent: RequestHandler = (req, res, next) => {
 };
 
 export function registerBroadcastRoutes(app: Express, ensureAdmin: RequestHandler): void {
+  // Public spectator endpoint, no authentication, by design: watching a live
+  // game is open to anyone. One route serves every kind, and each kind decides
+  // what a viewer may be told. See server/spectator.ts.
+  app.get("/api/spectate/:kind/:id", async (req, res) => {
+    const kind = getSpectatorKind(req.params.kind);
+    if (!kind) {
+      res.status(404).json({ message: "Unknown kind" });
+      return;
+    }
+    try {
+      const payload = await kind.load(req.params.id);
+      if (!payload) {
+        res.status(404).json({ message: "Not found" });
+        return;
+      }
+      res.json(payload);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || String(e) });
+    }
+  });
+
   // What the admin panel's Live stream card reads. Everything it shows about
   // the mixer comes from the director's last heartbeat, so a director that has
   // stopped polling shows as not connected rather than as silently fine.

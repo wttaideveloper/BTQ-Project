@@ -1,4 +1,20 @@
 import { WebSocketServer, WebSocket } from "ws";
+import {
+  attachSpectatorTransport,
+  channelKey,
+  getSpectatorKind,
+  spectatorRestorePayload,
+  type SpectatorChannel,
+} from "./spectator";
+import {
+  spectatorBattleAnswered,
+  spectatorBattleEnded,
+  spectatorBattleQuestion,
+  spectatorBattleScore,
+  spectatorBattleStarted,
+  spectatorBattleToss,
+  spectatorBattleTossResolved,
+} from "./spectator-team-battle";
 import { Server } from "http";
 import { v4 as uuidv4 } from "uuid";
 import { database } from "./database";
@@ -104,6 +120,12 @@ interface Client {
    * change a player's game membership.
    */
   watchMatchId?: string;
+  /**
+   * Generic spectator subscriptions, as "kind:id" channel keys. A socket may
+   * watch several channels at once (a mosaic page, an operator preview), which
+   * is why this is a set rather than a single id. See server/spectator.ts.
+   */
+  spectate?: Set<string>;
   /**
    * Server-verified user id, resolved from the express-session cookie presented
    * during the WebSocket handshake. `null` means a genuinely anonymous socket
@@ -293,6 +315,23 @@ interface GameEvent {
 
 // Store active WebSocket clients
 const clients: Map<string, Client> = new Map();
+
+// Let the generic spectator layer reach real sockets. It is written without a
+// socket import so its sanitising rules can be tested on their own; this is the
+// one place the two are joined.
+attachSpectatorTransport({
+  subscribers(key) {
+    const ids: string[] = [];
+    for (const [id, client] of clients) {
+      if (client.ws.readyState === WebSocket.OPEN && client.spectate?.has(key)) ids.push(id);
+    }
+    return ids;
+  },
+  send(clientId, payload) {
+    const client = clients.get(clientId);
+    if (client?.ws.readyState === WebSocket.OPEN) client.ws.send(JSON.stringify(payload));
+  },
+});
 const matchReactionCounts = new Map<string, Map<string, number>>();
 const reactionWindows = new Map<string, { startedAt: number; count: number }>();
 /**
@@ -482,6 +521,34 @@ async function loadSupportTargets(matchId: string): Promise<Client["supportTarge
 }
 
 /** Spectator subscribes to a match: bind the socket and restore public state. */
+/**
+ * Subscribe a socket to a generic spectator channel.
+ *
+ * Like watch_match this does no authorization, by design: watching a live game
+ * is public. Safety comes from the payloads, which server/spectator.ts rebuilds
+ * field by field so nothing private can ride along.
+ */
+function handleSpectate(clientId: string, event: GameEvent) {
+  const client = clients.get(clientId);
+  const kind = typeof (event as any).kind === "string" ? (event as any).kind : "";
+  const id = typeof (event as any).id === "string" ? (event as any).id : "";
+  if (!client || !kind || !id) return;
+  if (!getSpectatorKind(kind)) return;
+  const channel: SpectatorChannel = { kind, id };
+  // `gameId` is deliberately untouched: a player who also opens a watch page
+  // keeps their battle membership and their disconnect handling.
+  const watching = (client.spectate ??= new Set());
+  // A page watches one channel, a mosaic a handful. Anything beyond this is a
+  // socket sending subscribe in a loop, so drop the oldest rather than let one
+  // client grow without limit.
+  if (watching.size >= 24) {
+    const oldest = watching.values().next().value;
+    if (oldest) watching.delete(oldest);
+  }
+  watching.add(channelKey(channel));
+  sendToClient(clientId, spectatorRestorePayload(channel));
+}
+
 async function handleWatchMatch(clientId: string, event: GameEvent) {
   const client = clients.get(clientId);
   if (!client || !event.matchId) return;
@@ -2557,6 +2624,9 @@ function handleGameEvent(clientId: string, event: GameEvent) {
       break;
     case "watch_match":
       void handleWatchMatch(clientId, event);
+      break;
+    case "spectate":
+      handleSpectate(clientId, event);
       break;
     case "commentary_publish":
       void getActiveCommentaryRegistry()?.publish(clientId, event.matchId);
@@ -7294,6 +7364,10 @@ async function handleStartTeamBattle(clientId: string, event: GameEvent) {
       if (session) (session as any).mode = "rapid_fire";
     }
 
+    // Open the battle to viewers. Championship fixtures publish through their
+    // own path and are skipped inside this call.
+    spectatorBattleStarted(gameSessions.get(gameId));
+
     // Update all team members' client gameId and gameSessionId and notify battle start
     // CRITICAL FIX: Get all clients for all players, including those that may connect later
     const gameClients = Array.from(clients.values()).filter((c) =>
@@ -7471,6 +7545,7 @@ async function startTeamBattleQuestions(gameId: string) {
         // Spectators get the same question, sanitised. Players' private
         // team_battle_toss sends above are untouched.
         void broadcastChampionshipToss(gameSession, validToss);
+        spectatorBattleToss(gameSession, validToss);
 
         // Create a promise that will be resolved when toss completes (winner decided)
         let tossResolve: ((value?: any) => void) | undefined;
@@ -7865,6 +7940,8 @@ function sendTeamBattleQuestion(gameId: string) {
   // and carries no correctness data. Players are unaffected - their private
   // team_battle_question sends are untouched below.
   void broadcastChampionshipQuestion(gameSession, currentQuestion, questionNumber, answeringTeam);
+  // The same moment, for a battle that is not a championship fixture.
+  spectatorBattleQuestion(gameSession, currentQuestion, questionNumber, answeringTeam);
 
   if (!answeringTeam) {
     console.error(`[TeamBattle] Cannot determine answering team for gameId: ${gameId}, question ${questionNumber}`);
@@ -8141,8 +8218,20 @@ async function processTeamBattleAnswers(gameId: string) {
     isCorrect: !!answeringTeamResult?.correct,
     pointsAwarded: answeringTeamResult?.score ?? 0,
   });
+  // Read from the same already evaluated locals, after the score was
+  // committed above. Never recomputed from the question.
+  spectatorBattleAnswered(gameSession, {
+    questionId: currentQuestion.id,
+    questionNumber: currentIndex + 1,
+    answeringTeam,
+    selectedAnswerId: answeringTeamFinalAnswer?.answerId ?? null,
+    correctAnswerId: correctAnswer?.id ?? null,
+    isCorrect: !!answeringTeamResult?.correct,
+    pointsAwarded: answeringTeamResult?.score ?? 0,
+  });
 
   void broadcastChampionshipScore(gameSession);
+  spectatorBattleScore(gameSession);
 
   // CRITICAL FIX: Send results to all players (both teams see the results)
   // Filter by gameId AND verify they're in the players list
@@ -8435,6 +8524,7 @@ async function processTossResult(gameId: string) {
 
           // The replacement toss reaches spectators too.
           void broadcastChampionshipToss(gameSession, newToss);
+          spectatorBattleToss(gameSession, newToss);
 
           // No timeout for re-toss either - wait indefinitely
 
@@ -8499,6 +8589,7 @@ async function finalizeTossWinner(
     const winnerTeam = gameSession.teams.find((team: any) => team.id === winningTeamId);
     const tossCorrectAnswerId = (gameSession as any).tossQuestion?.answers?.find((a: any) => a.isCorrect)?.id;
     void broadcastChampionshipTossResult(gameSession, winnerTeam, tossCorrectAnswerId);
+    spectatorBattleTossResolved(gameSession, winnerTeam, tossCorrectAnswerId);
 
     if ((gameSession as any)?._tossResolve) {
       (gameSession as any)._tossResolve({});
@@ -8556,6 +8647,19 @@ async function startRapidFireQuestions(gameId: string) {
   }
 }
 
+/**
+ * The correct answer id for a rapid fire question.
+ *
+ * Only ever called from a point where the round has already closed, so this
+ * reads from the stored question rather than being handed one. Keeping it in a
+ * named helper makes the call sites easy to audit for that ordering.
+ */
+function getRapidFireCorrectAnswerId(gameSession: any, questionId: string): string | null {
+  const q = (gameSession?.questions ?? []).find((x: any) => String(x?.id) === String(questionId));
+  const correct = (q?.answers ?? []).find((a: any) => a?.isCorrect);
+  return correct?.id ? String(correct.id) : null;
+}
+
 function sendRapidFireQuestion(gameId: string) {
   const gameSession = gameSessions.get(gameId);
   if (!gameSession) return;
@@ -8579,6 +8683,11 @@ function sendRapidFireQuestion(gameId: string) {
   // Reset awarded flag for this question
   if (!(gameSession as any)._rapidAwardedMap) (gameSession as any)._rapidAwardedMap = {};
   (gameSession as any)._rapidAwardedMap[question.id] = false;
+
+  // Viewers see the question at the same moment the players do, with the
+  // options rebuilt so correctness cannot ride along. Rapid fire has no
+  // answering side: both teams race for it.
+  spectatorBattleQuestion(gameSession, question, currentIndex + 1, undefined);
 
   // Broadcast rapid-fire question to all clients in the game
   const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
@@ -8732,6 +8841,17 @@ async function tryAwardRapidFireCorrectAnswer(
     }))
     .sort((a: any, b: any) => b.score - a.score);
 
+  // The round is resolved and the point is banked, so the answer may now be
+  // told to viewers. Never before this line.
+  spectatorBattleAnswered(gameSession, {
+    questionId: qid,
+    answeringTeam: teamObj,
+    correctAnswerId: getRapidFireCorrectAnswerId(gameSession, qid),
+    isCorrect: true,
+    pointsAwarded: points,
+  });
+  spectatorBattleScore(gameSession);
+
   const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameSession.id);
   for (const c of gameClients) {
     sendToClient(c.id, {
@@ -8832,6 +8952,16 @@ async function processRapidFireResult(gameId: string, questionId: string) {
     markRapidFireQuestionResolved(gameSession, questionId);
 
     // No correct submissions within time limit -> broadcast no-award and advance
+    // Nobody answered correctly and the round is closed, so the answer is no
+    // longer secret.
+    spectatorBattleAnswered(gameSession, {
+      questionId,
+      answeringTeam: undefined,
+      correctAnswerId: getRapidFireCorrectAnswerId(gameSession, questionId),
+      isCorrect: false,
+      pointsAwarded: 0,
+    });
+
     const gameClients = Array.from(clients.values()).filter((c) => c.gameId === gameId);
     for (const client of gameClients) {
       sendToClient(client.id, {
@@ -9027,6 +9157,11 @@ async function endTeamBattle(gameId: string, reason?: string) {
     const winner = sortedTeams[0];
     const isDraw =
       sortedTeams.length > 1 && sortedTeams[0].score === sortedTeams[1].score;
+
+    spectatorBattleEnded(gameSession, {
+      winnerSideId: isDraw ? null : (winner?.id ?? null),
+      isDraw,
+    });
 
     // Championship completion. Unchanged in behaviour - the winner is still
     // derived from the two team scores and equal scores still record a draw -

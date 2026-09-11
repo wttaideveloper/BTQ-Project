@@ -10,8 +10,12 @@ import { apiRequest } from "@/lib/queryClient";
 // follows the live match; this card shows whether it is on air and flips it.
 // Everything goes through this server (/api/broadcast), which holds the
 // address of the director; the browser never talks to the mixer directly.
+type LiveEvent = { id: string; kind: string; title: string; watchPath: string; startedAt: string | null };
+
 type BroadcastState = {
   configured?: boolean;
+  /** The mixer has polled us recently. It runs elsewhere and checks in. */
+  connected?: boolean;
   following?: boolean;
   program?: string | null;
   match?: string | null;
@@ -20,6 +24,8 @@ type BroadcastState = {
   /** The admin's RTMP destination with its stream key masked, or "". */
   destination?: string;
   outputs?: { id: string; host?: string | null; state?: string; reconnects?: number; builtin?: boolean }[];
+  /** Everything live and streamable right now, newest first. */
+  live?: LiveEvent[];
 };
 
 export function BroadcastControls() {
@@ -98,19 +104,23 @@ export function BroadcastControls() {
           ? "failed"
           : null;
   const notConfigured = s && s.configured === false;
+  const live = s?.live ?? [];
+  const onAirTitle = live.find((e) => e.id === s?.match)?.title;
   const label = state.isLoading
     ? "Checking the stream"
     : notConfigured
       ? "Streaming is not configured on this server"
-      : s?.error
-        ? `Director: ${s.error}`
-        : onAir
-          ? s?.program === "match"
-            ? "On air: the live match"
-            : s?.program
-              ? `On air: ${s.program}`
-              : "On air, waiting for a match"
-          : "Off air";
+      : s?.connected === false
+        ? "The mixer has not checked in. It polls every few seconds; if this persists it is not running."
+        : s?.error
+          ? `Mixer: ${s.error}`
+          : onAir
+            ? onAirTitle
+              ? `On air: ${onAirTitle}`
+              : s?.program
+                ? `On air: ${s.program}`
+                : "On air, waiting for something to stream"
+            : "Off air";
 
   return (
     <Card className="border-0 shadow-sm mb-6">
@@ -143,6 +153,13 @@ export function BroadcastControls() {
           <a href={s.stream_url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 underline">
             Watch the stream
           </a>
+        )}
+        {!notConfigured && (
+          <div className="basis-full text-xs text-slate-500">
+            {live.length === 0
+              ? "Nothing is live right now. The stream shows the championship page until something starts."
+              : `Live now: ${live.map((e) => e.title).join(", ")}`}
+          </div>
         )}
         {!notConfigured && (
           <div className="basis-full mt-2 pt-3 border-t border-slate-100">

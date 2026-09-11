@@ -19,6 +19,7 @@ import { ChampionshipMatchStartError, startChampionshipMatch } from "./champions
 import { isChampionshipAutoStartEnabled, notifyChampionshipScheduleChanged } from "./championship-autostart";
 import { rescheduleMatchError } from "./championship-match-reschedule";
 import { deleteManagedTeamLogo, hasAllowedImageSignature, teamLogoUpload } from "./team-logo-upload";
+import { registerBroadcastRoutes } from "./broadcast";
 
 const championshipFields = z.object({
   name: z.string().trim().min(1).max(120),
@@ -226,63 +227,10 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     const visible = team ? matches.filter(match => match.teamAId === team.id || match.teamBId === team.id) : matches;
     res.json({ championship: toPublicChampionship(championship, false), team, teams, matches: visible.map(toPublicMatch) });
   });
-  // The Live stream card. The stream's director (a small service beside the
-  // LiveboxMix mixer, part of the server stack) follows the live match and
-  // puts it on the stream; these calls read its state, flip it on or off and
-  // set the RTMP destination. DIRECTOR_URL is where it listens; without one
-  // the card reports the broadcast as not configured rather than failing.
-  const directorUrl = (process.env.DIRECTOR_URL || "").replace(/\/$/, "");
-  const director = async (method: "GET" | "POST", path: string, payload?: unknown) => {
-    if (!directorUrl) return { status: 503, body: { error: "no DIRECTOR_URL configured" } };
-    const r = await fetch(`${directorUrl}${path}`, {
-      method,
-      signal: AbortSignal.timeout(8000),
-      ...(payload !== undefined
-        ? { headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }
-        : {}),
-    });
-    const body = await r.json().catch(() => ({}));
-    return { status: r.status, body };
-  };
-  app.get("/api/broadcast", ensureAdmin, async (_req, res) => {
-    try {
-      const { status, body } = await director("GET", "/state");
-      res.status(status).json({ configured: !!directorUrl, ...body });
-    } catch (e: any) {
-      res.status(502).json({ configured: !!directorUrl, error: `director unreachable: ${e?.message || e}` });
-    }
-  });
-  app.post("/api/broadcast/go-live", ensureAdmin, async (_req, res) => {
-    try {
-      const { status, body } = await director("POST", "/on");
-      res.status(status).json(body);
-    } catch (e: any) {
-      res.status(502).json({ error: `director unreachable: ${e?.message || e}` });
-    }
-  });
-  // Where the stream goes besides the built-in server behind the Watch page:
-  // a full RTMP address including the stream key (rtmp://host/app/key), or
-  // empty to send nowhere else. Only admins; the key is never echoed back.
-  app.post("/api/broadcast/destination", ensureAdmin, async (req, res) => {
-    const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
-    if (url && !/^rtmps?:\/\/\S+$/.test(url)) {
-      return res.status(400).json({ error: "The destination must be an rtmp:// or rtmps:// address" });
-    }
-    try {
-      const { status, body } = await director("POST", "/destination", { url });
-      res.status(status).json(body);
-    } catch (e: any) {
-      res.status(502).json({ error: `director unreachable: ${e?.message || e}` });
-    }
-  });
-  app.post("/api/broadcast/off-air", ensureAdmin, async (_req, res) => {
-    try {
-      const { status, body } = await director("POST", "/off");
-      res.status(status).json(body);
-    } catch (e: any) {
-      res.status(502).json({ error: `director unreachable: ${e?.message || e}` });
-    }
-  });
+  // The Live stream card lives in its own module: the mixer runs on another
+  // machine and polls us rather than being called, so this is settings and a
+  // heartbeat, not a proxy. See server/broadcast.ts.
+  registerBroadcastRoutes(app, ensureAdmin);
 
   app.get("/api/championships/features", ensureAdmin, (_req, res) => {
     res.json({ autoStartEnabled: isChampionshipAutoStartEnabled() });

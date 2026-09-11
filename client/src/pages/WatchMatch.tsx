@@ -381,6 +381,13 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
         muted={!sound.soundOn}
         playsInline
         controls={false}
+        // hls.js feeds this element through Media Source Extensions, so its
+        // own address is a blob: that exists only inside this tab. The
+        // broadcast mixer cannot open that, and without the real address it
+        // has to render the whole page and take one pre-mixed sound with it.
+        // Declaring the address lets it decode the video itself, which puts
+        // the video's sound and the page's commentary on separate channels.
+        data-lbx-src={data.match.streamUrl ?? undefined}
         onLoadedMetadata={event => refreshAudioAvailability(event.currentTarget)}
         onPause={e => e.currentTarget.play().catch(() => undefined)}
         className="block h-full w-full max-w-full bg-black object-contain"

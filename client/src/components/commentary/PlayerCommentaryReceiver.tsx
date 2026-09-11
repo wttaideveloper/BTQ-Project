@@ -8,7 +8,21 @@ import {
   type CommentaryIceServer,
 } from "@/lib/commentary-rtc";
 
-export function PlayerCommentaryReceiver({ matchId }: { matchId: string }) {
+/**
+ * The commentator's voice, for a player or a spectator.
+ *
+ * `chrome` is off for a broadcast capture: the mixer's browser has nobody at
+ * it to press mute, and the control would otherwise be burned into the
+ * picture. The audio still plays, which is the point of putting this on the
+ * watch page at all.
+ */
+export function PlayerCommentaryReceiver({
+  matchId,
+  chrome = true,
+}: {
+  matchId: string;
+  chrome?: boolean;
+}) {
   const [live, setLive] = useState(false);
   const [muted, setMuted] = useState(false);
   const [needsTap, setNeedsTap] = useState(false);
@@ -95,6 +109,12 @@ export function PlayerCommentaryReceiver({ matchId }: { matchId: string }) {
   useEffect(() => {
     if (audioRef.current) audioRef.current.muted = muted;
   }, [muted]);
+
+  // No control, just the audio element, so the capture hears it and the
+  // picture stays clean.
+  if (!chrome) {
+    return <audio ref={audioRef} autoPlay playsInline />;
+  }
 
   return (
     <div className="pointer-events-auto fixed bottom-3 left-3 z-30 w-[11.5rem] rounded-xl border border-white/15 bg-[#121628]/90 px-2.5 py-2 shadow-lg backdrop-blur-md sm:bottom-4 sm:left-4">

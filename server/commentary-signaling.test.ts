@@ -69,24 +69,42 @@ await test("unauthorized users cannot publish to inactive or non-live matches", 
   assert.equal(notLive.ok, false);
 });
 
-await test("players can subscribe only to the match they are playing", () => {
-  assert.equal(canListenCommentary({
-    userId: 9,
-    memberIds: [1, 2, 3],
-    championshipStatus: "active",
-    matchStatus: "live",
-  }).ok, false);
+await test("anyone watching a live match may hear the commentator", () => {
+  // A player in the match.
   assert.equal(canListenCommentary({
     userId: 2,
     memberIds: [1, 2, 3],
     championshipStatus: "active",
     matchStatus: "live",
   }).ok, true);
+  // Someone who is not playing it. Spectating is public, so this is allowed.
   assert.equal(canListenCommentary({
-    userId: 2,
+    userId: 9,
     memberIds: [1, 2, 3],
+    championshipStatus: "active",
+    matchStatus: "live",
+  }).ok, true);
+  // An anonymous socket, which is what the broadcast mixer is.
+  assert.equal(canListenCommentary({
+    userId: null,
+    memberIds: [1, 2, 3],
+    championshipStatus: "active",
+    matchStatus: "live",
+  }).ok, true);
+});
+
+await test("commentary is still gated on the championship and the match", () => {
+  assert.equal(canListenCommentary({
+    userId: null,
+    memberIds: [],
     championshipStatus: "draft",
     matchStatus: "live",
+  }).ok, false);
+  assert.equal(canListenCommentary({
+    userId: 2,
+    memberIds: [1, 2],
+    championshipStatus: "active",
+    matchStatus: "completed",
   }).ok, false);
 });
 

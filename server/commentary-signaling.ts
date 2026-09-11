@@ -81,23 +81,33 @@ export function canPublishCommentary(options: {
   return { ok: true };
 }
 
+/**
+ * Who may hear the commentator.
+ *
+ * Anyone watching a live match in an active championship, including an
+ * anonymous spectator and the broadcast mixer, which is a browser with no
+ * session. This used to be limited to the players in the match, which was
+ * right while commentary was a feature of the game screen and wrong once the
+ * match went on a public stream: the commentator was talking to nobody but the
+ * two teams, and the broadcast was silent.
+ *
+ * `memberIds` is no longer read. It stays in the signature because the caller
+ * has it to hand and dropping it would be a wider change than this deserves.
+ *
+ * Publishing is untouched and still requires the assigned commentator. See
+ * canPublishCommentary.
+ */
 export function canListenCommentary(options: {
   userId: number | null | undefined;
   memberIds: number[];
   championshipStatus?: string | null;
   matchStatus?: string | null;
 }): { ok: true } | { ok: false; status: number; message: string } {
-  if (!options.userId) {
-    return { ok: false, status: 401, message: "Authentication required" };
-  }
   if (!isActiveChampionshipStatus(options.championshipStatus)) {
     return { ok: false, status: 403, message: "This championship is not active." };
   }
   if (options.matchStatus !== "live") {
     return { ok: false, status: 409, message: "Commentary is only available during a live match" };
-  }
-  if (!options.memberIds.includes(options.userId)) {
-    return { ok: false, status: 403, message: "You are not playing this match" };
   }
   return { ok: true };
 }

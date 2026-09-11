@@ -16,6 +16,7 @@ import { WatchSupport } from "@/components/watch/WatchSupport";
 import { appendBurst, buildBurst, burstTtlMs, dropParticles, type ReactionParticle } from "@/lib/watch-reactions";
 import { WatchTicker } from "@/components/watch/WatchTicker";
 import { WatchSoundControl } from "@/components/watch/WatchSoundControl";
+import { PlayerCommentaryReceiver } from "@/components/commentary/PlayerCommentaryReceiver";
 import {
   applyWatchSound,
   emptyWatchSoundState,
@@ -474,6 +475,12 @@ export default function WatchMatch({ overlay = false }: { overlay?: boolean }) {
               <>
                 {shouldShowWatchSoundControl(hasStreamVideo) && !broadcast && (
                   <WatchSoundControl kind={watchSoundKind(sound)} onToggle={toggleWatchSound} />
+                )}
+                {/* The commentator's voice. Without this the broadcast carried
+                    only whatever soundtrack the embedded video happened to
+                    have, and the commentary reached the two teams alone. */}
+                {status === "live" && !overlay && (
+                  <PlayerCommentaryReceiver matchId={matchId} chrome={!broadcast} />
                 )}
                 {streamError && (
                   <div className="watch-stream-error absolute inset-x-3 z-20 rounded-lg border border-red-400/30 bg-red-950/90 p-3 text-center text-sm text-red-100 sm:inset-x-4">

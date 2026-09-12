@@ -1,0 +1,82 @@
+ffmpeg started on 2026-09-12 at 18:05:22
+Report written to "ffmpeg-20260912-180522.log"
+Log level: 48
+Command line:
+ffmpeg -v error -i /tmp/claude-501/-Users-godwin-workspace-BTQ-Project/3b1669a1-a487-4446-8744-de4a8ea23783/scratchpad/shot-t13.jpg -vf signalstats -f null - -report
+ffmpeg version 9.0.1 Copyright (c) 2000-2026 the FFmpeg developers
+  built with Apple clang version 21.0.0 (clang-2100.1.1.101)
+  configuration: --prefix=/opt/homebrew/Cellar/ffmpeg/9.0.1_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon
+  libavutil      61.  1.101 / 61.  1.101
+  libavcodec     63.  1.101 / 63.  1.101
+  libavformat    63.  1.101 / 63.  1.101
+  libavdevice    63.  1.101 / 63.  1.101
+  libavfilter    12.  1.101 / 12.  1.101
+  libswscale     10.  1.101 / 10.  1.101
+  libswresample   7.  1.101 /  7.  1.101
+Splitting the commandline.
+Reading option '-v' ... matched as option 'v' (set logging level) with argument 'error'.
+Reading option '-i' ... matched as input url with argument '/tmp/claude-501/-Users-godwin-workspace-BTQ-Project/3b1669a1-a487-4446-8744-de4a8ea23783/scratchpad/shot-t13.jpg'.
+Reading option '-vf' ... matched as option 'vf' (alias for -filter:v (apply filters to video streams)) with argument 'signalstats'.
+Reading option '-f' ... matched as option 'f' (force container format (auto-detected otherwise)) with argument 'null'.
+Reading option '-' ... matched as output url.
+Reading option '-report' ... matched as option 'report' (generate a report) with argument '1'.
+Finished splitting the commandline.
+Parsing a group of options: global .
+Applying option v (set logging level) with argument error.
+Applying option report (generate a report) with argument 1.
+Successfully parsed a group of options.
+Parsing a group of options: input url /tmp/claude-501/-Users-godwin-workspace-BTQ-Project/3b1669a1-a487-4446-8744-de4a8ea23783/scratchpad/shot-t13.jpg.
+Successfully parsed a group of options.
+Opening an input file: /tmp/claude-501/-Users-godwin-workspace-BTQ-Project/3b1669a1-a487-4446-8744-de4a8ea23783/scratchpad/shot-t13.jpg.
+[in#0 @ 0x93ac14000] Opening '/tmp/claude-501/-Users-godwin-workspace-BTQ-Project/3b1669a1-a487-4446-8744-de4a8ea23783/scratchpad/shot-t13.jpg' for reading
+[file @ 0x93ac1c000] Setting default whitelist 'file,crypto,data'
+[in#0 @ 0x93ac14000] Format image2 probed with size=2048 and score=50
+[in#0/image2 @ 0x93ac14000] Before avformat_find_stream_info() pos: 0 bytes read:34 seeks:0 nb_streams:1
+[mjpeg @ 0x93ac20380] No JPEG data found in image
+[in#0/image2 @ 0x93ac14000] Could not find codec parameters for stream 0 (Video: mjpeg, none(bt470bg/unknown/unknown)): unspecified size
+Consider increasing the value for the 'analyzeduration' (0) and 'probesize' (5000000) options
+[in#0/image2 @ 0x93ac14000] After avformat_find_stream_info() pos: 34 bytes read:34 seeks:0 frames:1
+Input #0, image2, from '/tmp/claude-501/-Users-godwin-workspace-BTQ-Project/3b1669a1-a487-4446-8744-de4a8ea23783/scratchpad/shot-t13.jpg':
+  Duration: 00:00:00.04, start: 0.000000, bitrate: 6 kb/s
+  Stream #0:0, 1, 1/25: Video: mjpeg, none(bt470bg/unknown/unknown), 25 fps, 25 tbr, 25 tbn
+Successfully opened the file.
+Parsing a group of options: output url -.
+Applying option vf (alias for -filter:v (apply filters to video streams)) with argument signalstats.
+Applying option f (force container format (auto-detected otherwise)) with argument null.
+Successfully parsed a group of options.
+Opening an output file: -.
+[out#0/null @ 0x93ac24180] No explicit maps, mapping streams automatically...
+[vost#0:0/wrapped_avframe @ 0x93b064000] Created video stream from input stream 0:0
+Successfully opened the file.
+Stream mapping:
+  Stream #0:0 -> #0:0 (mjpeg (native) -> wrapped_avframe (native))
+[vost#0:0/wrapped_avframe @ 0x93b064000] Starting thread...
+[vf#0:0 @ 0x93ac58000] Starting thread...
+[vist#0:0/mjpeg @ 0x93b018300] [dec:mjpeg @ 0x93ac0c280] Starting thread...
+[in#0/image2 @ 0x93ac0c000] Starting thread...
+Press [q] to stop, [?] for help
+[in#0/image2 @ 0x93ac0c000] EOF while reading input
+[in#0/image2 @ 0x93ac0c000] Terminating thread with return code 0 (success)
+[mjpeg @ 0x93ac20e00] No JPEG data found in image
+[vist#0:0/mjpeg @ 0x93b018300] [dec:mjpeg @ 0x93ac0c280] Error submitting packet to decoder: Invalid data found when processing input
+[vist#0:0/mjpeg @ 0x93b018300] [dec:mjpeg @ 0x93ac0c280] Decoder thread received EOF packet
+[vist#0:0/mjpeg @ 0x93b018300] [dec:mjpeg @ 0x93ac0c280] Decoder returned EOF, finishing
+[vist#0:0/mjpeg @ 0x93b018300] [dec:mjpeg @ 0x93ac0c280] Decode error rate 1 exceeds maximum 0.666667
+[vf#0:0 @ 0x93ac58000] Cannot determine format of input 0:0 after EOF
+[vist#0:0/mjpeg @ 0x93b018300] [dec:mjpeg @ 0x93ac0c280] Task finished with error code: -1145393733 (Error number -1145393733 occurred)
+[vf#0:0 @ 0x93ac58000] Task finished with error code: -1094995529 (Invalid data found when processing input)
+[vist#0:0/mjpeg @ 0x93b018300] [dec:mjpeg @ 0x93ac0c280] Terminating thread with return code -1145393733 (Error number -1145393733 occurred)
+[vost#0:0/wrapped_avframe @ 0x93b064000] [enc:wrapped_avframe @ 0x93ac101c0] Encoder thread received EOF
+[vost#0:0/wrapped_avframe @ 0x93b064000] [enc:wrapped_avframe @ 0x93ac101c0] Could not open encoder before EOF
+[vf#0:0 @ 0x93ac58000] Terminating thread with return code -1094995529 (Invalid data found when processing input)
+[vost#0:0/wrapped_avframe @ 0x93b064000] Task finished with error code: -22 (Invalid argument)
+[vost#0:0/wrapped_avframe @ 0x93b064000] Terminating thread with return code -22 (Invalid argument)
+[out#0/null @ 0x93ac24180] Nothing was written into output file, because at least one of its streams received no packets.
+frame=    0 fps=0.0 q=0.0 Lsize=       0KiB time=N/A bitrate=N/A speed=N/A elapsed=0:00:00.00    
+[in#0/image2 @ 0x93ac0c000] Input file #0 (/tmp/claude-501/-Users-godwin-workspace-BTQ-Project/3b1669a1-a487-4446-8744-de4a8ea23783/scratchpad/shot-t13.jpg):
+[in#0/image2 @ 0x93ac0c000]   Input stream #0:0 (video): 1 packets read (34 bytes); 0 frames decoded; 1 decode errors; 
+[in#0/image2 @ 0x93ac0c000]   Total: 1 packets (34 bytes) demuxed
+[AVIOContext @ 0x93ac0c140] Statistics: 34 bytes read, 0 seeks
+Conversion failed!
+
+Exiting with exit code 69

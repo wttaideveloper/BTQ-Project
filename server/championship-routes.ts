@@ -342,6 +342,21 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     } catch (error) { fail(res, error); }
   });
 
+  // When a match happened, for ordering: the moment it started, else the
+  // moment it was due, else when the row was made. Missing dates sort last
+  // rather than to 1970, which would bury a freshly created match.
+  const when = (m: typeof championshipMatches.$inferSelect) =>
+    (m.startedAt ?? m.scheduledAt ?? m.createdAt)?.getTime() ?? 0;
+
+  // A positive whole number from a query string, or null when it is absent or
+  // not one. A bad value is ignored rather than rejected: this endpoint is
+  // public and a broken link should still render the page.
+  const countParam = (raw: unknown): number | null => {
+    if (typeof raw !== "string") return null;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 500) : null;
+  };
+
   app.get("/api/championships/:id", async (req, res) => {
     await completeExpiredChampionships();
     const [championship] = await db.select().from(championships).where(eq(championships.id, req.params.id));
@@ -386,9 +401,31 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     const hasMatches = matches.length > 0;
     const championshipFinished =
       championship.status === "completed" || matches.every(m => m.status === "completed");
+    // Matches, newest first, and only a page of them when the caller asks.
+    //
+    // A championship that has been running for a while holds hundreds: this one
+    // reached 420 by its third day, which is 245 KB of JSON and 420 rows for
+    // the browser to lay out. The public page is rendered into the live stream
+    // by the broadcast mixer, so that weight is seconds of black between
+    // matches, and it grows without limit. `matchLimit` (with `matchOffset`)
+    // returns one page and `matchCount` says how many there are, so the page
+    // can ask for more on demand.
+    //
+    // Without `matchLimit` the response is exactly what it always was, in the
+    // order it always was: the admin panel and My Championship read every match
+    // out of this one call and must not be broken by a default page size.
+    // Standings and the champion are computed from every match either way.
+    const ordered = [...matches].sort((a, b) => {
+      if ((a.status === "live") !== (b.status === "live")) return a.status === "live" ? -1 : 1;
+      return when(b) - when(a);
+    });
+    const limit = countParam(req.query.matchLimit);
+    const offset = countParam(req.query.matchOffset) ?? 0;
+    const page = limit === null ? matches : ordered.slice(offset, offset + limit);
     // This endpoint is public (it backs /championships/:id), so matches are
     // returned without the internal Team Battle session key. See toPublicMatch.
-    res.json({ championship: toPublicChampionship(championship, isAdminRequest(req)), teams, matches: matches.map(toPublicMatch), standings,
+    res.json({ championship: toPublicChampionship(championship, isAdminRequest(req)), teams, matches: page.map(toPublicMatch), standings,
+      matchCount: matches.length,
       champion: hasMatches && championshipFinished ? standings[0] ?? null : null });
   });
 

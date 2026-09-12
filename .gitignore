@@ -16,3 +16,4 @@ vite.config.ts.*
 # Config directories with secrets
 .config/
 .config/**.omc/
+ffmpeg-*.log

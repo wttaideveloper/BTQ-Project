@@ -361,6 +361,45 @@ export function registerChampionshipRoutes(app: Express, ensureAdmin: RequestHan
     await completeExpiredChampionships();
     const [championship] = await db.select().from(championships).where(eq(championships.id, req.params.id));
     if (!championship) return res.status(404).json({ message: "Championship not found" });
+    // The on-air page needs a bounded window, never the championship history.
+    // Aggregate standings in SQL so match JSON is not loaded into Node merely
+    // to count wins; full-history consumers retain the existing endpoint mode.
+    if (req.query.view === "broadcast") {
+      const championshipId = req.params.id;
+      const completedTime = sql`coalesce(${championshipMatches.completedAt}, ${championshipMatches.startedAt}, ${championshipMatches.scheduledAt}, ${championshipMatches.createdAt})`;
+      const [teams, totals, counts, recent, upcoming, live] = await Promise.all([
+        db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, championshipId)),
+        db.select({
+          total: sql<number>`count(*)::int`,
+          unfinished: sql<number>`count(*) filter (where ${championshipMatches.status} <> 'completed')::int`,
+        }).from(championshipMatches).where(eq(championshipMatches.championshipId, championshipId)),
+        db.select({
+          id: championshipTeams.id,
+          played: sql<number>`count(${championshipMatches.id})::int`,
+          wins: sql<number>`count(${championshipMatches.id}) filter (where ${championshipMatches.winnerTeamId} = ${championshipTeams.id})::int`,
+          draws: sql<number>`count(${championshipMatches.id}) filter (where ${championshipMatches.winnerTeamId} is null)::int`,
+        }).from(championshipTeams).leftJoin(championshipMatches, and(
+          eq(championshipMatches.championshipId, championshipId),
+          eq(championshipMatches.status, "completed"),
+          or(eq(championshipMatches.teamAId, championshipTeams.id), eq(championshipMatches.teamBId, championshipTeams.id)),
+        )).where(eq(championshipTeams.championshipId, championshipId)).groupBy(championshipTeams.id),
+        db.select().from(championshipMatches).where(and(eq(championshipMatches.championshipId, championshipId), eq(championshipMatches.status, "completed")))
+          .orderBy(sql`${completedTime} desc nulls last`, championshipMatches.id).limit(5),
+        db.select().from(championshipMatches).where(and(eq(championshipMatches.championshipId, championshipId), eq(championshipMatches.status, "upcoming")))
+          .orderBy(sql`${championshipMatches.scheduledAt} asc nulls last`, championshipMatches.createdAt, championshipMatches.id).limit(5),
+        db.select().from(championshipMatches).where(and(eq(championshipMatches.championshipId, championshipId), eq(championshipMatches.status, "live")))
+          .orderBy(sql`${championshipMatches.startedAt} desc nulls last`, championshipMatches.id).limit(1),
+      ]);
+      const standings = teams.map(team => {
+        const count = counts.find(row => row.id === team.id)!;
+        return { ...team, played: count.played, wins: count.wins, draws: count.draws,
+          losses: count.played - count.wins - count.draws, points: count.wins * 2 };
+      }).sort((a, b) => b.points - a.points);
+      const matchCount = totals[0].total;
+      return res.json({ championship: toPublicChampionship(championship, isAdminRequest(req)), teams, standings, matchCount,
+        recentMatches: recent.map(toPublicMatch), upcomingMatches: upcoming.map(toPublicMatch), liveMatches: live.map(toPublicMatch),
+        champion: matchCount > 0 && (championship.status === "completed" || totals[0].unfinished === 0) ? standings[0] ?? null : null });
+    }
     const teams = await db.select().from(championshipTeams).where(eq(championshipTeams.championshipId, req.params.id));
     const matches = await db.select().from(championshipMatches).where(eq(championshipMatches.championshipId, req.params.id));
     // Standings.

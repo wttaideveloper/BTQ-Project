@@ -39,10 +39,10 @@ export default function Championship() {
       </section>
       <div className="grid sm:grid-cols-2 gap-3 content-start lg:col-span-2">
         {data.liveMatches.length > 0 && <section className="bg-red-500/10 rounded-xl px-4 py-3 sm:col-span-2"><h2 className="font-bold text-red-300">Live now</h2>{data.liveMatches.map(renderMatch)}</section>}
-        <section className="bg-white/5 rounded-xl px-4 py-3"><h2 className="font-bold">Next 5 matches</h2>
-          {data.upcomingMatches.length ? data.upcomingMatches.map(renderMatch) : <p className="text-sm text-slate-400 py-2">No upcoming matches scheduled.</p>}
-        </section>
-        <section className="bg-white/5 rounded-xl px-4 py-3"><h2 className="font-bold">Last 5 matches</h2>
+        {data.upcomingMatches.length > 0 && <section className="bg-white/5 rounded-xl px-4 py-3"><h2 className="font-bold">Next {data.upcomingMatches.length} {data.upcomingMatches.length === 1 ? "match" : "matches"}</h2>
+          {data.upcomingMatches.map(renderMatch)}
+        </section>}
+        <section className={`bg-white/5 rounded-xl px-4 py-3 ${data.upcomingMatches.length ? "" : "sm:col-span-2"}`}><h2 className="font-bold">Last 5 matches</h2>
           {data.recentMatches.length ? data.recentMatches.map(renderMatch) : <p className="text-sm text-slate-400 py-2">No completed matches yet.</p>}
         </section>
       </div>
